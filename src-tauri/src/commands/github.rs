@@ -153,10 +153,34 @@ pub async fn github_clone(
         Some(t) if url.starts_with("https://") => api::authed_clone_url(&url, &t),
         _ => url.clone(),
     };
-    state.git.run(&dest_pb, ["clone", &auth_url, target.to_string_lossy().as_ref()]).await?;
-    // Strip token from the saved remote URL — git stores whatever URL we
-    // passed, including credentials, so rewrite to the clean form.
+    // Disable the credential helper for the clone process so the OS
+    // credential store (Windows Credential Manager / macOS Keychain)
+    // doesn't persist the inline `x-access-token:<token>@…` we used.
+    // Otherwise GCM later asks the user to pick between their normal
+    // GitHub account and this leftover x-access-token entry.
+    state.git.run(
+        &dest_pb,
+        [
+            "-c", "credential.helper=",
+            "-c", "credential.useHttpPath=true",
+            "clone", &auth_url, target.to_string_lossy().as_ref(),
+        ],
+    ).await?;
+    // Strip token from the saved remote URL — git stores whatever URL
+    // we passed, including credentials, so rewrite to the clean form.
+    // Without this, every subsequent push/pull would reuse the embedded
+    // token, defeating the credential-helper-disabled clone above.
     let _ = state.git.run(&target, ["remote", "set-url", "origin", &url]).await;
+    // Best-effort cleanup of any residual `x-access-token` entry the
+    // credential helper might already hold from previous clones run
+    // before this fix shipped. `git credential reject` is idempotent —
+    // if there's no matching entry, it returns 0 silently.
+    let reject_input = format!(
+        "protocol=https\nhost=github.com\nusername=x-access-token\n\n",
+    );
+    let _ = state.git
+        .run_with_stdin(&target, ["credential", "reject"], reject_input.as_bytes())
+        .await;
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64).unwrap_or(0);

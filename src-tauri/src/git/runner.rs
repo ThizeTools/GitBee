@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,38 @@ impl GitRunner {
 
     pub async fn is_repository(&self, cwd: &Path) -> bool {
         self.run(cwd, ["rev-parse", "--is-inside-work-tree"]).await.is_ok()
+    }
+
+    /// Run git with bytes piped to stdin. Used for `git credential …`
+    /// commands that read fields from stdin in their prompt protocol.
+    pub async fn run_with_stdin<I, S>(
+        &self, cwd: &Path, args: I, stdin_bytes: &[u8],
+    ) -> AppResult<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        let mut cmd = Command::new(&self.git_exe);
+        cmd.current_dir(cwd)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x0800_0000);
+        let mut child = cmd.spawn()?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(stdin_bytes).await?;
+            stdin.shutdown().await?;
+        }
+        let output = child.wait_with_output().await?;
+        if !output.status.success() {
+            return Err(AppError::GitFailed {
+                status: output.status.code(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            });
+        }
+        Ok(output.stdout)
     }
 }
 
