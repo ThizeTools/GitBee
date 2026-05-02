@@ -1,0 +1,51 @@
+[package]
+name = "gitbee"
+# Kept in sync with package.json by scripts/release.mjs. Cargo's value is
+# what Tauri's runtime `app.package_info().version` returns — bumping
+# package.json alone is not enough for the auto-updater to stop yelling.
+version = "0.2.1"
+description = "GitBee — fast, lightweight Git client"
+authors = ["gigiolobato"]
+edition = "2021"
+
+[lib]
+name = "gitbee_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["process", "io-util", "rt-multi-thread", "macros", "sync", "fs"] }
+thiserror = "2"
+anyhow = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+notify = "7"
+parking_lot = "0.12"
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# GitHub integration — see docs/specs/github-integration.md
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+sha1 = "0.10"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+urlencoding = "2.1"
+hex = "0.4"
+md-5 = "0.10"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
