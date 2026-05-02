@@ -56,11 +56,16 @@ async function main() {
 
   const cargoPath = join(ROOT, "src-tauri", "Cargo.toml");
   const cargo = await readFile(cargoPath, "utf8");
+  // Test before replace — otherwise re-running with the same version
+  // produces a no-op replacement and the `updated === cargo` check
+  // wrongly reports "version line not found".
+  if (!/^version\s*=\s*"[^"]+"/m.test(cargo)) {
+    throw new Error(`could not find version line in ${cargoPath}`);
+  }
   const updated = cargo.replace(
     /^version\s*=\s*"[^"]+"/m,
     `version = "${newVersion}"`,
   );
-  if (updated === cargo) throw new Error(`could not find version line in ${cargoPath}`);
   await writeFile(cargoPath, updated);
 
   console.log(`✓ version: ${oldVersion} → ${newVersion}  (package.json + Cargo.toml)`);
