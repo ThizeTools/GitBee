@@ -365,10 +365,18 @@ export async function restoreTabs(): Promise<void> {
     graph: null, status: [], stashes: [], remotes: [], worktrees: [],
     opState: null, selectedSha: null,
   }));
-  if (stubs.length > 0) {
-    tabs.set(stubs);
-    const active = stubs.find((t) => t.path === savedSnapshot.activePath) ?? stubs[0];
-    await activateTab(active.id);
+  // Always enable persistence after the restore attempt — even if activateTab
+  // throws (e.g., a saved repo path is missing or the watcher fails to attach),
+  // the user expects subsequent tab edits to be saved. Without try/finally, a
+  // single broken saved repo would silently disable tab persistence for the
+  // entire session.
+  try {
+    if (stubs.length > 0) {
+      tabs.set(stubs);
+      const active = stubs.find((t) => t.path === savedSnapshot.activePath) ?? stubs[0];
+      await activateTab(active.id);
+    }
+  } finally {
+    persistEnabled = true;
   }
-  persistEnabled = true;
 }

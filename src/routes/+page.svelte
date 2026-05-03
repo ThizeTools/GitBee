@@ -59,6 +59,9 @@
     // Same pattern for auto-update — silent check, silent download,
     // status bar pill turns green when there's something to install.
     import("$lib/stores/updater").then(({ bootUpdater }) => bootUpdater());
+    // Auto-fetch active repo every 5 minutes so remote-tracking refs
+    // (e.g. origin/gh-pages pushed externally) stay current without manual pulls.
+    import("$lib/stores/autofetch").then(({ startAutoFetch }) => startAutoFetch());
     const onKey = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
       // Zoom #7
