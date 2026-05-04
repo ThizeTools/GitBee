@@ -5,6 +5,7 @@
   import { checkoutAndJump, checkoutRemoteAndJump } from "$lib/stores/graphscroll";
   import { openMenu } from "$lib/stores/contextmenu";
   import { localBranchMenu, remoteBranchMenu, tagMenu } from "$lib/menus/refMenus";
+  import { pinnedRef } from "$lib/stores/graphFilter";
 
   interface Props {
     refs: CommitRef[];
@@ -85,9 +86,17 @@
       }
     }
     const arr = Array.from(byKey.values());
-    // Sort: HEAD first, then branches (local/remote merged), then tags, then stashes.
+    const pinned = $pinnedRef;
+    // Sort: HEAD first, then the pinned ref (one at a time), then
+    // branches (local/remote merged), then tags, then stashes. Pinning
+    // is a soft hint that affects only badge display order — it doesn't
+    // reposition the commit's lane in the graph (lane assignment lives
+    // in the Rust graph engine).
     arr.sort((a, b) => {
       if (a.isHead !== b.isHead) return a.isHead ? -1 : 1;
+      const ap = pinned === a.full ? 0 : 1;
+      const bp = pinned === b.full ? 0 : 1;
+      if (ap !== bp) return ap - bp;
       const order = (k: CommitRef["kind"]) =>
         k === "localbranch" ? 0 : k === "remotebranch" ? 0 : k === "tag" ? 1 : 2;
       return order(a.kind) - order(b.kind);

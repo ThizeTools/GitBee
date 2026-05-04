@@ -8,10 +8,22 @@ pub const REF_FORMAT: &str = "%(refname)%00%(objectname)%00%(*objectname)";
 /// Parse output from `git for-each-ref --format=<REF_FORMAT>`.
 /// Records separated by newlines; fields inside each record by NUL.
 /// (`for-each-ref` does not support `-z`.)
+///
+/// Filters out symbolic remote HEAD pointers (`refs/remotes/<remote>/HEAD`).
+/// These are not real branches — they're convenience aliases for the
+/// remote's default branch and would otherwise show up as a duplicate
+/// "origin/HEAD" badge alongside `origin/main` (or whatever the default
+/// is), confusing the graph.
 pub fn parse_refs(bytes: &[u8]) -> AppResult<Vec<CommitRef>> {
     bytes
         .split(|b| *b == b'\n')
         .filter(|line| !line.is_empty())
+        .filter(|line| {
+            // Drop refs whose refname (the first NUL-separated field) ends
+            // with "/HEAD" under refs/remotes — symbolic ref to default.
+            let refname = line.split(|b| *b == 0).next().unwrap_or(&[]);
+            !(refname.starts_with(b"refs/remotes/") && refname.ends_with(b"/HEAD"))
+        })
         .map(|line| {
             let fields: Vec<&[u8]> = line.split(|b| *b == 0).collect();
             if fields.len() != 3 {

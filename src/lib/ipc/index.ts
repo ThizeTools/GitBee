@@ -93,6 +93,9 @@ export const ipc = {
     invoke("branch_merge", { path, from, noFf }),
   branchRebase: (path: string, onto: string) => invoke("branch_rebase", { path, onto }),
   checkoutSha: (path: string, sha: string) => invoke("checkout_sha", { path, sha }),
+  branchSetUpstream: (
+    path: string, branch: string, remote?: string, remoteBranch?: string,
+  ) => invoke("branch_set_upstream", { path, branch, remote, remoteBranch }),
 
   // staging
   statusLoad: (path: string) => invoke<StatusEntry[]>("status_load", { path }),
@@ -118,6 +121,10 @@ export const ipc = {
     invoke("commit_revert", { path, sha, noEdit }),
   reset: (path: string, sha: string, mode: "soft" | "mixed" | "hard") =>
     invoke("commit_reset", { path, sha, mode }),
+  commitFormatPatch: (path: string, sha: string, destDir: string) =>
+    invoke<string>("commit_format_patch", { path, sha, destDir }),
+  patchApply: (path: string, patchFile: string) =>
+    invoke("patch_apply", { path, patchFile }),
 
   // stash
   stashList: (path: string) => invoke<StashEntry[]>("stash_list", { path }),
@@ -133,6 +140,10 @@ export const ipc = {
   tagDelete: (path: string, name: string) => invoke("tag_delete", { path, name }),
   tagPush: (path: string, remote: string, name: string) =>
     invoke("tag_push", { path, remote, name }),
+  tagMove: (path: string, name: string, sha: string) =>
+    invoke("tag_move", { path, name, sha }),
+  tagAnnotate: (path: string, name: string, message: string) =>
+    invoke("tag_annotate", { path, name, message }),
 
   // remotes
   remoteList: (path: string) => invoke<Remote[]>("remote_list", { path }),
@@ -194,6 +205,10 @@ export const ipc = {
 
   // worktrees
   worktreeList: (path: string) => invoke<Worktree[]>("worktree_list", { path }),
+  worktreeAdd: (path: string, target: string, reference: string, newBranch?: string) =>
+    invoke("worktree_add", { path, target, reference, newBranch }),
+  worktreeRemove: (path: string, target: string, force = false) =>
+    invoke("worktree_remove", { path, target, force }),
 
   // github
   githubStatus: () =>

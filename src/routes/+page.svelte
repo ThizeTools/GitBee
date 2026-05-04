@@ -25,6 +25,10 @@
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import ResizeHandle from "$lib/components/ResizeHandle.svelte";
   import Toaster from "$lib/components/Toaster.svelte";
+  import EditCommitMessageModal from "$lib/components/EditCommitMessageModal.svelte";
+  import SetUpstreamModal from "$lib/components/SetUpstreamModal.svelte";
+  import WorktreeCreateModal from "$lib/components/WorktreeCreateModal.svelte";
+  import { activeModal } from "$lib/stores/modals";
 
   // Reset center to Graph and right to Changes whenever the active tab changes.
   let lastTabId: string | null = null;
@@ -83,6 +87,14 @@
       } else if (ctrl && e.key.toLowerCase() === "l") {
         e.preventDefault();
         logsPanelOpen.update((v) => !v);
+      } else if (ctrl && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+        // Ctrl+F → graph search bar. Only meaningful when the graph is
+        // showing (DiffPanel has its own search affordances and shouldn't
+        // get hijacked); the bar component handles its own focus + Esc.
+        if ($currentRepo && $centerMode.kind === "graph") {
+          e.preventDefault();
+          import("$lib/stores/graphSearch").then(({ openSearch }) => openSearch());
+        }
       } else if (ctrl && e.key === "`") {
         e.preventDefault();
         if ($currentRepo) {
@@ -212,6 +224,18 @@
   <LogsPanel />
   <ContextMenu />
   <Toaster />
+
+  {#if $activeModal?.kind === "edit-commit-message"}
+    <EditCommitMessageModal sha={$activeModal.sha} current={$activeModal.current} />
+  {:else if $activeModal?.kind === "set-upstream"}
+    <SetUpstreamModal branch={$activeModal.branch} />
+  {:else if $activeModal?.kind === "worktree-create"}
+    <WorktreeCreateModal
+      reference={$activeModal.reference}
+      refLabel={$activeModal.refLabel}
+      isRemoteBranch={$activeModal.isRemoteBranch}
+    />
+  {/if}
 </div>
 
 <style>

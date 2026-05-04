@@ -1,14 +1,53 @@
 <script lang="ts">
   import { contextMenu, closeMenu, type MenuItem } from "$lib/stores/contextmenu";
   import { layout } from "$lib/stores/layout";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   let submenuOpen = $state<number | null>(null);
+  let menuEl: HTMLDivElement | null = $state(null);
+  let pos = $state<{ left: number; top: number } | null>(null);
 
   // Stored x/y come from MouseEvent.clientX/Y (viewport, post-zoom). The
   // menu is fixed inside `.app`, which has CSS `zoom` applied — so left/top
   // get multiplied by uiScale at paint time. Divide here to compensate.
   const scale = $derived($layout.uiScale);
+
+  // Recompute placement whenever the menu opens or its items change. The
+  // pattern: render the menu off-screen at first paint to measure it, then
+  // flip it up/left if it would overflow the viewport. `pos: null` keeps
+  // the menu hidden until we have a measured placement, avoiding a 1-frame
+  // flash at the wrong corner.
+  $effect(() => {
+    const open = $contextMenu.open;
+    const x = $contextMenu.x;
+    const y = $contextMenu.y;
+    if (!open) { pos = null; return; }
+    pos = null; // hide until measured
+    void $contextMenu.items; // recompute when items change too
+    tick().then(() => {
+      if (!menuEl) return;
+      const rect = menuEl.getBoundingClientRect();
+      // Convert to logical (pre-zoom) px so the math matches our left/top.
+      const w = rect.width / scale;
+      const h = rect.height / scale;
+      const vw = window.innerWidth / scale;
+      const vh = window.innerHeight / scale;
+      let left = x / scale;
+      let top = y / scale;
+      const margin = 4;
+      // Flip up if the menu would clip the bottom edge AND there's more
+      // room above the click point. Otherwise just clamp into view.
+      if (top + h + margin > vh) {
+        if (y / scale - h - margin >= 0) top = y / scale - h;
+        else top = Math.max(margin, vh - h - margin);
+      }
+      if (left + w + margin > vw) {
+        if (x / scale - w - margin >= 0) left = x / scale - w;
+        else left = Math.max(margin, vw - w - margin);
+      }
+      pos = { left, top };
+    });
+  });
 
   onMount(() => {
     const close = (e: MouseEvent) => {
@@ -33,7 +72,14 @@
 </script>
 
 {#if $contextMenu.open}
-  <div class="ctx-menu" style="left: {$contextMenu.x / scale}px; top: {$contextMenu.y / scale}px">
+  <div
+    bind:this={menuEl}
+    class="ctx-menu"
+    class:measuring={pos === null}
+    style={pos
+      ? `left: ${pos.left}px; top: ${pos.top}px;`
+      : `left: ${$contextMenu.x / scale}px; top: ${$contextMenu.y / scale}px;`}
+  >
     {#each $contextMenu.items as it, i (i)}
       {#if it.hidden}
         <!-- entry suppressed -->
@@ -91,6 +137,13 @@
     z-index: 1000;
     min-width: 200px;
     font-size: 12px;
+  }
+  /* Hide while we measure the natural size on the first paint. Render
+     it off-viewport so layout engines still compute a real width/height
+     for getBoundingClientRect — `display: none` would give 0×0. */
+  .ctx-menu.measuring {
+    visibility: hidden;
+    pointer-events: none;
   }
   .row { position: relative; }
   .item {

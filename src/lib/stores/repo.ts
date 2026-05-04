@@ -5,6 +5,7 @@ import type {
 } from "$lib/ipc";
 import { ipc } from "$lib/ipc";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { hiddenRefs, soloRef } from "$lib/stores/graphFilter";
 
 export interface RepoTab {
   id: string;
@@ -80,16 +81,66 @@ export const selectedSha = {
   set: (sha: string | null) => updateActive((t) => ({ ...t, selectedSha: sha })),
 };
 
-export const refsByCommit = derived(graph, ($graph) => {
+// Refs after applying the user's hide/solo filter.
+// - Hide drops a single ref (badges + commits reachable only through it).
+// - Solo collapses the view to ONE ref: only that ref's badge is shown
+//   and only its history is reachable. HEAD/stash are NOT auto-kept
+//   under solo — the user explicitly asked for "just this branch."
+// - Without solo, HEAD/stash bypass hide so the "you are here" anchor
+//   and the stash drawer never disappear unintentionally.
+export const visibleRefs = derived(
+  [graph, hiddenRefs, soloRef],
+  ([$graph, $hidden, $solo]) => {
+    if (!$graph) return [];
+    if ($solo) return $graph.refs.filter((r) => r.name === $solo);
+    return $graph.refs.filter((r) => {
+      if (r.kind === "head" || r.kind === "stash") return true;
+      return !$hidden.has(r.name);
+    });
+  },
+);
+
+export const refsByCommit = derived(visibleRefs, ($refs) => {
   const map = new Map<string, CommitRef[]>();
-  if (!$graph) return map;
-  for (const r of $graph.refs) {
+  for (const r of $refs) {
     const arr = map.get(r.target_sha) ?? [];
     arr.push(r);
     map.set(r.target_sha, arr);
   }
   return map;
 });
+
+// SHAs reachable from any visible ref. Used by GraphCanvas to drop rows
+// that would otherwise dangle when their only ref is filtered out (e.g.
+// a remote-only branch like `origin/gh-pages` whose tip and history
+// aren't on any other branch). When no filter is active, this returns
+// `null` and consumers fall back to showing every node — saves the BFS
+// in the common case.
+export const reachableShas = derived(
+  [graph, visibleRefs, hiddenRefs, soloRef],
+  ([$graph, $refs, $hidden, $solo]) => {
+    if (!$graph) return null;
+    if ($hidden.size === 0 && !$solo) return null; // no filter → show all
+    const parentsBy = new Map<string, string[]>();
+    for (const n of $graph.nodes) parentsBy.set(n.sha, n.parents);
+    const reachable = new Set<string>();
+    const stack: string[] = [];
+    // Under solo, HEAD does NOT seed the walk — the user wants only
+    // the soloed branch's history visible. Without solo, HEAD always
+    // seeds so the "you are here" anchor never vanishes when the user
+    // has only hidden a few unrelated branches.
+    if (!$solo && $graph.head_sha) stack.push($graph.head_sha);
+    for (const r of $refs) stack.push(r.target_sha);
+    while (stack.length) {
+      const sha = stack.pop()!;
+      if (reachable.has(sha)) continue;
+      reachable.add(sha);
+      const ps = parentsBy.get(sha);
+      if (ps) for (const p of ps) if (!reachable.has(p)) stack.push(p);
+    }
+    return reachable;
+  },
+);
 
 // For each commit SHA, the set of branch refs whose history *contains* it.
 // Cheap precompute over the loaded slice (newest→oldest with parent links):

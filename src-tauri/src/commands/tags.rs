@@ -31,6 +31,47 @@ pub async fn tag_delete(
     Ok(())
 }
 
+// Move an existing tag to point at a new commit (`git tag -f <name>
+// <sha>`). Used by the "Fast-forward tag" action; the caller passes
+// HEAD's sha. Note that this is a destructive rewrite — if the tag was
+// already pushed, the user has to push again with `--force` for the
+// remote to advance.
+#[tauri::command]
+pub async fn tag_move(
+    path: String,
+    name: String,
+    sha: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state.git.run(&cwd(&path), ["tag", "-f", &name, &sha]).await?;
+    Ok(())
+}
+
+// Convert a lightweight tag into an annotated one (or change an existing
+// annotated tag's message). Git has no in-place "annotate" — the only
+// way is delete + recreate, so this command does both atomically from
+// the user's POV. Same caveat as tag_move re: pushed tags.
+#[tauri::command]
+pub async fn tag_annotate(
+    path: String,
+    name: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let sha = state
+        .git
+        .run_text(&cwd(&path), ["rev-parse", &format!("{name}^{{}}")])
+        .await?
+        .trim()
+        .to_string();
+    state.git.run(&cwd(&path), ["tag", "-d", &name]).await?;
+    state
+        .git
+        .run(&cwd(&path), ["tag", "-a", &name, "-m", &message, &sha])
+        .await?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn tag_push(
     path: String,

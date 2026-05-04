@@ -75,6 +75,34 @@ pub async fn branch_rebase(
     Ok(())
 }
 
+// Set or clear the upstream tracking branch for `branch`. Passing
+// `remote=None` (or empty) unsets the upstream — useful when the user
+// wants to detach from a deleted upstream. The remote-side branch name
+// defaults to `branch` when `remote_branch` is not provided.
+#[tauri::command]
+pub async fn branch_set_upstream(
+    path: String,
+    branch: String,
+    remote: Option<String>,
+    remote_branch: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    match remote.as_deref() {
+        None | Some("") => {
+            state.git.run(&cwd(&path), ["branch", "--unset-upstream", &branch]).await?;
+        }
+        Some(r) => {
+            let rb = remote_branch.as_deref().unwrap_or(&branch);
+            let target = format!("{r}/{rb}");
+            state
+                .git
+                .run(&cwd(&path), ["branch", &format!("--set-upstream-to={target}"), &branch])
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn checkout_sha(
     path: String,

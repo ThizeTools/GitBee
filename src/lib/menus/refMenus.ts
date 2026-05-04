@@ -13,6 +13,7 @@ import {
   withBusy,
   currentRepo,
   graph,
+  remotes,
   busy,
   errorMessage,
   refreshActive,
@@ -29,6 +30,13 @@ import {
   scrollGraphTo,
 } from "$lib/stores/graphscroll";
 import { get } from "svelte/store";
+import { openModal } from "$lib/stores/modals";
+import { pullRequestCompareUrl, commitWebUrl, branchWebUrl } from "$lib/github/url";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  hiddenRefs, soloRef, pinnedRef,
+  hideRef, unhideRef, setSolo, togglePin,
+} from "$lib/stores/graphFilter";
 
 function repo(): string | null {
   return get(currentRepo);
@@ -72,6 +80,147 @@ function headBranch(): string {
   return get(graph)?.head_branch ?? "HEAD";
 }
 
+function headSha(): string | null {
+  return get(graph)?.head_sha ?? null;
+}
+
+function commitSubject(sha: string): string {
+  const node = get(graph)?.nodes.find((n) => n.sha === sha);
+  return node?.subject ?? "";
+}
+
+function originUrl(): string | null {
+  const list = get(remotes);
+  const origin = list.find((r) => r.name === "origin") ?? list[0];
+  return origin?.url ?? null;
+}
+
+function openEditCommitMessage(sha: string): void {
+  openModal({ kind: "edit-commit-message", sha, current: commitSubject(sha) });
+}
+
+function openSetUpstream(branch: string): void {
+  openModal({ kind: "set-upstream", branch });
+}
+
+function openWorktreeCreate(reference: string, refLabel: string, isRemoteBranch = false): void {
+  openModal({ kind: "worktree-create", reference, refLabel, isRemoteBranch });
+}
+
+// Fire the "Start a pull request" flow by opening GitHub's compare page
+// for the given branch in the system browser. GitHub auto-picks the base
+// (the repo's default branch) and `?expand=1` lands the user on the PR
+// creation form. Falls back to a notification when the remote isn't on
+// github.com or we don't have an origin URL.
+// Build the Hide / Solo / Pin trio for a given qualified ref name. Labels
+// flip ("Hide" ⇄ "Show", "Solo" ⇄ "Exit solo", "Pin" ⇄ "Unpin") so the
+// menu always tells the user the action it will perform — no ambiguity.
+// `refLabel` is the human-friendly variant (e.g. "main" for "origin/main").
+function viewFilterItems(qualifiedName: string, refLabel: string): MenuItem[] {
+  const hidden = get(hiddenRefs).has(qualifiedName);
+  const solo = get(soloRef);
+  const pinned = get(pinnedRef) === qualifiedName;
+  return [
+    {
+      label: hidden ? `Show ${refLabel}` : "Hide",
+      icon: hidden ? "◐" : "○",
+      onClick: () => (hidden ? unhideRef(qualifiedName) : hideRef(qualifiedName)),
+    },
+    {
+      label: pinned ? "Unpin" : "Pin to Left",
+      icon: "📌",
+      onClick: () => togglePin(qualifiedName),
+    },
+    {
+      label: solo === qualifiedName ? "Exit solo" : "Solo",
+      icon: "⊙",
+      onClick: () => setSolo(solo === qualifiedName ? null : qualifiedName),
+    },
+  ];
+}
+
+// `git tag -f <name> <head_sha>`. We resolve HEAD up-front so the
+// command shows a precise label in logs and the destructive nature of
+// `-f` is visible to the user via the confirm prompt.
+async function fastForwardTag(tagName: string): Promise<void> {
+  const r = repo();
+  const head = headSha();
+  if (!r || !head) return;
+  if (!confirm(`Fast-forward ${tagName} to ${head.slice(0, 7)}?\n\nThis rewrites the tag and may need a force-push.`)) return;
+  const res = await runAction(`FF tag ${tagName}`, () =>
+    ipc.tagMove(r, tagName, head),
+  );
+  if (res.ok) notifySuccess("Tag moved", `${tagName} → ${head.slice(0, 7)}`);
+  else notifyError("FF tag failed", res.error);
+}
+
+// Lightweight tag → annotated tag (or change an existing message).
+// Prompt is a plain `prompt()` because the message is single-line for
+// most workflows; if it grows we'll swap for a modal.
+async function annotateTag(tagName: string): Promise<void> {
+  const r = repo();
+  if (!r) return;
+  const message = prompt(`Annotation message for ${tagName}:`);
+  if (message === null || message.trim() === "") return;
+  const res = await runAction(`Annotate ${tagName}`, () =>
+    ipc.tagAnnotate(r, tagName, message.trim()),
+  );
+  if (res.ok) notifySuccess("Tag annotated", tagName);
+  else notifyError("Annotate failed", res.error);
+}
+
+// Pick a `.patch` / `.diff` file via the OS dialog and apply it to the
+// working tree with `git apply --3way`. The result lands as unstaged
+// changes (and conflicts when --3way falls back); the user reviews and
+// commits like any other edit.
+async function applyPatch(): Promise<void> {
+  const r = repo();
+  if (!r) return;
+  const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+  const picked = await openDialog({
+    multiple: false,
+    title: "Select patch file",
+    filters: [{ name: "Patch", extensions: ["patch", "diff"] }],
+  });
+  if (typeof picked !== "string") return;
+  const res = await runAction(`Apply patch ${picked}`, () =>
+    ipc.patchApply(r, picked),
+  );
+  if (res.ok) notifySuccess("Patch applied", picked.split(/[\\/]/).pop() ?? picked);
+  else notifyError("Apply failed", res.error);
+}
+
+// Pick a folder, then `git format-patch -1 <sha> -o <folder>`. The
+// resulting `.patch` is suitable for emailing or feeding back through
+// "Apply patch".
+async function createPatch(sha: string): Promise<void> {
+  const r = repo();
+  if (!r) return;
+  const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+  const picked = await openDialog({
+    directory: true, multiple: false,
+    title: "Folder to write the patch into",
+  });
+  if (typeof picked !== "string") return;
+  const res = await runAction(`Create patch ${sha.slice(0, 7)}`, () =>
+    ipc.commitFormatPatch(r, sha, picked),
+  );
+  if (res.ok) notifySuccess("Patch created", res.value as string);
+  else notifyError("Create patch failed", res.error);
+}
+
+async function startPullRequest(branch: string): Promise<void> {
+  const url = originUrl();
+  if (!url) { notifyError("No remote", "Add an origin remote first"); return; }
+  const compare = pullRequestCompareUrl(url, branch);
+  if (!compare) {
+    notifyInfo("Not a GitHub remote", "Open PR is supported only for github.com remotes");
+    return;
+  }
+  try { await openUrl(compare); }
+  catch (e) { notifyError("Could not open browser", String(e)); }
+}
+
 // --- Branch (local) ---
 export function localBranchMenu(branch: string, sha: string): MenuItem[] {
   const head = headBranch();
@@ -113,7 +262,7 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
         else notifyError("Push failed", res.error);
       },
     },
-    { label: "Set Upstream", icon: "⇡", onClick: stub("Set upstream") },
+    { label: "Set Upstream", icon: "⇡", onClick: () => openSetUpstream(branch) },
     { separator: true, label: "" },
     // Group 2
     {
@@ -126,7 +275,7 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     {
       label: `Create worktree from ${branch}`,
       icon: "📂",
-      onClick: stub("Create worktree"),
+      onClick: () => openWorktreeCreate(branch, branch, false),
     },
     { separator: true, label: "" },
     // Group 4
@@ -140,10 +289,13 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
       icon: "↺",
       onClick: () => resetMenu(sha),
     },
+    // Edit commit message is HEAD-only — amending older commits requires
+    // interactive rebase, intentionally out of scope.
     {
       label: "Edit commit message",
       icon: "✎",
-      onClick: stub("Edit commit message"),
+      disabled: sha !== headSha(),
+      onClick: () => openEditCommitMessage(sha),
     },
     {
       label: "Revert commit",
@@ -156,7 +308,7 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     },
     { separator: true, label: "" },
     // Group 6 (former Group 5 removed — "Explain Branch Changes" dropped)
-    { label: "Apply patch", icon: "⌘", onClick: stub("Apply patch") },
+    { label: "Apply patch", icon: "⌘", onClick: () => applyPatch() },
     {
       label: `Rename ${branch}`,
       icon: "✎",
@@ -186,10 +338,9 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
       onClick: () => copyRemoteCommitLink(sha),
     },
     { separator: true, label: "" },
-    // Group 8
-    { label: "Hide", icon: "○", onClick: stub("Hide branch") },
-    { label: "Pin to Left", icon: "📌", onClick: stub("Pin to left") },
-    { label: "Solo", icon: "⊙", onClick: stub("Solo") },
+    // Group 8 — view filters (hide / pin / solo). Labels flip to reflect
+    // current state so the user always knows what the action will do.
+    ...viewFilterItems(branch, branch),
     { separator: true, label: "" },
     // Group 9
     {
@@ -225,7 +376,7 @@ export function remoteBranchMenu(
     {
       label: `Create worktree from ${full}`,
       icon: "📂",
-      onClick: stub("Create worktree"),
+      onClick: () => openWorktreeCreate(full, full, true),
     },
     { separator: true, label: "" },
     // Group 3
@@ -242,7 +393,8 @@ export function remoteBranchMenu(
     {
       label: "Edit commit message",
       icon: "✎",
-      onClick: stub("Edit commit message"),
+      disabled: sha !== headSha(),
+      onClick: () => openEditCommitMessage(sha),
     },
     {
       label: "Revert commit",
@@ -254,11 +406,12 @@ export function remoteBranchMenu(
       },
     },
     { separator: true, label: "" },
-    // Group 4 — GitHub-related (stubbed)
+    // Group 4 — GitHub PR creator. Opens github.com/<owner>/<repo>/compare
+    // in the system browser; GitHub picks the base branch automatically.
     {
       label: "Start a pull request",
       icon: "↗",
-      onClick: stub("Open PR creator"),
+      onClick: () => startPullRequest(branch),
     },
     { separator: true, label: "" },
     // Group 5
@@ -291,10 +444,9 @@ export function remoteBranchMenu(
       onClick: () => copyRemoteCommitLink(sha),
     },
     { separator: true, label: "" },
-    // Group 7
-    { label: "Hide", icon: "○", onClick: stub("Hide branch") },
-    { label: "Pin to Left", icon: "📌", onClick: stub("Pin to left") },
-    { label: "Solo", icon: "⊙", onClick: stub("Solo") },
+    // Group 7 — view filters; the qualified name is the remote-prefixed
+    // form so a remote branch can be hidden without affecting its local.
+    ...viewFilterItems(full, branch),
     { separator: true, label: "" },
     // Group 8
     {
@@ -340,17 +492,35 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     {
       label: `Fast-forward ${tagName} to ${head}`,
       icon: "⇉",
-      onClick: stub("FF tag"),
+      onClick: () => fastForwardTag(tagName),
     },
     {
-      label: `Merge ${head} into ${tagName}`,
+      label: `Merge ${tagName} into ${head}`,
       icon: "⫶",
-      onClick: stub("Merge tag"),
+      onClick: async () => {
+        const r = repo();
+        if (!r) return;
+        if (!confirm(`Merge ${tagName} into ${head}?`)) return;
+        const res = await runAction(`Merge ${tagName}`, () =>
+          ipc.branchMerge(r, tagName, false),
+        );
+        if (res.ok) notifySuccess("Merged", `${tagName} → ${head}`);
+        else notifyError("Merge failed", res.error);
+      },
     },
     {
       label: `Rebase ${head} onto ${tagName}`,
       icon: "⇄",
-      onClick: stub("Rebase onto tag"),
+      onClick: async () => {
+        const r = repo();
+        if (!r) return;
+        if (!confirm(`Rebase ${head} onto ${tagName}?`)) return;
+        const res = await runAction(`Rebase ${head} onto ${tagName}`, () =>
+          ipc.branchRebase(r, tagName),
+        );
+        if (res.ok) notifySuccess("Rebased", `${head} onto ${tagName}`);
+        else notifyError("Rebase failed", res.error);
+      },
     },
     { separator: true, label: "" },
     // Group 3
@@ -412,12 +582,15 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
       onClick: () => copy(tagName, "tag name"),
     },
     { separator: true, label: "" },
-    // Group 8
-    { label: "Hide", icon: "○", onClick: stub("Hide tag") },
-    { label: "Solo", icon: "⊙", onClick: stub("Solo") },
+    // Group 8 — view filters
+    ...viewFilterItems(tagName, tagName),
     { separator: true, label: "" },
     // Group 9
-    { label: `Annotate ${tagName}`, icon: "✎", onClick: stub("Annotate tag") },
+    {
+      label: `Annotate ${tagName}`,
+      icon: "✎",
+      onClick: () => annotateTag(tagName),
+    },
   ];
 }
 
@@ -437,7 +610,7 @@ export function commitMenu(sha: string): MenuItem[] {
     {
       label: "Create worktree from this commit",
       icon: "📂",
-      onClick: stub("Create worktree"),
+      onClick: () => openWorktreeCreate(sha, sha.slice(0, 7), false),
     },
     { separator: true, label: "" },
     {
@@ -482,7 +655,7 @@ export function commitMenu(sha: string): MenuItem[] {
     {
       label: "Create patch from commit",
       icon: "⌘",
-      onClick: stub("Create patch"),
+      onClick: () => createPatch(sha),
     },
     {
       label: "Share commit as Cloud Patch",
@@ -609,11 +782,32 @@ export async function refreshRemoteTags() {
   }
 }
 
-async function copyRemoteCommitLink(sha: string) {
-  // We don't have the origin URL in the frontend; fall back to copying sha
-  // and a hint. (TODO: add an ipc.remoteUrl call.)
-  await copy(`<origin>/commit/${sha}`, "commit URL template");
+// Resolve a remote URL by name from the loaded remotes list. Defaults to
+// `origin` if no name is given (matches the menu's "Copy link to commit
+// on remote: origin" wording).
+function remoteUrlByName(name = "origin"): string | null {
+  const list = get(remotes);
+  return list.find((r) => r.name === name)?.url ?? list[0]?.url ?? null;
 }
+
+async function copyRemoteCommitLink(sha: string) {
+  const url = remoteUrlByName("origin");
+  if (!url) { notifyError("No remote", "Add an origin remote first"); return; }
+  const link = commitWebUrl(url, sha);
+  if (!link) {
+    notifyInfo("Unsupported remote", "Could not derive a web URL from the remote");
+    return;
+  }
+  await copy(link, "commit URL");
+}
+
 async function copyRemoteBranchLink(remote: string, branch: string) {
-  await copy(`<${remote}>/tree/${branch}`, "branch URL template");
+  const url = remoteUrlByName(remote);
+  if (!url) { notifyError("Remote not found", remote); return; }
+  const link = branchWebUrl(url, branch);
+  if (!link) {
+    notifyInfo("Unsupported remote", "Could not derive a web URL from the remote");
+    return;
+  }
+  await copy(link, "branch URL");
 }

@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import {
-    graph, selectedSha, refsByCommit, containingByCommit, status, currentRepo, withBusy, stashes, WIP_SHA,
+    graph, selectedSha, refsByCommit, containingByCommit, reachableShas,
+    status, currentRepo, withBusy, stashes, WIP_SHA,
   } from "$lib/stores/repo";
+  import GraphSearchBar from "./GraphSearchBar.svelte";
+  import { searchOpen, matchSet, currentMatchIdx, matchShas } from "$lib/stores/graphSearch";
+  import { soloRef } from "$lib/stores/graphFilter";
   import RefBadges from "./RefBadges.svelte";
   import Avatar from "./Avatar.svelte";
   import type { CommitRef } from "$lib/ipc";
@@ -35,9 +39,15 @@
   function isStashHelper(subject: string): boolean {
     return /^(?:index|untracked files)\s+on\s+\S/i.test(subject);
   }
-  const nodes = $derived(
-    ($graph?.nodes ?? []).filter((n) => !isStashHelper(n.subject)),
-  );
+  const nodes = $derived.by(() => {
+    const all = ($graph?.nodes ?? []).filter((n) => !isStashHelper(n.subject));
+    // When the user has hidden or solo'd refs, drop commits that are no
+    // longer reachable from any visible ref. WIP synthetic row is always
+    // kept — it represents the working directory state, not a real commit.
+    const reachable = $reachableShas;
+    if (!reachable) return all;
+    return all.filter((n) => n.sha === WIP_SHA || reachable.has(n.sha));
+  });
   void measure; // metrics no longer used for sizing (#4) but renderer may need it later
   const shaToRow = $derived.by(() => {
     const m = new Map<string, number>();
@@ -105,7 +115,12 @@
     else setSize("graphMsgWidth", v);
   }
 
-  const totalRows = $derived(nodes.length + 1);
+  // WIP belongs to HEAD, so under solo (which hides everything except the
+  // soloed branch's history) it should disappear too — otherwise the user
+  // sees a "// WIP" row dangling above a graph that has nothing else from
+  // HEAD's chain. Without solo it always shows.
+  const wipVisible = $derived($soloRef === null);
+  const totalRows = $derived(nodes.length + (wipVisible ? 1 : 0));
   const totalHeight = $derived(totalRows * ROW_HEIGHT + TOP_PADDING * 2);
   const headRowSha = $derived($graph?.head_sha ?? null);
   const wipChangeCount = $derived($status.length);
@@ -188,10 +203,15 @@
 
   const visibleRows = $derived.by(() => {
     const list: { row: number; node: GraphNode | null; top: number; isWip: boolean }[] = [];
+    // When WIP is hidden (solo mode), row 0 maps directly to nodes[0]; the
+    // synthetic WIP slot is gone, and there's no off-by-one shift to worry
+    // about in the renderer because the canvas's `wipPresent` flag is also
+    // turned off below. (See the `render(...)` call site.)
+    const wipShift = wipVisible ? 1 : 0;
     for (let r = visibleRange.start; r < visibleRange.end; r++) {
       const top = TOP_PADDING + r * ROW_HEIGHT;
-      if (r === 0) list.push({ row: r, node: null, top, isWip: true });
-      else list.push({ row: r, node: nodes[r - 1], top, isWip: false });
+      if (wipVisible && r === 0) list.push({ row: r, node: null, top, isWip: true });
+      else list.push({ row: r, node: nodes[r - wipShift], top, isWip: false });
     }
     return list;
   });
@@ -254,12 +274,14 @@
     const next = new Map<number, number>();
     const cells = scrollEl.querySelectorAll<HTMLElement>(".cell-refs[data-row]");
     for (const cell of cells) {
-      // visibleRows iterates 0=WIP, 1=nodes[0], 2=nodes[1]…  The renderer
-      // keys on the node index, so subtract 1 here so a stub for nodes[r]
-      // looks up `badgeEndsByRow.get(r)`.
+      // visibleRows iterates 0=WIP (when wipVisible) then nodes[0]…
+      // The renderer keys on the node index, so subtract the WIP shift so
+      // a stub for nodes[r] looks up `badgeEndsByRow.get(r)`.
       const visibleRow = Number(cell.dataset.row ?? -1);
-      if (visibleRow <= 0) continue; // skip WIP row — it has its own draw path
-      const nodeRow = visibleRow - 1;
+      const wipShiftRow = wipVisible ? 1 : 0;
+      if (wipVisible && visibleRow === 0) continue; // skip WIP row — drawn separately
+      if (visibleRow < 0) continue;
+      const nodeRow = visibleRow - wipShiftRow;
       const badge = cell.querySelector<HTMLElement>(".badges, .wip-inline");
       if (!badge) continue;
       const r = badge.getBoundingClientRect();
@@ -288,14 +310,19 @@
     canvas.style.height = `${viewHeight}px`;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    // The renderer's row 0 = nodes[0]. HTML row 0 = WIP when wipVisible,
+    // else also nodes[0]. Adjust the scrollTop/hoverRow translation so
+    // both coordinate systems stay in sync regardless of the WIP slot.
+    const wipShiftPx = wipVisible ? ROW_HEIGHT : 0;
+    const wipShiftRow = wipVisible ? 1 : 0;
     render({
       ctx, nodes, shaToRow,
-      scrollTop: scrollTop - ROW_HEIGHT,
+      scrollTop: scrollTop - wipShiftPx,
       viewHeight, width,
       selectedSha: $selectedSha === WIP_SHA ? null : $selectedSha,
-      hoverRow: hoverRow == null ? null : hoverRow - 1,
+      hoverRow: hoverRow == null ? null : hoverRow - wipShiftRow,
       dpr,
-      wipPresent: true,
+      wipPresent: wipVisible,
       wipHeadSha: headRowSha,
       rowsWithRefs,
       avatarRows,
@@ -320,7 +347,8 @@
     // Click-toggle: clicking the already-selected row deselects it and
     // collapses the right panel. Clicking a new row selects it and expands
     // the right panel back open.
-    if (row === 0) {
+    const wipShiftRow = wipVisible ? 1 : 0;
+    if (wipVisible && row === 0) {
       if ($selectedSha === WIP_SHA) {
         selectedSha.set(null);
         clearSelection();
@@ -330,8 +358,8 @@
         showChanges();
         setSize("rightPanelCollapsed", false);
       }
-    } else if (nodes[row - 1]) {
-      const sha = nodes[row - 1].sha;
+    } else if (nodes[row - wipShiftRow]) {
+      const sha = nodes[row - wipShiftRow].sha;
       if ($selectedSha === sha) {
         selectedSha.set(null);
         clearSelection();
@@ -473,6 +501,9 @@
 </script>
 
 <div class="wrapper">
+  {#if $searchOpen}
+    <GraphSearchBar />
+  {/if}
   <!-- header row: drag-to-reorder column titles -->
   <div class="header" style:grid-template-columns={gridTemplate}>
     {#each order as col, i (col)}
@@ -532,6 +563,8 @@
             class:selected={isWip ? $selectedSha === WIP_SHA : node!.sha === $selectedSha}
             class:head={!isWip && node!.sha === headRowSha}
             class:wip={isWip}
+            class:search-match={!isWip && $matchSet.has(node!.sha)}
+            class:search-current={!isWip && $matchShas[$currentMatchIdx] === node!.sha}
             style:top="{top}px"
             style:grid-template-columns={gridTemplate}
             style:--row-lane={isWip ? "var(--fg-muted)" : laneColor(node!.lane)}
@@ -562,10 +595,16 @@
                 </div>
               {:else if col === "graph"}
                 <div class="cell-graph">
-                  {#if !isWip && avatarRows.has(row - 1)}
+                  {#if !isWip && avatarRows.has(row - (wipVisible ? 1 : 0))}
                     {@const lx = 14 + node!.lane * 18}
-                    <div class="lane-avatar" style="left: {lx - 7}px">
-                      <Avatar email={node!.author_email} name={node!.author_name} size={14} />
+                    {@const AVATAR = 14}
+                    <!-- Center via flexbox on the parent (.cell-graph is
+                         display:flex; align-items:center). Horizontal
+                         placement uses `margin-left` from the lane offset
+                         so the avatar lands exactly at laneX(lane), the
+                         same x the canvas uses for the dot/halo. -->
+                    <div class="lane-avatar" style="margin-left: {lx - AVATAR / 2}px;">
+                      <Avatar email={node!.author_email} name={node!.author_name} size={AVATAR} />
                     </div>
                   {/if}
                 </div>
@@ -654,10 +693,17 @@
     /* must match ROW_HEIGHT in $lib/graph/layout.ts — used by rowFromY */
     height: 24px;
     display: grid;
-    align-items: center;
+    align-items: stretch;
     color: var(--fg);
     background: transparent;
     border: 0;
+    /* Buttons carry browser-default padding (~1-2px). With `box-sizing:
+       border-box; height: 24px`, that padding eats into the inner content
+       area, which collapses the cell-graph below the canvas-drawn dot
+       (which uses the full 24px). Force padding/margin to 0 so the cell
+       grid maps 1:1 to the row's outer 24px. */
+    padding: 0;
+    margin: 0;
     font: inherit;
     text-align: left;
     cursor: pointer;
@@ -679,6 +725,22 @@
   }
   .row.wip { border-bottom: 1px dashed var(--border); }
 
+  /* Search highlight: every match gets a soft yellow tint, the active
+     cursor row gets a brighter band so the user can see which match
+     Enter/Up/Down lands on next. Layered above selection so a
+     selected-AND-matched row still reads as a match. */
+  .row.search-match {
+    background: rgba(255, 213, 102, 0.10);
+    box-shadow: inset 2px 0 0 #f5c451;
+  }
+  .row.search-current {
+    background: rgba(255, 213, 102, 0.22);
+    box-shadow: inset 3px 0 0 #f5c451;
+  }
+  .row.search-match:hover, .row.search-current:hover {
+    background: rgba(255, 213, 102, 0.30);
+  }
+
   .cell-refs {
     display: flex;
     gap: 4px;
@@ -693,35 +755,38 @@
     justify-content: flex-start;
     line-height: 0; /* prevent baseline drift from pushing pills upward (#2) */
   }
+  /* Cell-graph is a flex container so the avatar can be centered with
+     no math: align-items:center handles vertical, margin-left handles
+     the lane offset. This avoids the absolute-positioning trap where
+     the cell's percentage height resolved against an auto-sized grid
+     track and collapsed the relative origin off the row center. */
   .cell-graph {
     pointer-events: none;
     border-right: 1px solid var(--border);
-    height: 100%;
-    position: relative;
+    height: 24px;
+    display: flex;
+    align-items: center;
   }
-  /* Avatar overlay sits on top of the canvas at the lane position.
-     - Flex-centered so the inner <img> doesn't drift on the inline-block
-       baseline (visible as the avatar landing 1-2px below the ring).
-     - The bg-colored ring sits between the lane border and the avatar
-       so the lane line behind doesn't bleed into the photo edge.
-     - All three layers (canvas selection halo, colored ring, image) end
-       up concentric on the same lane center (laneX(lane), rowY(row)). */
   .lane-avatar {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
+    flex: 0 0 14px;
     width: 14px; height: 14px;
     pointer-events: none;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
+    line-height: 0;
     box-shadow:
       0 0 0 1px var(--bg),
       0 0 0 2px var(--row-lane);
   }
+  /* Don't force `display: block` here — the fallback span uses
+     `display: inline-flex` to center its initials. Block would break
+     that centering and the initials would land at the top of the ring,
+     reading as "avatar misaligned". The outer .lane-avatar (also
+     display:flex) takes care of centering the inner element on the
+     row. */
   .lane-avatar :global(.avatar) {
-    display: block;
     width: 14px !important;
     height: 14px !important;
     border-radius: 50%;

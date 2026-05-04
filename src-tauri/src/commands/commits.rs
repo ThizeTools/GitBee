@@ -59,6 +59,55 @@ pub async fn commit_revert(
     Ok(())
 }
 
+// Generate a single-commit patch via `git format-patch -1 <sha> -o
+// <dest_dir>`. Returns the absolute path of the generated `.patch` file
+// (format-patch always writes one file for `-1`, named after the
+// commit's subject). The caller passes a destination folder picked
+// through Tauri's file dialog.
+#[tauri::command]
+pub async fn commit_format_patch(
+    path: String,
+    sha: String,
+    dest_dir: String,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let output = state
+        .git
+        .run_text(&cwd(&path), ["format-patch", "-1", &sha, "-o", &dest_dir])
+        .await?;
+    // `format-patch -1` prints the single resulting filename on stdout,
+    // relative to `dest_dir` on some git versions and absolute on
+    // others. Normalize to absolute by joining when relative.
+    let line = output.lines().next().unwrap_or("").trim().to_string();
+    if line.is_empty() { return Ok(dest_dir); }
+    let p = std::path::Path::new(&line);
+    if p.is_absolute() {
+        Ok(line)
+    } else {
+        Ok(std::path::Path::new(&dest_dir).join(p).to_string_lossy().into_owned())
+    }
+}
+
+// Apply a patch file to the working tree via `git apply --3way`. The
+// 3-way variant falls back to a merge with conflict markers when a
+// straight apply doesn't cleanly fit, which matches what the user
+// expects from a GUI ("apply this and tell me where conflicts are").
+// The patch is NOT committed — the user inspects, stages, and commits
+// like any other change. For a "treat patches as commits" workflow
+// (`git am`) we'd add a separate command later.
+#[tauri::command]
+pub async fn patch_apply(
+    path: String,
+    patch_file: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    state
+        .git
+        .run(&cwd(&path), ["apply", "--3way", &patch_file])
+        .await?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn commit_reset(
     path: String,
