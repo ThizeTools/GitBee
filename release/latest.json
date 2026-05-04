@@ -1,11 +1,11 @@
 {
-  "version": "0.2.2",
-  "notes": "GitBee v0.2.2",
-  "pub_date": "2026-05-03T22:22:45.232Z",
+  "version": "0.2.3",
+  "notes": "GitBee v0.2.3",
+  "pub_date": "2026-05-04T13:47:37.829Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSWHZ2dFRZeXh5ejFVTlBWSzZ2TXFDR0NwRWp1eGxWRkVhYXp5V0tadllET3FKZS9JMWQrdTk1T2VsODZaeW1lWlJvamFvSEorV0N4UTVydTRJWDBnQkw0K2x5N2NObndZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc3ODQ2OTY1CWZpbGU6R2l0QmVlXzAuMi4yX3g2NC1zZXR1cC5leGUKWENvY1k1dEk2NWdzcWFkQTR2NDB1c2NqaC81c1VCVGRLejY5NXhNU3hrY0FsVlBsZnBQOTF6c2Y3QllsQ1Qwb2FqdlVsMnhESllUeGtiRWozN0tLQ3c9PQo=",
-      "url": "https://github.com/thize/gitbee-releases/releases/download/v0.2.2/GitBee_0.2.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSWHZ2dFRZeXh5ejZZVVd1a2ZHSVhBTjdZUmNja1piN2RZOXArbzEvZWtmSlFERlZjVitOcHk2ZXJOZW5MMms1b1doQ3d1bmVhN3VEdjFhRkNzU1ZrN3JScDgvOEpuYXdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc3OTAyNDU3CWZpbGU6R2l0QmVlXzAuMi4zX3g2NC1zZXR1cC5leGUKTm4xTmFpNDRVWEV4UGtqR0JZeVZJZW8zS1pnSXc1Y0VXZDNNV2lvTmc4bVkzWDVvSUdZaVg4dnJoc29hZVBZM0dNWE9neUgrQ25rcCttZG9DeVhaQ1E9PQo=",
+      "url": "https://github.com/thize/gitbee-releases/releases/download/v0.2.3/GitBee_0.2.3_x64-setup.exe"
     }
   }
 }
