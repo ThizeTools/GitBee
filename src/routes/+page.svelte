@@ -8,7 +8,7 @@
   import { showingInfo } from "$lib/stores/info";
   import InfoPage from "$lib/components/InfoPage.svelte";
   import { paletteOpen } from "$lib/stores/ui";
-  import { showGraph, centerMode } from "$lib/stores/center";
+  import { showGraph, centerMode, showCommitFile } from "$lib/stores/center";
   import { showChanges } from "$lib/stores/rightpanel";
   import { layout, setSize, zoomIn, zoomOut, setZoom } from "$lib/stores/layout";
   import { logsPanelOpen, logAppend } from "$lib/stores/logs";
@@ -29,6 +29,82 @@
   import SetUpstreamModal from "$lib/components/SetUpstreamModal.svelte";
   import WorktreeCreateModal from "$lib/components/WorktreeCreateModal.svelte";
   import { activeModal } from "$lib/stores/modals";
+  import { get } from "svelte/store";
+  import { graph, selectedSha, activeTab, WIP_SHA } from "$lib/stores/repo";
+  import { graphScrollTarget } from "$lib/stores/graphscroll";
+  import { showCommit, showChanges as showRightChanges } from "$lib/stores/rightpanel";
+  import {
+    focusMode as navFocusMode,
+    selectedFileIndex as navSelectedFileIndex,
+    commitFiles as navCommitFiles,
+    setFocus as navSetFocus,
+  } from "$lib/stores/graphNav";
+
+  // Move the selected commit by `dir` (+1 = older/below, -1 = newer/above)
+  // in the loaded slice. WIP slot above row 0 is reachable with ArrowUp on
+  // the topmost commit; pressing ArrowDown on WIP enters the first commit.
+  function moveGraphSelection(dir: 1 | -1) {
+    const g = get(graph);
+    if (!g || g.nodes.length === 0) return;
+    const cur = get(selectedSha);
+    if (cur === WIP_SHA) {
+      if (dir === 1) {
+        const next = g.nodes[0];
+        if (next) {
+          selectedSha.set(next.sha);
+          showCommit(next.sha);
+          graphScrollTarget.set(next.sha);
+        }
+      }
+      return;
+    }
+    if (cur === null) {
+      // No selection yet — start at HEAD if known, else top of slice.
+      const sha = g.head_sha ?? g.nodes[0]?.sha ?? null;
+      if (sha) {
+        selectedSha.set(sha);
+        showCommit(sha);
+        graphScrollTarget.set(sha);
+      }
+      return;
+    }
+    const idx = g.nodes.findIndex((n) => n.sha === cur);
+    if (idx < 0) return;
+    const next = idx + dir;
+    if (next < 0) {
+      // Above the topmost commit → land on the WIP row.
+      selectedSha.set(WIP_SHA);
+      showRightChanges();
+      return;
+    }
+    if (next >= g.nodes.length) return;
+    const sha = g.nodes[next].sha;
+    selectedSha.set(sha);
+    showCommit(sha);
+    graphScrollTarget.set(sha);
+  }
+
+  // Cycle the highlighted file index AND open that file's diff in the
+  // center pane — same effect as clicking the file. ArrowUp/Down should
+  // feel like flipping through files, not just moving a highlight.
+  function moveFileSelectionAndOpen(dir: 1 | -1) {
+    const files = get(navCommitFiles);
+    if (files.length === 0) return;
+    const cur = get(navSelectedFileIndex);
+    const next = (cur + dir + files.length) % files.length;
+    navSelectedFileIndex.set(next);
+    openFileAtIndex(next);
+  }
+
+  function openFileAtIndex(idx: number) {
+    const files = get(navCommitFiles);
+    const f = files[idx];
+    if (!f) return;
+    const t = get(activeTab);
+    const sha = t?.selectedSha;
+    if (!sha || sha === WIP_SHA) return;
+    showCommitFile(sha, f.new_path || f.old_path);
+  }
 
   // Reset center to Graph and right to Changes whenever the active tab changes.
   let lastTabId: string | null = null;
@@ -68,6 +144,61 @@
     import("$lib/stores/autofetch").then(({ startAutoFetch }) => startAutoFetch());
     const onKey = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      // Arrow-key navigation across the graph + commit file list.
+      // Skipped while typing in any text input/textarea/contenteditable
+      // so search, commit message, and prompts keep their native arrow
+      // behavior. No modifiers — modifier+arrow combos still bubble.
+      if (
+        !ctrl && !e.altKey && !e.shiftKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown" ||
+         e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Enter")
+      ) {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        const editable =
+          tag === "input" || tag === "textarea" || tag === "select" ||
+          target?.isContentEditable;
+        if (!editable && $currentRepo) {
+          // Synchronous handling: dynamic-import path made preventDefault
+          // arrive after the browser had already scrolled the graph. All
+          // nav stores are statically imported above so the entire branch
+          // runs in this tick.
+          const mode = get(navFocusMode);
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            const dir = e.key === "ArrowDown" ? 1 : -1;
+            if (mode === "graph") {
+              e.preventDefault();
+              moveGraphSelection(dir);
+              return;
+            } else if (mode === "files") {
+              e.preventDefault();
+              moveFileSelectionAndOpen(dir);
+              return;
+            }
+          } else if (e.key === "ArrowRight" && mode === "graph") {
+            const files = get(navCommitFiles);
+            if (files.length > 0) {
+              e.preventDefault();
+              navSetFocus("files");
+              navSelectedFileIndex.set(0);
+              openFileAtIndex(0);
+              return;
+            }
+          } else if (e.key === "ArrowLeft" && mode === "files") {
+            e.preventDefault();
+            navSetFocus("graph");
+            // Drop user back on the graph view too — matches the
+            // ArrowLeft "go back" mental model from #3 of this batch.
+            showGraph();
+            return;
+          } else if (e.key === "Enter" && mode === "files") {
+            const idx = get(navSelectedFileIndex);
+            e.preventDefault();
+            openFileAtIndex(idx);
+            return;
+          }
+        }
+      }
       // Zoom #7
       if (ctrl && (e.key === "+" || e.key === "=")) {
         e.preventDefault(); zoomIn(); return;

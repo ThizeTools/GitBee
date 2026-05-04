@@ -5,6 +5,7 @@
   import Avatar from "./Avatar.svelte";
   import { showCommitFile } from "$lib/stores/center";
   import type { FileDiff, GraphNode } from "$lib/ipc";
+  import { commitFiles, selectedFileIndex, focusMode } from "$lib/stores/graphNav";
 
   interface Props { sha: string; onClose: () => void; }
   let { sha, onClose }: Props = $props();
@@ -46,6 +47,50 @@
   $effect(() => {
     void sha;
     if ($currentRepo) load();
+    // New commit selected → reset nav state so ArrowRight starts on the
+    // first file again. Keeps focus state consistent as user steps
+    // through commits with ArrowUp/Down.
+    selectedFileIndex.set(0);
+    focusMode.set("graph");
+  });
+
+  // Publish the visible-order file list to the navigation store so the
+  // global ArrowUp/Down handler can highlight + open files. Order has to
+  // match what the user sees on screen (same sort + tree-flatten), or
+  // ArrowDown jumps to the wrong row.
+  $effect(() => {
+    commitFiles.set(visibleFileOrder());
+    if ($selectedFileIndex >= visibleFileOrder().length) selectedFileIndex.set(0);
+  });
+
+  function visibleFileOrder(): FileDiff[] {
+    if (viewMode === "path") return sortedDiffs;
+    // Tree mode: depth-first walk in the same order the template renders.
+    const out: FileDiff[] = [];
+    const walk = (n: TreeNode) => {
+      if (n.file) { out.push(n.file); return; }
+      for (const ch of sortedChildren(n)) walk(ch);
+    };
+    for (const ch of sortedChildren(root)) walk(ch);
+    return out;
+  }
+
+  // Path of the currently highlighted file (used by template to add the
+  // .nav-current class to the matching button).
+  const navCurrentPath = $derived.by<string | null>(() => {
+    const f = visibleFileOrder()[$selectedFileIndex];
+    return f ? (f.new_path || f.old_path) : null;
+  });
+
+  // Auto-scroll the highlighted file button into view when index changes
+  // via ArrowUp/Down. Only fires while in "files" focus mode so opening
+  // the panel doesn't yank the user's manual scroll position.
+  $effect(() => {
+    void $selectedFileIndex;
+    if ($focusMode !== "files") return;
+    queueMicrotask(() => {
+      document.querySelector(".file-btn.nav-current")?.scrollIntoView({ block: "nearest" });
+    });
   });
 
   async function load() {
@@ -273,12 +318,14 @@
           <ul class="flat">
             {#each sortedDiffs as f (f.new_path || f.old_path)}
               {@const c = fileChanges(f)}
+              {@const fp = f.new_path || f.old_path}
               <li>
                 <button class="file-btn" type="button"
-                  onclick={() => showCommitFile(sha, f.new_path || f.old_path)}>
+                  class:nav-current={navCurrentPath === fp}
+                  onclick={() => showCommitFile(sha, fp)}>
                   <span class="f-ico">✎</span>
                   <span class="f-count">{c.add + c.del}</span>
-                  <span class="f-path">{f.new_path || f.old_path}</span>
+                  <span class="f-path">{fp}</span>
                 </button>
               </li>
             {/each}
@@ -309,6 +356,7 @@
     {@const fp = node.file.new_path || node.file.old_path}
     <li class="file">
       <button class="file-btn" type="button"
+        class:nav-current={navCurrentPath === fp}
         style="padding-left: {12 + depth * 14}px"
         onclick={() => showCommitFile(sha, fp)}>
         <span class="f-ico">✎</span>
@@ -481,6 +529,12 @@
     text-align: left; font: inherit; cursor: pointer;
   }
   .file-btn:hover { background: rgba(255,255,255,0.06); }
+  /* ArrowUp/Down highlight while in "files" focus mode — uses accent
+     so it reads as keyboard-driven, distinct from mouse hover. */
+  .file-btn.nav-current {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    outline: 1px solid var(--accent);
+  }
   .f-ico { color: var(--tag); font-size: 11px; }
   .f-count { color: var(--fg-muted); font-size: 10px; min-width: 14px; }
   .f-path {

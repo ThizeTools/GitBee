@@ -5,7 +5,7 @@ import type {
 } from "$lib/ipc";
 import { ipc } from "$lib/ipc";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { hiddenRefs, soloRef } from "$lib/stores/graphFilter";
+import { hiddenRefs, soloRefs } from "$lib/stores/graphFilter";
 
 export interface RepoTab {
   id: string;
@@ -83,16 +83,17 @@ export const selectedSha = {
 
 // Refs after applying the user's hide/solo filter.
 // - Hide drops a single ref (badges + commits reachable only through it).
-// - Solo collapses the view to ONE ref: only that ref's badge is shown
-//   and only its history is reachable. HEAD/stash are NOT auto-kept
-//   under solo — the user explicitly asked for "just this branch."
+// - Solo (multi) collapses the view to a chosen SET of refs: only those
+//   refs' badges are shown and only their combined history is reachable.
+//   HEAD/stash are NOT auto-kept under solo — the user explicitly asked
+//   for "just these branches."
 // - Without solo, HEAD/stash bypass hide so the "you are here" anchor
 //   and the stash drawer never disappear unintentionally.
 export const visibleRefs = derived(
-  [graph, hiddenRefs, soloRef],
+  [graph, hiddenRefs, soloRefs],
   ([$graph, $hidden, $solo]) => {
     if (!$graph) return [];
-    if ($solo) return $graph.refs.filter((r) => r.name === $solo);
+    if ($solo.size > 0) return $graph.refs.filter((r) => $solo.has(r.name));
     return $graph.refs.filter((r) => {
       if (r.kind === "head" || r.kind === "stash") return true;
       return !$hidden.has(r.name);
@@ -117,19 +118,19 @@ export const refsByCommit = derived(visibleRefs, ($refs) => {
 // `null` and consumers fall back to showing every node — saves the BFS
 // in the common case.
 export const reachableShas = derived(
-  [graph, visibleRefs, hiddenRefs, soloRef],
+  [graph, visibleRefs, hiddenRefs, soloRefs],
   ([$graph, $refs, $hidden, $solo]) => {
     if (!$graph) return null;
-    if ($hidden.size === 0 && !$solo) return null; // no filter → show all
+    if ($hidden.size === 0 && $solo.size === 0) return null; // no filter
     const parentsBy = new Map<string, string[]>();
     for (const n of $graph.nodes) parentsBy.set(n.sha, n.parents);
     const reachable = new Set<string>();
     const stack: string[] = [];
-    // Under solo, HEAD does NOT seed the walk — the user wants only
-    // the soloed branch's history visible. Without solo, HEAD always
-    // seeds so the "you are here" anchor never vanishes when the user
-    // has only hidden a few unrelated branches.
-    if (!$solo && $graph.head_sha) stack.push($graph.head_sha);
+    // Under solo, HEAD does NOT seed the walk — the user wants only the
+    // soloed branches' history visible. Without solo, HEAD always seeds
+    // so the "you are here" anchor never vanishes when the user has
+    // only hidden a few unrelated branches.
+    if ($solo.size === 0 && $graph.head_sha) stack.push($graph.head_sha);
     for (const r of $refs) stack.push(r.target_sha);
     while (stack.length) {
       const sha = stack.pop()!;
@@ -142,9 +143,16 @@ export const reachableShas = derived(
   },
 );
 
-// For each commit SHA, the set of branch refs whose history *contains* it.
-// Cheap precompute over the loaded slice (newest→oldest with parent links):
-// for each branch tip, walk parents and tag every commit reachable.
+// For each commit SHA, the branch ref(s) the commit "belongs to" — i.e.
+// branches whose FIRST-PARENT chain from tip reaches the commit. This
+// matches the user's mental model of "which branch was this commit made
+// on" much more closely than `git branch --contains`, which lists every
+// branch that has the commit anywhere in its ancestry (so a commit on
+// `main` shows up on every feature branch forked off later).
+//
+// First-parent walk: when traversing a merge commit, keep going through
+// `parents[0]` only (the side the merge was made INTO). The other parent
+// is the merged branch's history, which we credit to its own tip's walk.
 export const containingByCommit = derived(graph, ($graph) => {
   const map = new Map<string, Set<string>>();
   if (!$graph) return map;
@@ -154,18 +162,15 @@ export const containingByCommit = derived(graph, ($graph) => {
     (r) => r.kind === "localbranch" || r.kind === "remotebranch",
   );
   for (const tip of branchTips) {
-    // BFS from the tip's commit through parent chain.
+    let cur: string | undefined = tip.target_sha;
     const seen = new Set<string>();
-    const stack = [tip.target_sha];
-    while (stack.length) {
-      const sha = stack.pop()!;
-      if (seen.has(sha)) continue;
-      seen.add(sha);
-      const set = map.get(sha) ?? new Set<string>();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const set = map.get(cur) ?? new Set<string>();
       set.add(tip.name);
-      map.set(sha, set);
-      const ps = parentsBy.get(sha);
-      if (ps) for (const p of ps) if (!seen.has(p)) stack.push(p);
+      map.set(cur, set);
+      const ps = parentsBy.get(cur);
+      cur = ps && ps.length > 0 ? ps[0] : undefined;
     }
   }
   return map;

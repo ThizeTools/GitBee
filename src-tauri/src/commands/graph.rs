@@ -35,6 +35,12 @@ pub async fn graph_load(
         "-z".into(),
         format!("--format={LOG_FORMAT}"),
         format!("-n{limit}"),
+        // Strict reverse-chronological order. Topo-order grouped commits
+        // by branch but produced an out-of-date display when branches
+        // interleaved chronologically — users expect "newest first" to
+        // mean exactly that. Lane assignment compensates by reserving
+        // lane 0 for HEAD so the active chain stays leftmost.
+        "--date-order".into(),
     ];
     if opts.all_branches.unwrap_or(true) {
         log_args.push("--all".into());
@@ -69,9 +75,10 @@ pub async fn graph_load(
     let log_bytes = log_res.unwrap_or_default();
     let ref_bytes = ref_res.unwrap_or_default();
     let commits = parse_log_z(&log_bytes).unwrap_or_default();
-    let nodes = assign_lanes(commits);
-    let refs = parse_refs(&ref_bytes).unwrap_or_default();
     let head_sha_t = head_sha_res.map(|s| s.trim().to_string()).unwrap_or_default();
+    let head_sha_for_lanes = if head_sha_t.is_empty() { None } else { Some(head_sha_t.as_str()) };
+    let nodes = assign_lanes(commits, head_sha_for_lanes);
+    let refs = parse_refs(&ref_bytes).unwrap_or_default();
     let head_branch_t = head_branch_res.map(|s| s.trim().to_string()).unwrap_or_default();
     Ok(GraphPage {
         nodes,

@@ -34,8 +34,8 @@ import { openModal } from "$lib/stores/modals";
 import { pullRequestCompareUrl, commitWebUrl, branchWebUrl } from "$lib/github/url";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  hiddenRefs, soloRef, pinnedRef,
-  hideRef, unhideRef, setSolo, togglePin,
+  hiddenRefs, soloRefs, pinnedRef,
+  hideRef, unhideRef, toggleSolo, togglePin,
 } from "$lib/stores/graphFilter";
 
 function repo(): string | null {
@@ -118,8 +118,17 @@ function openWorktreeCreate(reference: string, refLabel: string, isRemoteBranch 
 // `refLabel` is the human-friendly variant (e.g. "main" for "origin/main").
 function viewFilterItems(qualifiedName: string, refLabel: string): MenuItem[] {
   const hidden = get(hiddenRefs).has(qualifiedName);
-  const solo = get(soloRef);
+  const solo = get(soloRefs);
+  const isSolo = solo.has(qualifiedName);
   const pinned = get(pinnedRef) === qualifiedName;
+  // When already soloing other refs, label changes to "Add to solo" so
+  // the user knows clicking will INCLUDE this branch in the current
+  // solo selection rather than replacing it. Removing the last solo'd
+  // ref naturally exits solo mode.
+  let soloLabel: string;
+  if (isSolo) soloLabel = "Remove from solo";
+  else if (solo.size > 0) soloLabel = "Add to solo";
+  else soloLabel = "Solo";
   return [
     {
       label: hidden ? `Show ${refLabel}` : "Hide",
@@ -132,9 +141,9 @@ function viewFilterItems(qualifiedName: string, refLabel: string): MenuItem[] {
       onClick: () => togglePin(qualifiedName),
     },
     {
-      label: solo === qualifiedName ? "Exit solo" : "Solo",
+      label: soloLabel,
       icon: "⊙",
-      onClick: () => setSolo(solo === qualifiedName ? null : qualifiedName),
+      onClick: () => toggleSolo(qualifiedName),
     },
   ];
 }

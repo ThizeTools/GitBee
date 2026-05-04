@@ -10,7 +10,10 @@ import { writable } from "svelte/store";
 // single shared list is more useful than per-repo bookkeeping. Fits in a
 // single localStorage key.
 const STORAGE_HIDDEN = "gkp.graph.hiddenRefs.v1";
-const STORAGE_SOLO = "gkp.graph.soloRef.v1";
+// v2 — solo is now multi-valued (a Set of refs). Old single-string v1
+// values are migrated lazily on first read.
+const STORAGE_SOLO = "gkp.graph.soloRefs.v2";
+const STORAGE_SOLO_LEGACY = "gkp.graph.soloRef.v1";
 // v2 — pin is now single-valued (one branch pinned at a time). Old v1
 // arrays in localStorage are silently dropped on first read.
 const STORAGE_PINNED = "gkp.graph.pinnedRef.v2";
@@ -30,17 +33,32 @@ function loadString(key: string): string | null {
   return localStorage.getItem(key) || null;
 }
 
+// Read solo set, migrating from the v1 single-string key on first run.
+function loadSoloSet(): Set<string> {
+  if (typeof localStorage === "undefined") return new Set();
+  const v2 = loadSet(STORAGE_SOLO);
+  if (v2.size > 0) return v2;
+  const legacy = localStorage.getItem(STORAGE_SOLO_LEGACY);
+  if (legacy) {
+    localStorage.removeItem(STORAGE_SOLO_LEGACY);
+    const s = new Set([legacy]);
+    localStorage.setItem(STORAGE_SOLO, JSON.stringify([...s]));
+    return s;
+  }
+  return new Set();
+}
+
 export const hiddenRefs = writable<Set<string>>(loadSet(STORAGE_HIDDEN));
-export const soloRef = writable<string | null>(loadString(STORAGE_SOLO));
+export const soloRefs = writable<Set<string>>(loadSoloSet());
 export const pinnedRef = writable<string | null>(loadString(STORAGE_PINNED));
 
 hiddenRefs.subscribe((s) => {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(STORAGE_HIDDEN, JSON.stringify([...s]));
 });
-soloRef.subscribe((s) => {
+soloRefs.subscribe((s) => {
   if (typeof localStorage === "undefined") return;
-  if (s) localStorage.setItem(STORAGE_SOLO, s);
+  if (s.size > 0) localStorage.setItem(STORAGE_SOLO, JSON.stringify([...s]));
   else localStorage.removeItem(STORAGE_SOLO);
 });
 pinnedRef.subscribe((s) => {
@@ -51,17 +69,40 @@ pinnedRef.subscribe((s) => {
 
 export function hideRef(name: string): void {
   hiddenRefs.update((s) => { const n = new Set(s); n.add(name); return n; });
-  // Hiding a ref while it's the solo target would leave nothing visible —
-  // unset solo so the user doesn't get stuck on an empty graph.
-  soloRef.update((cur) => (cur === name ? null : cur));
+  // Hiding a ref while it's in the solo set would shrink visible history;
+  // remove it from solo so the user doesn't end up with an empty graph.
+  soloRefs.update((s) => {
+    if (!s.has(name)) return s;
+    const n = new Set(s); n.delete(name); return n;
+  });
 }
 
 export function unhideRef(name: string): void {
   hiddenRefs.update((s) => { const n = new Set(s); n.delete(name); return n; });
 }
 
-export function setSolo(name: string | null): void {
-  soloRef.set(name);
+// Add a ref to the solo set (multi-solo). Pass `null` to clear all.
+export function addSolo(name: string): void {
+  soloRefs.update((s) => { const n = new Set(s); n.add(name); return n; });
+}
+
+export function removeSolo(name: string): void {
+  soloRefs.update((s) => {
+    if (!s.has(name)) return s;
+    const n = new Set(s); n.delete(name); return n;
+  });
+}
+
+export function toggleSolo(name: string): void {
+  soloRefs.update((s) => {
+    const n = new Set(s);
+    if (n.has(name)) n.delete(name); else n.add(name);
+    return n;
+  });
+}
+
+export function clearSolo(): void {
+  soloRefs.set(new Set());
 }
 
 // Single-pin model: only one ref can be "pinned to left" at a time.
@@ -73,5 +114,5 @@ export function togglePin(name: string): void {
 
 export function clearAllFilters(): void {
   hiddenRefs.set(new Set());
-  soloRef.set(null);
+  soloRefs.set(new Set());
 }

@@ -8,7 +8,15 @@
   import { layout, setSize } from "$lib/stores/layout";
   import { scrollGraphTo, checkoutAndJump, checkoutRemoteAndJump } from "$lib/stores/graphscroll";
   import { localBranchMenu, remoteBranchMenu, tagMenu } from "$lib/menus/refMenus";
+  import { soloRefs, toggleSolo } from "$lib/stores/graphFilter";
   import { onMount } from "svelte";
+
+  // True when the user is currently soloing at least one ref. Drives the
+  // eye-icon affordance shown next to every branch row — letting the
+  // user one-click-add another ref to the active solo set without
+  // diving into the context menu. Hidden by default to avoid visual
+  // noise when nobody's soloing.
+  const soloActive = $derived($soloRefs.size > 0);
 
   // #5 round 7: filter input above the sections.
   let filter = $state("");
@@ -162,7 +170,16 @@
       {#if openSections.local}
         <ul class="list">
           {#each filteredLocal as b (b.name)}
-            <li class="leaf" class:active={isHead(b.name)}>
+            {@const inSolo = $soloRefs.has(b.name)}
+            <li class="leaf" class:active={isHead(b.name)} class:solo-row={soloActive} class:solo-on={inSolo}>
+              {#if soloActive}
+                <button
+                  class="eye"
+                  class:on={inSolo}
+                  onclick={(e) => { e.stopPropagation(); toggleSolo(b.name); }}
+                  title={inSolo ? `Remove ${b.name} from solo` : `Add ${b.name} to solo`}
+                >{inSolo ? "👁" : "👁‍🗨"}</button>
+              {/if}
               <button
                 class="link"
                 onclick={() => scrollGraphTo(b.target_sha)}
@@ -202,7 +219,17 @@
               </button>
               <ul class="nested">
                 {#each branches as b (b.name)}
-                  <li class="leaf">
+                  {@const qname = `${remote}/${b.name}`}
+                  {@const inSolo = $soloRefs.has(qname)}
+                  <li class="leaf" class:solo-row={soloActive} class:solo-on={inSolo}>
+                    {#if soloActive}
+                      <button
+                        class="eye"
+                        class:on={inSolo}
+                        onclick={(e) => { e.stopPropagation(); toggleSolo(qname); }}
+                        title={inSolo ? `Remove ${qname} from solo` : `Add ${qname} to solo`}
+                      >{inSolo ? "👁" : "👁‍🗨"}</button>
+                    {/if}
                     <button
                       class="link"
                       onclick={() => scrollGraphTo(b.sha)}
@@ -395,4 +422,32 @@
   }
   .leaf:hover .dots { visibility: visible; }
   .dots:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
+
+  /* Eye toggle: only present while soloing. Sits at the left edge of the
+     row (outside the .link's padding) so it reads as the "include this"
+     affordance. Hover paints the whole row in accent so the click target
+     is unambiguous; rows already in the solo set get the same fill but
+     persistent. */
+  .eye {
+    background: transparent; border: 0; color: var(--fg-muted);
+    cursor: pointer; padding: 0 4px 0 12px; line-height: 1;
+    font-size: 13px; flex-shrink: 0;
+    filter: grayscale(1) opacity(0.55);
+  }
+  .leaf.solo-row:hover .eye { filter: none; color: var(--accent); }
+  .eye.on { filter: none; color: var(--accent); }
+  .eye:hover { color: var(--accent); filter: none !important; }
+  .leaf.solo-row:hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .leaf.solo-on {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .leaf.solo-on:hover {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  /* Strip the link's own bg/border-left under solo highlight so the row
+     paints as a single colored strip — easier to scan when picking which
+     branches to add. */
+  .leaf.solo-row .link:hover { background: transparent; border-left-color: transparent; }
 </style>

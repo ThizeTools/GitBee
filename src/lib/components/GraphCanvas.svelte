@@ -5,8 +5,9 @@
     status, currentRepo, withBusy, stashes, WIP_SHA,
   } from "$lib/stores/repo";
   import GraphSearchBar from "./GraphSearchBar.svelte";
+  import SoloBanner from "./SoloBanner.svelte";
   import { searchOpen, matchSet, currentMatchIdx, matchShas } from "$lib/stores/graphSearch";
-  import { soloRef } from "$lib/stores/graphFilter";
+  import { soloRefs } from "$lib/stores/graphFilter";
   import RefBadges from "./RefBadges.svelte";
   import Avatar from "./Avatar.svelte";
   import type { CommitRef } from "$lib/ipc";
@@ -119,7 +120,7 @@
   // soloed branch's history) it should disappear too — otherwise the user
   // sees a "// WIP" row dangling above a graph that has nothing else from
   // HEAD's chain. Without solo it always shows.
-  const wipVisible = $derived($soloRef === null);
+  const wipVisible = $derived($soloRefs.size === 0);
   const totalRows = $derived(nodes.length + (wipVisible ? 1 : 0));
   const totalHeight = $derived(totalRows * ROW_HEIGHT + TOP_PADDING * 2);
   const headRowSha = $derived($graph?.head_sha ?? null);
@@ -501,6 +502,7 @@
 </script>
 
 <div class="wrapper">
+  <SoloBanner />
   {#if $searchOpen}
     <GraphSearchBar />
   {/if}

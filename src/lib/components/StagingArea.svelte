@@ -1,6 +1,6 @@
 <script lang="ts">
   import { currentRepo, status, opState, withBusy, graph } from "$lib/stores/repo";
-  import { centerMode, showFile } from "$lib/stores/center";
+  import { centerMode, showFile, showGraph } from "$lib/stores/center";
   import { ipc } from "$lib/ipc";
   import { layout, setSize } from "$lib/stores/layout";
   import { openMenu, type MenuItem } from "$lib/stores/contextmenu";
@@ -120,6 +120,7 @@
   }
   async function commit() {
     if (!$currentRepo || !summary.trim()) return;
+    if (staged.length === 0 && !amend) return;
     const msg = description.trim()
       ? `${summary.trim()}\n\n${description.trim()}`
       : summary.trim();
@@ -128,6 +129,21 @@
       summary = ""; description = ""; amend = false;
       savedSummary = ""; savedDescription = "";
       logAppend("info", `committed: ${msg.split("\n")[0]}`);
+      // Drop user back on the graph after a successful commit so the new
+      // commit is visible immediately. If they were viewing a diff, the
+      // diff target is gone (file is now committed) — landing on the
+      // graph is the unambiguous next step.
+      showGraph();
+    }
+  }
+
+  // Ctrl+Enter (Cmd+Enter on macOS) anywhere in the summary or description
+  // submits the commit. Matches the convention used by GitHub, GitLab,
+  // and most native chat/commit UIs.
+  function onCommitFieldKey(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      commit();
     }
   }
 
@@ -172,8 +188,13 @@
     return "var(--fg-muted)";
   }
 
-  // #14 — Enter in summary jumps to description.
+  // #14 — Enter in summary jumps to description. Ctrl+Enter submits.
   function onSummaryKey(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      commit();
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       tick().then(() => descriptionEl?.focus());
@@ -498,8 +519,9 @@
       <textarea
         bind:this={descriptionEl}
         class="description"
-        placeholder="Description (optional). Press Enter in summary to jump here."
+        placeholder="Description (optional). Press Enter in summary to jump here. Ctrl+Enter to commit."
         bind:value={description}
+        onkeydown={onCommitFieldKey}
       ></textarea>
       <label class="amend">
         <input type="checkbox" bind:checked={amend} />
