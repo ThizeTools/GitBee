@@ -5,15 +5,70 @@
     files: StatusEntry[];
     side: "index" | "worktree";
     selected: string | null;
-    onSelect: (path: string) => void;
+    /** Optional. When omitted, FileTree falls back to onSelect(path) for
+     *  back-compat with callers that don't care about the click event. */
+    onSelect?: (path: string) => void;
+    /** Modern click handler — receives the MouseEvent so the parent can
+     *  branch on Ctrl/Shift for multi-selection. Takes precedence over
+     *  onSelect when both are supplied. */
+    onClick?: (path: string, e: MouseEvent) => void;
     onAction?: (path: string, action: "stage" | "unstage" | "discard") => void;
     actionLabel?: "stage" | "unstage";
+    /** Multi-select highlight set; rows whose path is in the set get the
+     *  "multi-selected" visual. */
+    selectionSet?: Set<string>;
+    /** Folder-level batch action — passes every leaf path under the
+     *  folder. Parent decides which IPC call to make. */
+    onFolderAction?: (paths: string[], action: "stage" | "unstage") => void;
+    /** When the file row is part of a multi-selection, the parent can
+     *  return the batch path list here — the hover button will then act
+     *  on every selected file instead of just the clicked one. Returning
+     *  null means "act on this single file". */
+    batchTargets?: (path: string) => string[] | null;
+    /** Hover-button label override. Lets the parent show "Stage 5 Files"
+     *  instead of "Stage File" when a multi-selection is active. */
+    batchLabel?: (path: string) => string;
     /** Sort direction — folders always come first; only the alphabetical
      *  order inside each group flips. Defaults to ascending. */
     sortMode?: "asc" | "desc";
   }
 
-  let { files, side, selected, onSelect, onAction, actionLabel, sortMode = "asc" }: Props = $props();
+  let {
+    files, side, selected,
+    onSelect, onClick,
+    onAction, actionLabel,
+    selectionSet, onFolderAction,
+    batchTargets, batchLabel,
+    sortMode = "asc",
+  }: Props = $props();
+
+  function rowClick(p: string, e: MouseEvent) {
+    if (onClick) onClick(p, e);
+    else onSelect?.(p);
+  }
+
+  // Collect every file path under a folder node — used by the
+  // "Stage Folder" / "Unstage Folder" hover button on dir rows.
+  function collectLeaves(n: TreeNode, out: string[]) {
+    if (n.file) { out.push(n.file.path); return; }
+    for (const c of n.children.values()) collectLeaves(c, out);
+  }
+  function folderPaths(n: TreeNode): string[] {
+    const out: string[] = [];
+    collectLeaves(n, out);
+    return out;
+  }
+  function fileBtnLabel(p: string): string {
+    return batchLabel ? batchLabel(p) : (actionLabel === "stage" ? "Stage File" : "Unstage File");
+  }
+  function onFileBtnClick(p: string) {
+    const targets = batchTargets ? batchTargets(p) : null;
+    if (targets && onFolderAction && actionLabel) {
+      onFolderAction(targets, actionLabel);
+    } else if (onAction && actionLabel) {
+      onAction(p, actionLabel);
+    }
+  }
 
   type TreeNode = {
     name: string;
@@ -99,21 +154,23 @@
 
 {#snippet treeNode(node: TreeNode, depth: number)}
   {#if node.file}
-    <li class="file" class:active={selected === node.file.path}>
+    <li class="file"
+        class:active={selected === node.file.path}
+        class:multi-selected={selectionSet?.has(node.file.path)}>
       <button
         class="row"
         style="padding-left: {12 + depth * 14}px"
-        onclick={() => onSelect(node.file!.path)}
+        onclick={(e) => rowClick(node.file!.path, e)}
       >
         <span class="status {statusKind(node.file)}" title={statusTitle(node.file)}>{statusChar(node.file)}</span>
         <span class="name {statusKind(node.file)}">{node.name}</span>
       </button>
-      {#if onAction}
-        {#if actionLabel === "stage"}
-          <button class="hover-btn stage" onclick={() => onAction!(node.file!.path, "stage")} title="Stage File">Stage File</button>
-        {:else}
-          <button class="hover-btn unstage" onclick={() => onAction!(node.file!.path, "unstage")} title="Unstage File">Unstage File</button>
-        {/if}
+      {#if onAction && actionLabel}
+        <button
+          class="hover-btn {actionLabel}"
+          onclick={() => onFileBtnClick(node.file!.path)}
+          title={fileBtnLabel(node.file!.path)}
+        >{fileBtnLabel(node.file!.path)}</button>
       {/if}
     </li>
   {:else}
@@ -126,6 +183,13 @@
         <span class="caret">{collapsed[node.path] ? "▶" : "▼"}</span>
         <span class="name">{node.name}/</span>
       </button>
+      {#if onFolderAction && actionLabel}
+        <button
+          class="hover-btn {actionLabel}"
+          onclick={(e) => { e.stopPropagation(); onFolderAction!(folderPaths(node), actionLabel!); }}
+          title={actionLabel === "stage" ? "Stage Folder" : "Unstage Folder"}
+        >{actionLabel === "stage" ? "Stage Folder" : "Unstage Folder"}</button>
+      {/if}
     </li>
     {#if !collapsed[node.path]}
       {#each sortedChildren(node) as child (child.path)}
@@ -209,9 +273,16 @@
     opacity: 0;
     transition: opacity 100ms;
   }
-  .file:hover .hover-btn { opacity: 1; pointer-events: auto; }
-  .file:hover .hover-btn.stage { color: var(--accent); border-color: var(--accent); }
-  .file:hover .hover-btn.stage:hover { background: var(--accent); color: var(--bg); }
-  .file:hover .hover-btn.unstage { color: var(--del); border-color: var(--del); }
-  .file:hover .hover-btn.unstage:hover { background: var(--del); color: var(--bg); }
+  .file:hover .hover-btn,
+  .dir:hover .hover-btn { opacity: 1; pointer-events: auto; }
+  .file:hover .hover-btn.stage,
+  .dir:hover .hover-btn.stage { color: var(--accent); border-color: var(--accent); }
+  .file:hover .hover-btn.stage:hover,
+  .dir:hover .hover-btn.stage:hover { background: var(--accent); color: var(--bg); }
+  .file:hover .hover-btn.unstage,
+  .dir:hover .hover-btn.unstage { color: var(--del); border-color: var(--del); }
+  .file:hover .hover-btn.unstage:hover,
+  .dir:hover .hover-btn.unstage:hover { background: var(--del); color: var(--bg); }
+  .file.multi-selected { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .file.multi-selected.active .row { background: color-mix(in srgb, var(--renamed) 32%, transparent); }
 </style>

@@ -67,6 +67,8 @@ pub fn run() {
             commands::staging::status_load,
             commands::staging::stage_file,
             commands::staging::unstage_file,
+            commands::staging::stage_files,
+            commands::staging::unstage_files,
             commands::staging::stage_all,
             commands::staging::unstage_all,
             commands::staging::discard_file,

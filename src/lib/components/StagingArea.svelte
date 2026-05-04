@@ -124,10 +124,19 @@
     const msg = description.trim()
       ? `${summary.trim()}\n\n${description.trim()}`
       : summary.trim();
-    const ok = await withBusy(() => ipc.commitCreate($currentRepo!, msg, amend, false));
-    if (ok !== null) {
+    // Tauri serializes Rust `()` returns as JSON null, so the previous
+    // `ok !== null` gate falsely treated success as failure and the input
+    // was never cleared. Use a local success flag instead.
+    let ok = false;
+    await withBusy(async () => {
+      await ipc.commitCreate($currentRepo!, msg, amend, false);
+      ok = true;
+    });
+    if (ok) {
       summary = ""; description = ""; amend = false;
       savedSummary = ""; savedDescription = "";
+      unstagedSelection = new Set(); stagedSelection = new Set();
+      unstagedAnchor = null; stagedAnchor = null;
       logAppend("info", `committed: ${msg.split("\n")[0]}`);
       // Drop user back on the graph after a successful commit so the new
       // commit is visible immediately. If they were viewing a diff, the
@@ -317,11 +326,100 @@
   const stagedSorted = $derived(sortFiles(staged));
   const conflictedSorted = $derived(sortFiles(conflicted));
 
+  // ---- Multi-selection (Ctrl/Shift like a file explorer) ----
+  // Two independent selections — the staged and unstaged lists are
+  // visually separate, so a Shift-range across them would be confusing.
+  let unstagedSelection = $state<Set<string>>(new Set());
+  let stagedSelection = $state<Set<string>>(new Set());
+  let unstagedAnchor = $state<string | null>(null);
+  let stagedAnchor = $state<string | null>(null);
+
+  // Visible-order list per side, used for Shift-range. In Tree mode the
+  // visual order can differ from sorted-flat, but the tree already lays
+  // files out in the same alpha order within each folder so the mismatch
+  // is small in practice and not worth a second ordered structure.
+  function orderedPaths(side: "un" | "st"): string[] {
+    const arr = side === "un" ? unstagedSorted : stagedSorted;
+    return arr.map((f) => f.path);
+  }
+
+  function selectFor(side: "un" | "st"): Set<string> {
+    return side === "un" ? unstagedSelection : stagedSelection;
+  }
+  function setSelect(side: "un" | "st", next: Set<string>) {
+    if (side === "un") unstagedSelection = next;
+    else stagedSelection = next;
+  }
+  function setAnchor(side: "un" | "st", v: string | null) {
+    if (side === "un") unstagedAnchor = v;
+    else stagedAnchor = v;
+  }
+
+  function handleRowClick(e: MouseEvent, path: string, side: "un" | "st", staged: boolean) {
+    const sel = selectFor(side);
+    if (e.shiftKey) {
+      const order = orderedPaths(side);
+      const anchor = (side === "un" ? unstagedAnchor : stagedAnchor) ?? path;
+      const i = order.indexOf(anchor);
+      const j = order.indexOf(path);
+      if (i >= 0 && j >= 0) {
+        const [a, b] = i <= j ? [i, j] : [j, i];
+        const next = new Set(sel);
+        for (let k = a; k <= b; k++) next.add(order[k]);
+        setSelect(side, next);
+      }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      const next = new Set(sel);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      setSelect(side, next);
+      setAnchor(side, path);
+      return;
+    }
+    setSelect(side, new Set([path]));
+    setAnchor(side, path);
+    showFile(path, staged);
+  }
+
+  // Stage/unstage helper for the hover-btn: if the row is part of a
+  // multi-selection, act on the whole batch; otherwise act on the row.
+  async function batchAction(side: "un" | "st", clickedPath: string) {
+    if (!$currentRepo) return;
+    const sel = selectFor(side);
+    const targets = sel.has(clickedPath) && sel.size > 1
+      ? Array.from(sel)
+      : [clickedPath];
+    if (side === "un") {
+      await withBusy(() => ipc.stageFiles($currentRepo!, targets));
+    } else {
+      await withBusy(() => ipc.unstageFiles($currentRepo!, targets));
+    }
+    setSelect(side, new Set());
+    setAnchor(side, null);
+  }
+
+  function batchLabel(side: "un" | "st", clickedPath: string): string {
+    const sel = selectFor(side);
+    const n = sel.has(clickedPath) ? sel.size : 1;
+    const verb = side === "un" ? "Stage" : "Unstage";
+    return n > 1 ? `${verb} ${n} Files` : `${verb} File`;
+  }
+
   // Glue between FileTree's onAction and our existing helpers.
   function onTreeAction(path: string, action: "stage" | "unstage" | "discard") {
     if (action === "stage") stage(path);
     else if (action === "unstage") unstage(path);
     else discard(path);
+  }
+
+  async function onTreeFolderAction(paths: string[], action: "stage" | "unstage") {
+    if (!$currentRepo || paths.length === 0) return;
+    if (action === "stage") {
+      await withBusy(() => ipc.stageFiles($currentRepo!, paths));
+    } else {
+      await withBusy(() => ipc.unstageFiles($currentRepo!, paths));
+    }
   }
 </script>
 
@@ -386,16 +484,24 @@
           {#if conflicted.length > 0}
             <FileTree files={conflictedSorted} side="worktree" {sortMode}
               selected={activeFile?.staged === false ? activeFile.file : null}
-              onSelect={(p) => showFile(p, false)}
-              onAction={onTreeAction} actionLabel="stage" />
+              selectionSet={unstagedSelection}
+              onClick={(p, e) => handleRowClick(e, p, "un", false)}
+              onAction={onTreeAction} actionLabel="stage"
+              onFolderAction={onTreeFolderAction}
+              batchTargets={(p) => unstagedSelection.has(p) && unstagedSelection.size > 1 ? Array.from(unstagedSelection) : null}
+              batchLabel={(p) => batchLabel("un", p)} />
           {/if}
           {#if unstaged.length === 0 && conflicted.length === 0}
             <div class="empty">working tree clean</div>
           {:else}
             <FileTree files={unstagedSorted} side="worktree" {sortMode}
               selected={activeFile?.staged === false ? activeFile.file : null}
-              onSelect={(p) => showFile(p, false)}
-              onAction={onTreeAction} actionLabel="stage" />
+              selectionSet={unstagedSelection}
+              onClick={(p, e) => handleRowClick(e, p, "un", false)}
+              onAction={onTreeAction} actionLabel="stage"
+              onFolderAction={onTreeFolderAction}
+              batchTargets={(p) => unstagedSelection.has(p) && unstagedSelection.size > 1 ? Array.from(unstagedSelection) : null}
+              batchLabel={(p) => batchLabel("un", p)} />
           {/if}
         {:else}
           {#if conflicted.length > 0}
@@ -403,9 +509,10 @@
               {#each conflictedSorted as f (f.path)}
                 <li
                   class:active={activeFile?.file === f.path && !activeFile?.staged}
+                  class:multi-selected={unstagedSelection.has(f.path)}
                   oncontextmenu={(e) => onFileContext(e, f, false)}
                 >
-                  <button class="row" onclick={() => showFile(f.path, false)}>
+                  <button class="row" onclick={(e) => handleRowClick(e, f.path, "un", false)}>
                     <span class="status conflicted" title="Conflicted">!</span>
                     <span class="path conflicted">{f.path}</span>
                   </button>
@@ -417,13 +524,14 @@
             {#each unstagedSorted as f (f.path)}
               <li
                 class:active={activeFile?.file === f.path && !activeFile?.staged}
+                class:multi-selected={unstagedSelection.has(f.path)}
                 oncontextmenu={(e) => onFileContext(e, f, false)}
               >
-                <button class="row" onclick={() => showFile(f.path, false)}>
+                <button class="row" onclick={(e) => handleRowClick(e, f.path, "un", false)}>
                   <span class="status {f.worktree}" title={statusTitle(f, "worktree")}>{statusChar(f, "worktree")}</span>
                   <span class="path {f.worktree}">{f.path}</span>
                 </button>
-                <button class="hover-btn stage" onclick={() => stage(f.path)} title="Stage File">Stage File</button>
+                <button class="hover-btn stage" onclick={() => batchAction("un", f.path)} title={batchLabel("un", f.path)}>{batchLabel("un", f.path)}</button>
               </li>
             {:else}
               {#if conflicted.length === 0}
@@ -459,21 +567,26 @@
           {:else}
             <FileTree files={stagedSorted} side="index" {sortMode}
               selected={activeFile?.staged === true ? activeFile.file : null}
-              onSelect={(p) => showFile(p, true)}
-              onAction={onTreeAction} actionLabel="unstage" />
+              selectionSet={stagedSelection}
+              onClick={(p, e) => handleRowClick(e, p, "st", true)}
+              onAction={onTreeAction} actionLabel="unstage"
+              onFolderAction={onTreeFolderAction}
+              batchTargets={(p) => stagedSelection.has(p) && stagedSelection.size > 1 ? Array.from(stagedSelection) : null}
+              batchLabel={(p) => batchLabel("st", p)} />
           {/if}
         {:else}
           <ul class="flat">
             {#each stagedSorted as f (f.path)}
               <li
                 class:active={activeFile?.file === f.path && activeFile?.staged}
+                class:multi-selected={stagedSelection.has(f.path)}
                 oncontextmenu={(e) => onFileContext(e, f, true)}
               >
-                <button class="row" onclick={() => showFile(f.path, true)}>
+                <button class="row" onclick={(e) => handleRowClick(e, f.path, "st", true)}>
                   <span class="status {f.index}" title={statusTitle(f, "index")}>{statusChar(f, "index")}</span>
                   <span class="path {f.index}">{f.path}</span>
                 </button>
-                <button class="hover-btn unstage" onclick={() => unstage(f.path)} title="Unstage File">Unstage File</button>
+                <button class="hover-btn unstage" onclick={() => batchAction("st", f.path)} title={batchLabel("st", f.path)}>{batchLabel("st", f.path)}</button>
               </li>
             {:else}
               <li class="empty">no staged changes</li>
@@ -759,6 +872,11 @@
   .flat li.active::before {
     content: ""; width: 3px; align-self: stretch; background: var(--accent);
   }
+  /* Multi-select highlight — distinct from the single "active" file so
+     the user can see what's currently being viewed vs. what's selected
+     for a batched stage/unstage. */
+  .flat li.multi-selected { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .flat li.multi-selected.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
   .row {
     flex: 1; background: transparent; border: 0; color: var(--fg);
     text-align: left; padding: 4px 12px; cursor: pointer;

@@ -39,6 +39,32 @@ pub async fn unstage_file(
 }
 
 #[tauri::command]
+pub async fn stage_files(
+    path: String,
+    files: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    if files.is_empty() { return Ok(()); }
+    let mut args: Vec<&str> = vec!["add", "--"];
+    for f in &files { args.push(f.as_str()); }
+    state.git.run(&cwd(&path), args).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unstage_files(
+    path: String,
+    files: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    if files.is_empty() { return Ok(()); }
+    let mut args: Vec<&str> = vec!["reset", "HEAD", "--"];
+    for f in &files { args.push(f.as_str()); }
+    state.git.run(&cwd(&path), args).await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn stage_all(
     path: String,
     state: State<'_, AppState>,
