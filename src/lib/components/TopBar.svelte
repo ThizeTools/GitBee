@@ -1,8 +1,9 @@
 <script lang="ts">
   import {
-    currentRepo, graph, stashes, status, withBusy,
+    currentRepo, graph, stashes, status, remotes, withBusy,
     refreshActive, busy, errorMessage,
   } from "$lib/stores/repo";
+  import CreateRepoModal from "./CreateRepoModal.svelte";
   import { themePickerOpen, paletteOpen } from "$lib/stores/ui";
   import { undoStack, redoStack, moveToRedo, moveFromRedo } from "$lib/stores/history";
   import { ipc } from "$lib/ipc";
@@ -120,6 +121,16 @@
   const redoEnabled = $derived(!!$currentRepo && $redoStack.length > 0);
   const stashHasItems = $derived($stashes.length > 0);
   const hasChanges = $derived($status.length > 0);
+  // No `origin` remote → Push will fail with the cryptic
+  // "'origin' does not appear to be a git repository". Swap the button
+  // for "Publish to GitHub" which guides the user through creating the
+  // remote repo and wiring up origin in one shot.
+  const hasOrigin = $derived($remotes.some((r) => r.name === "origin"));
+  let publishOpen = $state(false);
+  function repoBasename(p: string | null): string {
+    if (!p) return "";
+    return p.split(/[\\/]/).filter(Boolean).pop() ?? "";
+  }
 </script>
 
 <header class="topbar">
@@ -148,9 +159,15 @@
     <button class="icon-btn" title="Pull" onclick={pull} disabled={!$currentRepo}>
       <span class="ico">↓</span><span class="lbl">Pull</span>
     </button>
-    <button class="icon-btn" title="Push" onclick={push} disabled={!$currentRepo}>
-      <span class="ico">↑</span><span class="lbl">Push</span>
-    </button>
+    {#if $currentRepo && !hasOrigin}
+      <button class="icon-btn" title="Publish this repo to GitHub" onclick={() => publishOpen = true}>
+        <span class="ico">⇪</span><span class="lbl">Publish</span>
+      </button>
+    {:else}
+      <button class="icon-btn" title="Push" onclick={push} disabled={!$currentRepo}>
+        <span class="ico">↑</span><span class="lbl">Push</span>
+      </button>
+    {/if}
     <span class="vsep"></span>
     <button class="icon-btn" title="New branch" onclick={newBranch} disabled={!$currentRepo}>
       <span class="ico">⎇</span><span class="lbl">Branch</span>
@@ -187,6 +204,15 @@
     <button class="ghost" onclick={() => paletteOpen.set(true)} title="Command palette (Ctrl+P)">⌘</button>
   </div>
 </header>
+
+{#if publishOpen && $currentRepo}
+  <CreateRepoModal
+    mode="publish-existing"
+    repoPath={$currentRepo}
+    initialName={repoBasename($currentRepo)}
+    onClose={() => publishOpen = false}
+  />
+{/if}
 
 <style>
   .topbar {

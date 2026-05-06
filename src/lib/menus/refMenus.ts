@@ -27,6 +27,7 @@ import {
 import {
   checkoutAndJump,
   checkoutRemoteAndJump,
+  checkoutShaAutoStash,
   scrollGraphTo,
 } from "$lib/stores/graphscroll";
 import { get } from "svelte/store";
@@ -536,9 +537,11 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     {
       label: `Checkout the commit at ${tagName}`,
       icon: "✓",
-      onClick: () => {
+      onClick: async () => {
         const r = repo();
-        if (r) withBusy(() => ipc.checkoutSha(r, sha));
+        if (!r) return;
+        const res = await checkoutShaAutoStash(r, sha);
+        if (res !== true) notifyError("Checkout failed", `${sha.slice(0, 7)}: ${res}`);
       },
     },
     { separator: true, label: "" },
@@ -610,9 +613,11 @@ export function commitMenu(sha: string): MenuItem[] {
     {
       label: "Checkout this commit",
       icon: "✓",
-      onClick: () => {
+      onClick: async () => {
         const r = repo();
-        if (r) withBusy(() => ipc.checkoutSha(r, sha));
+        if (!r) return;
+        const res = await checkoutShaAutoStash(r, sha);
+        if (res !== true) notifyError("Checkout failed", `${sha.slice(0, 7)}: ${res}`);
       },
     },
     { separator: true, label: "" },

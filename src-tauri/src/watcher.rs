@@ -6,7 +6,23 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-const DEBOUNCE: Duration = Duration::from_millis(250);
+const DEBOUNCE: Duration = Duration::from_millis(400);
+
+// Filenames inside .git that change as a side-effect of read-only git
+// commands (or as transient lock files during writes) and therefore do
+// NOT represent a real repo state change. Emitting "repo-changed" for
+// these causes the UI to refresh repeatedly while the user is idle —
+// which in turn flickers the loading veil. Compared by basename so the
+// list stays tiny.
+fn is_noise(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|s| s.to_str()) else { return false };
+    if name.ends_with(".lock") || name.ends_with(".tmp") { return true; }
+    matches!(
+        name,
+        "FETCH_HEAD" | "ORIG_HEAD" | "COMMIT_EDITMSG" | "AUTO_MERGE"
+            | "gitk.cache" | "shallow" | "packed-refs.new"
+    )
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RepoChangedEvent {
@@ -35,6 +51,13 @@ impl RepoWatcher {
                 ev.kind,
                 EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
             ) {
+                return;
+            }
+            // If every path in the event is noise (lockfile, FETCH_HEAD, …),
+            // skip. A real write almost always also touches a non-noise path
+            // (HEAD, refs/, index, MERGE_MSG, working tree files), so this
+            // filters background chatter without dropping legitimate updates.
+            if !ev.paths.is_empty() && ev.paths.iter().all(|p| is_noise(p)) {
                 return;
             }
             let mut last = last.lock();

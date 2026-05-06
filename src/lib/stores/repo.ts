@@ -6,6 +6,8 @@ import type {
 import { ipc } from "$lib/ipc";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { hiddenRefs, soloRefs } from "$lib/stores/graphFilter";
+import { showingNewTab } from "$lib/stores/newtab";
+import { showingInfo } from "$lib/stores/info";
 
 export interface RepoTab {
   id: string;
@@ -200,10 +202,17 @@ function tabName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
-export async function refreshActive() {
+// `silent`: skip toggling the global `busy` flag so the loading veil
+// doesn't flash. Used for watcher-driven refreshes — those happen
+// continuously in the background and the user didn't ask for them, so
+// covering the UI with a spinner every time a file mtime changes is
+// jarring. Foreground actions (pull, push, checkout, …) still pass
+// silent=false so the user gets the usual feedback.
+export async function refreshActive(opts: { silent?: boolean } = {}) {
   const t = get(activeTab);
   if (!t || t.kind === "newtab" || !t.path) return;
-  busy.set(true);
+  const silent = opts.silent === true;
+  if (!silent) busy.set(true);
   try {
     const [g, st, sl, rl, wt, op] = await Promise.all([
       ipc.graphLoad(t.path),
@@ -220,18 +229,36 @@ export async function refreshActive() {
   } catch (e) {
     errorMessage.set(String(e));
   } finally {
-    busy.set(false);
+    if (!silent) busy.set(false);
   }
 }
 
 async function attachWatcher(path: string) {
   if (unlistenChange) { unlistenChange(); unlistenChange = null; }
   await ipc.watcherStart(path);
-  unlistenChange = await listen("repo-changed", () => { refreshActive(); });
+  unlistenChange = await listen("repo-changed", () => { refreshActive({ silent: true }); });
+}
+
+/// Stale recents auto-prune: when the backend rejects a path with
+/// "invalid repository path" (folder deleted, USB unplugged, project
+/// renamed), drop it from the cache instead of leaving a dead row in
+/// the Recents list that re-errors on every click.
+function isStalePathError(e: unknown): boolean {
+  const msg = String(e);
+  return msg.includes("invalid repository path")
+      || msg.includes("InvalidRepoPath")
+      || msg.includes("is not a git repository");
+}
+
+function normTabPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+function samePath(a: string, b: string): boolean {
+  return normTabPath(a) === normTabPath(b);
 }
 
 export async function openRepo(path: string) {
-  const existing = get(tabs).find((t) => t.path === path);
+  const existing = get(tabs).find((t) => samePath(t.path, path));
   if (existing) {
     await activateTab(existing.id);
     return;
@@ -240,6 +267,11 @@ export async function openRepo(path: string) {
   errorMessage.set(null);
   try {
     const opened = await ipc.repoOpen(path);
+    const dup = get(tabs).find((t) => samePath(t.path, opened.path));
+    if (dup) {
+      await activateTab(dup.id);
+      return;
+    }
     const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newTab: RepoTab = {
       id, path: opened.path, name: tabName(opened.path),
@@ -253,7 +285,13 @@ export async function openRepo(path: string) {
     recent.set(await ipc.repoRecent(15));
     import("$lib/menus/refMenus").then((m) => m.refreshRemoteTags()).catch(() => {});
   } catch (e) {
-    errorMessage.set(String(e));
+    if (isStalePathError(e)) {
+      // Drop the dead recent silently and surface a friendlier message.
+      await forgetRepo(path);
+      errorMessage.set(`Removed missing folder from Recents: ${path}`);
+    } else {
+      errorMessage.set(String(e));
+    }
   } finally {
     busy.set(false);
   }
@@ -273,7 +311,18 @@ export async function activateTab(id: string) {
   // so it shows up in recents and the SQLite cache.
   if (!t.graph) {
     try { await ipc.repoOpen(t.path); }
-    catch (e) { errorMessage.set(String(e)); }
+    catch (e) {
+      if (isStalePathError(e)) {
+        // Restored stub tab pointing at a folder that no longer exists —
+        // close the dead tab and prune Recents instead of repeatedly
+        // erroring on every click.
+        await forgetRepo(t.path);
+        await closeTab(t.id);
+        errorMessage.set(`Removed missing folder from Recents: ${t.path}`);
+        return;
+      }
+      errorMessage.set(String(e));
+    }
   }
   await attachWatcher(t.path);
   await refreshActive();
@@ -310,15 +359,15 @@ export async function closeTab(id: string) {
   }
   const remaining = list.filter((t) => t.id !== id);
   tabs.set(remaining);
-  if (get(activeTabId) === id) {
-    if (remaining.length === 0) {
-      activeTabId.set(null);
-      if (unlistenChange) { unlistenChange(); unlistenChange = null; }
-      await ipc.watcherStop().catch(() => {});
-    } else {
-      const fallback = remaining[Math.min(idx, remaining.length - 1)];
-      await activateTab(fallback.id);
-    }
+  if (remaining.length === 0) {
+    activeTabId.set(null);
+    showingNewTab.set(true);
+    showingInfo.set(false);
+    if (unlistenChange) { unlistenChange(); unlistenChange = null; }
+    await ipc.watcherStop().catch(() => {});
+  } else if (get(activeTabId) === id) {
+    const fallback = remaining[Math.min(idx, remaining.length - 1)];
+    await activateTab(fallback.id);
   }
 }
 
@@ -414,7 +463,14 @@ activeTabId.subscribe(() => persist());
 // sidebar) until the user clicks them, the same way Chrome handles
 // background tabs after restart.
 export async function restoreTabs(): Promise<void> {
-  const stubs: RepoTab[] = savedSnapshot.paths.map((path) => ({
+  const seen = new Set<string>();
+  const uniquePaths = savedSnapshot.paths.filter((p) => {
+    const k = normTabPath(p);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const stubs: RepoTab[] = uniquePaths.map((path) => ({
     id: `tab-${Math.random().toString(36).slice(2, 9)}`,
     path,
     name: tabName(path),
@@ -429,7 +485,7 @@ export async function restoreTabs(): Promise<void> {
   try {
     if (stubs.length > 0) {
       tabs.set(stubs);
-      const active = stubs.find((t) => t.path === savedSnapshot.activePath) ?? stubs[0];
+      const active = stubs.find((t) => samePath(t.path, savedSnapshot.activePath)) ?? stubs[0];
       await activateTab(active.id);
     }
   } finally {

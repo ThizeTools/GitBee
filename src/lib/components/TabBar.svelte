@@ -6,6 +6,76 @@
   import { showingNewTab } from "$lib/stores/newtab";
   import { showingInfo } from "$lib/stores/info";
   import { openMenu, type MenuItem } from "$lib/stores/contextmenu";
+  import { ghAuth, bootGithubAuth, logoutGithub } from "$lib/stores/github";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { onMount } from "svelte";
+
+  // Boot auth on mount so the avatar appears as soon as the app does,
+  // not only after the user opens the clone/create modal.
+  onMount(() => { bootGithubAuth(); });
+
+  function profileMenu(): MenuItem[] {
+    if (!$ghAuth.authenticated) {
+      return [
+        {
+          label: "Sign in to GitHub…",
+          icon: "⎈",
+          onClick: () => { showingNewTab.set(true); },
+        },
+      ];
+    }
+    const login = $ghAuth.login ?? "";
+    return [
+      {
+        label: login ? `Signed in as ${login}` : "GitHub",
+        icon: "⎈",
+        disabled: true,
+      },
+      { separator: true, label: "" },
+      {
+        label: "Open profile on GitHub",
+        icon: "↗",
+        onClick: () => { if (login) openUrl(`https://github.com/${login}`).catch(() => {}); },
+      },
+      {
+        label: "Your repositories",
+        icon: "📦",
+        onClick: () => { if (login) openUrl(`https://github.com/${login}?tab=repositories`).catch(() => {}); },
+      },
+      {
+        label: "Manage app authorizations",
+        icon: "🔐",
+        onClick: () => { openUrl("https://github.com/settings/connections/applications/Ov23li9Byp22UMrMNVdb").catch(() => {}); },
+      },
+      { separator: true, label: "" },
+      {
+        label: "New repository…",
+        icon: "＋",
+        onClick: () => { showingNewTab.set(true); },
+      },
+      {
+        label: "Clone repository…",
+        icon: "⤓",
+        onClick: () => { showingNewTab.set(true); },
+      },
+      { separator: true, label: "" },
+      {
+        label: "Sign out",
+        icon: "⎋",
+        danger: true,
+        onClick: () => { void logoutGithub(); },
+      },
+    ];
+  }
+  function onProfileClick(e: MouseEvent) {
+    // openMenu uses clientX/clientY; passing the click event positions
+    // the popover under the avatar.
+    openMenu(e, profileMenu());
+  }
+  function profileInitials(login: string | null): string {
+    if (!login) return "?";
+    return login.slice(0, 2).toUpperCase();
+  }
 
   let dragId = $state<string | null>(null);
   let dragOver = $state<string | null>(null);
@@ -133,6 +203,19 @@
     onclick={openNew}
     title="New tab"
   >＋</button>
+  <span class="spacer"></span>
+  <button
+    type="button"
+    class="profile"
+    onclick={onProfileClick}
+    title={$ghAuth.authenticated ? `Signed in as ${$ghAuth.login}` : "Sign in to GitHub"}
+  >
+    {#if $ghAuth.authenticated && $ghAuth.avatarUrl}
+      <img src={$ghAuth.avatarUrl} alt={$ghAuth.login ?? ""} referrerpolicy="no-referrer" />
+    {:else}
+      <span class="initials">{profileInitials($ghAuth.login)}</span>
+    {/if}
+  </button>
 </div>
 
 <style>
@@ -195,4 +278,32 @@
   }
   .add-tab:hover, .add-tab.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .add-tab.active { box-shadow: inset 0 2px 0 var(--accent); }
+
+  /* Pushes the profile button to the far right of the tab bar without
+     interfering with horizontal scroll of the tab list itself. */
+  .spacer { flex: 1; min-width: 0; }
+  .profile {
+    background: transparent; border: 0;
+    padding: 0 8px;
+    height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    border-left: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .profile:hover { background: rgba(255,255,255,0.05); }
+  .profile img {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+  }
+  .profile .initials {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--accent) 25%, transparent);
+    color: var(--accent);
+    font-size: 10px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
 </style>

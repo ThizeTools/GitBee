@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod avatars;
+pub mod create;
 pub mod oauth;
 pub mod storage;
 pub mod types;

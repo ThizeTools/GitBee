@@ -1,5 +1,7 @@
 <script lang="ts">
   import { graph, selectedSha, currentRepo, refsByCommit, withBusy } from "$lib/stores/repo";
+  import { checkoutShaAutoStash } from "$lib/stores/graphscroll";
+  import { notifyError } from "$lib/stores/notifications";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
   import type { FileDiff, GraphNode } from "$lib/ipc";
@@ -46,7 +48,8 @@
   }
   async function checkoutDetached() {
     if (!$selectedSha || !$currentRepo) return;
-    await withBusy(() => ipc.checkoutSha($currentRepo!, $selectedSha!));
+    const r = await checkoutShaAutoStash($currentRepo, $selectedSha);
+    if (r !== true) notifyError("Checkout failed", `${$selectedSha.slice(0, 7)}: ${r}`);
   }
   async function createTag() {
     if (!$selectedSha || !$currentRepo) return;

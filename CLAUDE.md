@@ -63,3 +63,18 @@
 
 - Structured JSON when logging for debugging / observability.
 - Plain text only for user-facing CLI output.
+
+## Info page sync
+
+- `src/lib/components/InfoPage.svelte` is the user-facing feature
+  catalog. It must stay in sync with what the app actually does.
+- Any change that adds, removes, or alters a user-visible feature
+  (UI, shortcut, capability, limit, range) requires updating
+  InfoPage in the same PR.
+- Before adding a new entry, search InfoPage for an existing line
+  that already covers the feature and update it instead of
+  duplicating. After altering existing behavior (e.g. expanding a
+  range, renaming an action), grep InfoPage for stale wording and
+  fix it.
+- Status values: `done`, `partial` (with `note`), `planned`. Don't
+  mark something `done` until it ships.

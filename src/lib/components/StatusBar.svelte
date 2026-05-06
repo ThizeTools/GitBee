@@ -59,7 +59,7 @@
       </button>
       {#if zoomMenu}
         <div class="zoom-menu">
-          {#each ZOOM_STEPS as z (z)}
+          {#each [...ZOOM_STEPS].reverse() as z (z)}
             <button
               class:active={Math.abs(z - $layout.uiScale) < 0.01}
               onclick={() => pickZoom(z)}

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { graph, currentRepo, refsByCommit, withBusy } from "$lib/stores/repo";
+  import { checkoutShaAutoStash } from "$lib/stores/graphscroll";
+  import { notifyError } from "$lib/stores/notifications";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
   import Avatar from "./Avatar.svelte";
@@ -126,7 +128,8 @@
   }
   async function checkoutDetached() {
     if (!$currentRepo) return;
-    await withBusy(() => ipc.checkoutSha($currentRepo!, sha));
+    const r = await checkoutShaAutoStash($currentRepo, sha);
+    if (r !== true) notifyError("Checkout failed", `${sha.slice(0, 7)}: ${r}`);
   }
   async function createBranch() {
     if (!$currentRepo) return;

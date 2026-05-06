@@ -6,7 +6,9 @@
 //   https://github.com/owner/repo
 // Returns null for anything that doesn't look like github.com — the caller
 // then falls back to copy-link or shows a "remote isn't on GitHub" notice.
-export function parseGitHubRepo(url: string): { owner: string; name: string } | null {
+export function parseGitHubRepo(
+  url: string,
+): { owner: string; name: string } | null {
   const trimmed = url.trim();
   if (!trimmed) return null;
 
@@ -15,11 +17,15 @@ export function parseGitHubRepo(url: string): { owner: string; name: string } | 
   if (ssh) return { owner: ssh[1], name: ssh[2] };
 
   // ssh://git@github.com/owner/repo(.git)
-  const sshUrl = /^ssh:\/\/git@github\.com\/([^/]+)\/(.+?)(?:\.git)?$/.exec(trimmed);
+  const sshUrl = /^ssh:\/\/git@github\.com\/([^/]+)\/(.+?)(?:\.git)?$/.exec(
+    trimmed,
+  );
   if (sshUrl) return { owner: sshUrl[1], name: sshUrl[2] };
 
   // https://github.com/owner/repo(.git) (with or without trailing slash)
-  const https = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(trimmed);
+  const https = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(
+    trimmed,
+  );
   if (https) return { owner: https[1], name: https[2] };
 
   return null;
@@ -29,7 +35,10 @@ export function parseGitHubRepo(url: string): { owner: string; name: string } | 
 // `branch` is the head (compare) branch. GitHub will auto-pick the base
 // branch (the repo's default), and `?expand=1` opens the create form
 // pre-expanded so the user lands directly on the title/body inputs.
-export function pullRequestCompareUrl(remoteUrl: string, branch: string): string | null {
+export function pullRequestCompareUrl(
+  remoteUrl: string,
+  branch: string,
+): string | null {
   const repo = parseGitHubRepo(remoteUrl);
   if (!repo) return null;
   const enc = encodeURIComponent(branch);

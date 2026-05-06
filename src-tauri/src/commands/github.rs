@@ -2,7 +2,7 @@
 //! work lives in `crate::github::*`.
 
 use crate::error::{AppError, AppResult};
-use crate::github::{api, avatars, oauth, storage, types::*};
+use crate::github::{api, avatars, create, oauth, storage, types::*};
 use crate::state::AppState;
 use parking_lot::Mutex;
 use serde::Serialize;
@@ -207,4 +207,51 @@ pub async fn clone_last_dest(state: State<'_, AppState>) -> AppResult<String> {
 #[tauri::command]
 pub async fn clone_save_dest(path: String, state: State<'_, AppState>) -> AppResult<()> {
     state.cache.settings_set("clone.last_dest", &path)
+}
+
+#[tauri::command]
+pub async fn github_list_create_owners(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<GhOwner>> {
+    let token = storage::load_token(&state.cache)?
+        .ok_or_else(|| AppError::GitHub("not signed in".into()))?;
+    create::list_create_owners(&token).await
+}
+
+#[tauri::command]
+pub async fn github_check_repo_name(
+    owner: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> AppResult<bool> {
+    let token = storage::load_token(&state.cache)?
+        .ok_or_else(|| AppError::GitHub("not signed in".into()))?;
+    create::check_name_available(&token, &owner, &name).await
+}
+
+#[tauri::command]
+pub async fn github_create_repo(
+    req: CreateRepoReq,
+    state: State<'_, AppState>,
+) -> AppResult<GhRepoCreated> {
+    let token = storage::load_token(&state.cache)?
+        .ok_or_else(|| AppError::GitHub("not signed in".into()))?;
+    let result = create::create_on_github(&state.git, &token, req).await?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let _ = state.cache.upsert_repo(&result.local_path, ts);
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn github_publish_local(
+    repo_path: String,
+    req: CreateRepoReq,
+    state: State<'_, AppState>,
+) -> AppResult<GhRepoCreated> {
+    let token = storage::load_token(&state.cache)?
+        .ok_or_else(|| AppError::GitHub("not signed in".into()))?;
+    create::publish_local(&state.git, &token, repo_path, req).await
 }

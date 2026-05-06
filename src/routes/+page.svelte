@@ -114,8 +114,10 @@
       lastTabId = id;
       showGraph();
       showChanges();
-      showingNewTab.set(false);
-      showingInfo.set(false);
+      if (id !== null) {
+        showingNewTab.set(false);
+        showingInfo.set(false);
+      }
     }
   });
 
@@ -232,11 +234,13 @@
           import("$lib/ipc").then(({ ipc }) => ipc.openTerminal($currentRepo!).catch(() => {}));
         }
       } else if (ctrl && e.key.toLowerCase() === "w") {
-        // #1 round 7: if the "+" tab page is showing, just dismiss it and
-        // fall back to the active real tab; don't close anything.
+        // #1 round 7: if the "+" tab page is showing, dismiss it and
+        // fall back to the active real tab. When no real tabs exist,
+        // there's nothing to fall back to — keep New Tab visible (and
+        // its indicator lit) instead of leaving an unhighlighted view.
         if ($showingNewTab) {
           e.preventDefault();
-          showingNewTab.set(false);
+          if ($tabs.length > 0) showingNewTab.set(false);
           return;
         }
         const id = $activeTabId;
@@ -301,20 +305,8 @@
   <main class="row">
     {#if $showingInfo}
       <InfoPage />
-    {:else if $showingNewTab}
+    {:else if $showingNewTab || !$currentRepo}
       <NewTabPage />
-    {:else if !$currentRepo}
-      <div class="welcome">
-        <div class="welcome-card">
-          <h1>GitBee</h1>
-          <p>Open a Git repository to begin.</p>
-          <p class="hint">
-            <kbd>Ctrl</kbd>+<kbd>P</kbd> command palette &nbsp;·&nbsp;
-            <kbd>Ctrl</kbd>+<kbd>L</kbd> logs &nbsp;·&nbsp;
-            <kbd>Ctrl</kbd>+<kbd>`</kbd> terminal
-          </p>
-        </div>
-      </div>
     {:else}
       {#if $layout.sidebarCollapsed}
         <button class="rail" title="Expand sidebar"
@@ -462,36 +454,5 @@
     color: var(--del);
     font-size: 18px;
     cursor: pointer;
-  }
-  .welcome {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-  }
-  .welcome-card {
-    text-align: center;
-    color: var(--fg-muted);
-    background: var(--bg-elev);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    padding: 48px 60px;
-  }
-  .welcome-card h1 {
-    font-size: 32px;
-    margin: 0 0 8px;
-    background: linear-gradient(90deg, var(--accent), var(--renamed), var(--remote));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .hint kbd {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    padding: 2px 7px;
-    border-radius: 3px;
-    font-size: 11px;
-    font-family: "Cascadia Code", Consolas, monospace;
   }
 </style>

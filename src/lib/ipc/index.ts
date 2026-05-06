@@ -227,6 +227,13 @@ export const ipc = {
   avatarForEmail: (email: string) => invoke<string>("avatar_for_email", { email }),
   cloneLastDest: () => invoke<string>("clone_last_dest"),
   cloneSaveDest: (path: string) => invoke("clone_save_dest", { path }),
+  githubListCreateOwners: () => invoke<GhOwner[]>("github_list_create_owners"),
+  githubCheckRepoName: (owner: string, name: string) =>
+    invoke<boolean>("github_check_repo_name", { owner, name }),
+  githubCreateRepo: (req: CreateRepoReq) =>
+    invoke<GhRepoCreated>("github_create_repo", { req }),
+  githubPublishLocal: (repoPath: string, req: CreateRepoReq) =>
+    invoke<GhRepoCreated>("github_publish_local", { repoPath, req }),
 };
 
 export interface GhUserInfo {
@@ -246,5 +253,29 @@ export interface GhRepo {
   description: string | null;
   default_branch: string | null;
   pushed_at: number;
+}
+
+export interface GhOwner {
+  login: string;
+  avatar_url: string;
+  kind: "user" | "organization";
+}
+
+export interface CreateRepoReq {
+  owner: string;
+  name: string;
+  description?: string | null;
+  private: boolean;
+  auto_init: boolean;
+  default_branch: string;
+  dest_folder?: string | null;
+}
+
+export interface GhRepoCreated {
+  clone_url: string;
+  ssh_url: string;
+  html_url: string;
+  default_branch: string;
+  local_path: string;
 }
 

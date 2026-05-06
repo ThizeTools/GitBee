@@ -1,33 +1,28 @@
 <script lang="ts">
-  import { recent, openRepo, forgetRepo } from "$lib/stores/repo";
-  import { ipc } from "$lib/ipc";
+  import { recent, openRepo, forgetRepo, tabs } from "$lib/stores/repo";
   import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
-  import { logAppend } from "$lib/stores/logs";
   import CloneModal from "./CloneModal.svelte";
+  import CreateRepoModal from "./CreateRepoModal.svelte";
 
   let creating = $state(false);
   // #18 — Clone is a single button that opens a modal (GitKraken-style),
   // not an inline expanding card. Inline form was distorting the action
   // grid as the GitHub picker grew.
   let cloneOpen = $state(false);
+  // Create modal: local-only or on-GitHub. Replaces the old plain
+  // folder-picker that only did `git init`.
+  let createOpen = $state(false);
 
   async function browseOpen() {
     const picked = await openFolderDialog({ directory: true, multiple: false, title: "Open repository" });
     if (typeof picked === "string" && picked.length > 0) await openRepo(picked);
   }
-  async function browseCreate() {
-    const picked = await openFolderDialog({ directory: true, multiple: false, title: "Create repository in" });
-    if (typeof picked === "string" && picked.length > 0) {
-      try {
-        creating = true;
-        const path = await ipc.repoCreate(picked);
-        logAppend("info", `created repo at ${path}`);
-        await openRepo(path);
-      } catch (e) {
-        logAppend("error", `create failed: ${e}`);
-      } finally { creating = false; }
-    }
+
+  function normPath(p: string): string {
+    return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
   }
+  const openPaths = $derived(new Set($tabs.map((t) => normPath(t.path))));
+  function isOpen(p: string): boolean { return openPaths.has(normPath(p)); }
 </script>
 
 <div class="newtab">
@@ -42,20 +37,22 @@
         <span class="ico">⤓</span><span class="lbl">Clone</span>
         <span class="hint">From URL or GitHub</span>
       </button>
-      <button class="action" onclick={browseCreate} disabled={creating}>
+      <button class="action" onclick={() => createOpen = true} disabled={creating}>
         <span class="ico">＋</span><span class="lbl">Create</span>
-        <span class="hint">git init in folder</span>
+        <span class="hint">Local or on GitHub</span>
       </button>
     </div>
 
     <h2>Recent</h2>
     <ul class="recent">
       {#each $recent as r (r.id)}
-        <li>
-          <button class="row" onclick={() => openRepo(r.path)} title={r.path}>
+        {@const open = isOpen(r.path)}
+        <li class:open>
+          <button class="row" onclick={() => openRepo(r.path)} title={open ? `Switch to tab — ${r.path}` : r.path}>
             <span class="ico">📁</span>
             <span class="name">{r.path.split(/[\\/]/).filter(Boolean).pop()}</span>
             <span class="path">{r.path}</span>
+            {#if open}<span class="open-pill" title="Already open">● open</span>{/if}
           </button>
           <button
             class="forget"
@@ -72,6 +69,9 @@
 
 {#if cloneOpen}
   <CloneModal onClose={() => cloneOpen = false} />
+{/if}
+{#if createOpen}
+  <CreateRepoModal onClose={() => createOpen = false} />
 {/if}
 
 <style>
@@ -136,7 +136,7 @@
     padding: 10px 12px;
     cursor: pointer;
     display: grid;
-    grid-template-columns: 28px 1fr 2fr;
+    grid-template-columns: 28px 1fr 2fr auto;
     gap: 12px;
     align-items: center;
     font: inherit;
@@ -163,5 +163,16 @@
   .recent .forget:hover {
     color: var(--del);
     opacity: 1;
+  }
+  .recent li.open .name { color: var(--accent); }
+  .open-pill {
+    color: var(--accent);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: 10px;
+    padding: 2px 8px;
+    white-space: nowrap;
   }
 </style>

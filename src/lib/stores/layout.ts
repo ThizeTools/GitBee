@@ -88,7 +88,7 @@ layout.subscribe((s) => {
 // 0.8…1.3 picker range by ZOOM_BASE (1.2) so the user-visible labels stay
 // "80% / 90% / 100% / 110% / 120% / 130%" but the actual rendered scale at
 // each step is bumped by 20%. 1.20 is the new default ("100%").
-export const ZOOM_STEPS = [0.96, 1.08, 1.20, 1.32, 1.44, 1.56];
+export const ZOOM_STEPS = [0.96, 1.08, 1.20, 1.32, 1.44, 1.56, 1.68, 1.80, 2.10, 2.40];
 
 export function zoomIn() {
   layout.update((s) => {

@@ -139,6 +139,10 @@ pub fn run() {
             commands::github::avatar_for_email,
             commands::github::clone_last_dest,
             commands::github::clone_save_dest,
+            commands::github::github_list_create_owners,
+            commands::github::github_check_repo_name,
+            commands::github::github_create_repo,
+            commands::github::github_publish_local,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

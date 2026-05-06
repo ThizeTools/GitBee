@@ -107,6 +107,8 @@
       items: [
         { title: "OAuth device flow + PAT login", status: "done" },
         { title: "Clone from GitHub repo picker (orgs + personal)", status: "done" },
+        { title: "Create new repo directly on GitHub (private/public, owner picker)", status: "done" },
+        { title: "Publish existing local repo to GitHub (push + set upstream)", status: "done" },
         { title: "Avatar resolution from email (cached on disk)", status: "done" },
         { title: "Start a pull request from remote branch menu", status: "done" },
         { title: "Copy commit/branch web link (auto-detect host: github/gitlab/bitbucket)", status: "done" },
@@ -127,7 +129,7 @@
       items: [
         { title: "Resizable sidebar / right panel / commit area / graph columns", status: "done" },
         { title: "Persisted layout (widths, column order, zoom, collapse states)", status: "done" },
-        { title: "Ctrl +/- and 80–130% zoom picker in status bar", status: "done" },
+        { title: "Ctrl +/- and 80–200% zoom picker in status bar", status: "done" },
         { title: "Status bar (logs, shortcuts, zoom, version)", status: "done" },
         { title: "Light / dark theme toggle", status: "done" },
         { title: "Command palette (Ctrl+P)", status: "done" },
@@ -235,9 +237,9 @@
     max-width: 920px;
     margin: 0 auto 18px;
     color: var(--fg-muted);
-    font-size: 11px;
+    font-size: 13px;
   }
-  .lg { font-weight: 700; margin-right: 4px; }
+  .lg { font-weight: 700; margin-right: 4px; font-size: 16px; }
   .lg.done    { color: var(--accent); }
   .lg.partial { color: var(--tag); }
   .lg.planned { color: var(--fg-muted); }
@@ -261,14 +263,15 @@
   .group ul { list-style: none; margin: 0; padding: 0; }
   .group li {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 5px 0;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
     border-bottom: 1px solid rgba(255,255,255,0.04);
-    font-size: 12px;
+    font-size: 13px;
+    line-height: 1.4;
   }
   .group li:last-child { border-bottom: 0; }
-  .mark { width: 14px; flex-shrink: 0; text-align: center; font-weight: 700; }
+  .mark { width: 20px; flex-shrink: 0; text-align: center; font-weight: 700; font-size: 16px; }
   li.done    .mark { color: var(--accent); }
   li.partial .mark { color: var(--tag); }
   li.planned .mark { color: var(--fg-muted); }
