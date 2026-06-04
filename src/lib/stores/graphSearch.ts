@@ -1,5 +1,5 @@
 import { writable, derived, get } from "svelte/store";
-import { graph } from "$lib/stores/repo";
+import { visibleGraphNodes } from "$lib/stores/repo";
 import type { GraphNode } from "$lib/ipc";
 
 // Open/closed state for the search bar above the graph. Toggled by
@@ -9,19 +9,20 @@ export const searchOpen = writable<boolean>(false);
 export const searchQuery = writable<string>("");
 export const currentMatchIdx = writable<number>(0);
 
-// SHAs of every commit that matches the current query. We compute over
-// the loaded graph slice (not the whole repo) — searching beyond the
-// loaded slice would require a backend round-trip and is out of scope.
-// Match across: 7+ char SHA prefix, commit subject, author name, author
-// email — case-insensitive, substring (not regex; regex is power-user
-// noise for most users).
+// SHAs of every commit that matches the current query. Computed over the
+// VISIBLE node set (same stash-helper + hide/solo filtering the canvas
+// renders), not the raw slice — otherwise the match count includes commits
+// that aren't on screen and Enter/F3 stepping to them silently no-ops.
+// Still bounded to the loaded slice; searching beyond it needs a backend
+// round-trip and is out of scope. Match across: 7+ char SHA prefix, commit
+// subject, author name, author email — case-insensitive substring. (audit 2026-05)
 export const matchShas = derived(
-  [graph, searchQuery],
-  ([$graph, $query]) => {
+  [visibleGraphNodes, searchQuery],
+  ([$nodes, $query]) => {
     const q = $query.trim().toLowerCase();
-    if (!q || !$graph) return [] as string[];
+    if (!q) return [] as string[];
     const out: string[] = [];
-    for (const n of $graph.nodes) {
+    for (const n of $nodes) {
       if (matchesNode(n, q)) out.push(n.sha);
     }
     return out;

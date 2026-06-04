@@ -73,7 +73,13 @@ impl RepoWatcher {
 
         let git_dir = repo_path.join(".git");
         watcher.watch(&git_dir, RecursiveMode::Recursive)?;
-        watcher.watch(repo_path, RecursiveMode::NonRecursive)?;
+        // Working tree watched RECURSIVELY: NonRecursive only reports events
+        // for direct children of repo_path, so edits inside subdirectories
+        // (src/foo.rs — the common case) never fired "repo-changed" and the
+        // status UI went stale until a manual refresh. Recursive picks them
+        // up; the leading-edge debounce above coalesces the burst and the
+        // .git overlap is filtered as noise. (audit 2026-05)
+        watcher.watch(repo_path, RecursiveMode::Recursive)?;
 
         *self.watching.lock() = Some(repo_path.to_path_buf());
         self.watcher = Some(watcher);

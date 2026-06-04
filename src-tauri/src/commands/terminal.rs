@@ -6,7 +6,8 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, Command};
+use tokio::process::{ChildStdin, Command};
+use tokio::sync::oneshot;
 use tokio::sync::Mutex as TokioMutex;
 
 // Line-mode shell. Not a real PTY: works for basic commands and git, breaks
@@ -15,7 +16,13 @@ use tokio::sync::Mutex as TokioMutex;
 pub struct TerminalSession {
     pub id: String,
     pub stdin: Arc<TokioMutex<ChildStdin>>,
-    pub child: Arc<TokioMutex<Child>>,
+    // Kill signal for the exit-watcher task that OWNS the Child. We do NOT
+    // share the Child behind a Mutex: the old design held the child lock
+    // across `wait().await` for the whole shell lifetime, so terminal_kill
+    // could never acquire it and the kill hung forever, leaking the process.
+    // Sending on (or dropping) this channel makes the watcher start_kill the
+    // child. (audit 2026-05)
+    pub kill: Option<oneshot::Sender<()>>,
 }
 
 #[derive(Default)]
@@ -119,17 +126,26 @@ pub async fn terminal_spawn(
         }
     });
 
+    let (kill_tx, kill_rx) = oneshot::channel::<()>();
     let session = TerminalSession {
         id: id.clone(),
         stdin: Arc::new(TokioMutex::new(stdin)),
-        child: Arc::new(TokioMutex::new(child)),
+        kill: Some(kill_tx),
     };
-    let child_arc = session.child.clone();
     let id_for_exit = id.clone();
     let app_for_exit = app.clone();
+    // The exit-watcher owns the Child. It races the shell's natural exit
+    // against a kill request: an explicit terminal_kill sends on kill_rx, and
+    // dropping the session (sender) also resolves kill_rx (Err) — both lead to
+    // start_kill. No shared lock, so terminal_kill never blocks. (audit 2026-05)
     tokio::spawn(async move {
-        let mut c = child_arc.lock().await;
-        let status = c.wait().await.ok();
+        let status = tokio::select! {
+            s = child.wait() => s.ok(),
+            _ = kill_rx => {
+                let _ = child.start_kill();
+                child.wait().await.ok()
+            }
+        };
         let _ = app_for_exit.emit(
             "terminal-exit",
             ExitPayload { id: &id_for_exit, code: status.and_then(|s| s.code()) },
@@ -163,9 +179,12 @@ pub async fn terminal_kill(
     registry: tauri::State<'_, TerminalRegistry>,
 ) -> AppResult<()> {
     let session = registry.sessions.lock().remove(&id);
-    if let Some(s) = session {
-        let mut c = s.child.lock().await;
-        let _ = c.start_kill();
+    if let Some(mut s) = session {
+        // Signal the exit-watcher to kill the child. If the receiver is already
+        // gone (shell exited on its own) the send simply fails — harmless.
+        if let Some(tx) = s.kill.take() {
+            let _ = tx.send(());
+        }
     }
     Ok(())
 }

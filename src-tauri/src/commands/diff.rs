@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::git::checked_ref;
 use crate::git::diff::{parse_unified, FileDiff};
 use crate::state::AppState;
 use std::path::PathBuf;
@@ -14,9 +15,9 @@ pub async fn diff_commit(
 ) -> AppResult<Vec<FileDiff>> {
     let text = state
         .git
-        .run_text(
+        .run_text_lossy(
             &cwd(&path),
-            ["show", "--format=", "--no-color", "-U3", &sha],
+            ["show", "--format=", "--no-color", "-U3", checked_ref(&sha)?],
         )
         .await?;
     Ok(parse_unified(&text))
@@ -35,7 +36,7 @@ pub async fn diff_stash(
     let stash_ref = format!("stash@{{{index}}}");
     let text = state
         .git
-        .run_text(
+        .run_text_lossy(
             &cwd(&path),
             ["stash", "show", "-p", "--no-color", "-U3", &stash_ref],
         )

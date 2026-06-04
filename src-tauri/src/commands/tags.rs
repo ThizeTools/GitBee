@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::git::checked_ref;
 use crate::state::AppState;
 use std::path::PathBuf;
 use tauri::State;
@@ -13,6 +14,8 @@ pub async fn tag_create(
     message: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
+    checked_ref(&name)?;
+    if let Some(s) = sha.as_deref() { checked_ref(s)?; }
     let mut args: Vec<String> = vec!["tag".into()];
     if let Some(m) = message { args.push("-a".into()); args.push("-m".into()); args.push(m); }
     args.push(name);
@@ -27,7 +30,7 @@ pub async fn tag_delete(
     name: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    state.git.run(&cwd(&path), ["tag", "-d", &name]).await?;
+    state.git.run(&cwd(&path), ["tag", "-d", checked_ref(&name)?]).await?;
     Ok(())
 }
 
@@ -43,7 +46,7 @@ pub async fn tag_move(
     sha: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    state.git.run(&cwd(&path), ["tag", "-f", &name, &sha]).await?;
+    state.git.run(&cwd(&path), ["tag", "-f", checked_ref(&name)?, checked_ref(&sha)?]).await?;
     Ok(())
 }
 
@@ -58,6 +61,7 @@ pub async fn tag_annotate(
     message: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
+    checked_ref(&name)?;
     let sha = state
         .git
         .run_text(&cwd(&path), ["rev-parse", &format!("{name}^{{}}")])
@@ -79,6 +83,6 @@ pub async fn tag_push(
     name: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    state.git.run(&cwd(&path), ["push", &remote, &name]).await?;
+    state.git.run(&cwd(&path), ["push", checked_ref(&remote)?, checked_ref(&name)?]).await?;
     Ok(())
 }

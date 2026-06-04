@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import {
-    graph, selectedSha, refsByCommit, containingByCommit, reachableShas,
-    status, currentRepo, withBusy, stashes, WIP_SHA,
+    graph, selectedSha, refsByCommit, containingByCommit,
+    status, currentRepo, withBusy, stashes, WIP_SHA, visibleGraphNodes,
   } from "$lib/stores/repo";
   import GraphSearchBar from "./GraphSearchBar.svelte";
   import SoloBanner from "./SoloBanner.svelte";
@@ -31,24 +31,10 @@
   let viewHeight = $state(600);
   let hoverRow = $state<number | null>(null);
 
-  // `git stash` produces helper commits ("index on <branch>: …" and
-  // "untracked files on <branch>: …") as extra parents of the actual
-  // stash commit. They clutter the graph — GitKraken hides them, so do
-  // we. Filter at the data layer so all derived sets (lanes, refs, edges)
-  // see the same trimmed list. Edges from the stash commit to these
-  // hidden parents naturally drop out (their shas aren't in shaToRow).
-  function isStashHelper(subject: string): boolean {
-    return /^(?:index|untracked files)\s+on\s+\S/i.test(subject);
-  }
-  const nodes = $derived.by(() => {
-    const all = ($graph?.nodes ?? []).filter((n) => !isStashHelper(n.subject));
-    // When the user has hidden or solo'd refs, drop commits that are no
-    // longer reachable from any visible ref. WIP synthetic row is always
-    // kept — it represents the working directory state, not a real commit.
-    const reachable = $reachableShas;
-    if (!reachable) return all;
-    return all.filter((n) => n.sha === WIP_SHA || reachable.has(n.sha));
-  });
+  // Rendered node list — stash-helper + hide/solo filtering lives in the
+  // shared `visibleGraphNodes` derived so keyboard-nav and search agree with
+  // what's painted here. (audit 2026-05)
+  const nodes = $derived($visibleGraphNodes);
   void measure; // metrics no longer used for sizing (#4) but renderer may need it later
   const shaToRow = $derived.by(() => {
     const m = new Map<string, number>();
@@ -245,7 +231,11 @@
       graphScrollTarget.set(null);
       return;
     }
-    const y = TOP_PADDING + (idx + 1) * ROW_HEIGHT - viewHeight / 2;
+    // The WIP synthetic row occupies row 0 only when visible; under solo it's
+    // gone, so node `idx` sits at row `idx` not `idx+1`. Hard-coding +1 scrolled
+    // one row off when soloing. Use the same shift the layout uses. (audit 2026-05)
+    const wipShiftRow = wipVisible ? 1 : 0;
+    const y = TOP_PADDING + (idx + wipShiftRow) * ROW_HEIGHT - viewHeight / 2;
     scrollEl.scrollTop = Math.max(0, y);
     selectedSha.set(target);
     graphScrollTarget.set(null);

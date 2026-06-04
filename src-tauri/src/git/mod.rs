@@ -6,5 +6,5 @@ pub mod runner;
 pub mod status;
 pub mod types;
 
-pub use runner::GitRunner;
+pub use runner::{checked_ref, GitRunner};
 pub use types::{Commit, CommitRef, RefKind};

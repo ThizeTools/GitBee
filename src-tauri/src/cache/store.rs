@@ -66,13 +66,17 @@ impl CacheStore {
         Ok(rows)
     }
 
-    /// Read a settings row. None if absent.
+    /// Read a settings row. `Ok(None)` only when the key is genuinely absent;
+    /// a real SQLite error (locked/busy DB, I/O) is propagated instead of being
+    /// swallowed as "absent" — otherwise a transient SQLITE_BUSY silently
+    /// logged the user out of GitHub. (audit 2026-05)
     pub fn settings_get(&self, key: &str) -> AppResult<Option<String>> {
         let conn = self.conn.lock();
-        let v: Option<String> = conn
-            .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
-            .ok();
-        Ok(v)
+        match conn.query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0)) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub fn settings_set(&self, key: &str, value: &str) -> AppResult<()> {
@@ -93,14 +97,16 @@ impl CacheStore {
 
     pub fn avatar_url_get(&self, email: &str) -> AppResult<Option<String>> {
         let conn = self.conn.lock();
-        let v: Option<String> = conn
-            .query_row(
-                "SELECT url FROM avatar_urls WHERE email = ?1",
-                params![email.to_lowercase()],
-                |r| r.get(0),
-            )
-            .ok();
-        Ok(v)
+        // Distinguish "no cached row" from a real DB error (see settings_get).
+        match conn.query_row(
+            "SELECT url FROM avatar_urls WHERE email = ?1",
+            params![email.to_lowercase()],
+            |r| r.get(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub fn avatar_url_put(&self, email: &str, url: &str, ts: i64) -> AppResult<()> {

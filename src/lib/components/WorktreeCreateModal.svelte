@@ -52,16 +52,22 @@
     const r = get(currentRepo);
     if (!r) return;
     busy = true;
-    const res = await withBusy(() =>
-      ipc.worktreeAdd(
+    // worktree_add returns `()` → Tauri serializes JSON null on SUCCESS, which
+    // is also withBusy's error sentinel. Comparing the result to null treated
+    // every successful creation as a failure. Gate on a local flag set after
+    // the awaited call instead. (audit 2026-05)
+    let ok = false;
+    await withBusy(async () => {
+      await ipc.worktreeAdd(
         r,
         target.trim(),
         reference,
         createBranch ? branchName.trim() : undefined,
-      ),
-    );
+      );
+      ok = true;
+    });
     busy = false;
-    if (res === null) { notifyError("Worktree create failed", refLabel); return; }
+    if (!ok) { notifyError("Worktree create failed", refLabel); return; }
     notifySuccess("Worktree created", `${refLabel} → ${target.trim()}`);
     closeModal();
   }

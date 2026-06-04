@@ -6,7 +6,7 @@ pub enum AppError {
     #[error("git command failed (status {status:?}): {stderr}")]
     GitFailed { status: Option<i32>, stderr: String },
 
-    #[error("git executable not found in PATH; configure `gitExecutable` in settings")]
+    #[error("git executable not found in PATH; set the `git.executable` setting to its full path")]
     GitNotFound,
 
     #[error("invalid repository path: {0}")]

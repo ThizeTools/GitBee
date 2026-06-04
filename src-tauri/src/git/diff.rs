@@ -63,6 +63,28 @@ pub fn parse_unified(text: &str) -> Vec<FileDiff> {
             if let Some(f) = current.as_mut() { f.binary = true; }
             continue;
         }
+        // The authoritative paths come from the `---`/`+++` header lines, not
+        // from `diff --git a/x b/x`: that line is unparseable when a path
+        // contains a space (e.g. `diff --git a/c d.txt b/c d.txt`). Override
+        // whatever parse_diff_paths guessed once we see the real headers.
+        // `rename from`/`rename to` cover pure renames, which emit no `---`.
+        // (audit 2026-05)
+        if let Some(rest) = bare.strip_prefix("--- ") {
+            if let Some(f) = current.as_mut() { f.old_path = strip_diff_path(rest); }
+            continue;
+        }
+        if let Some(rest) = bare.strip_prefix("+++ ") {
+            if let Some(f) = current.as_mut() { f.new_path = strip_diff_path(rest); }
+            continue;
+        }
+        if let Some(rest) = bare.strip_prefix("rename from ") {
+            if let Some(f) = current.as_mut() { f.old_path = rest.trim().to_string(); }
+            continue;
+        }
+        if let Some(rest) = bare.strip_prefix("rename to ") {
+            if let Some(f) = current.as_mut() { f.new_path = rest.trim().to_string(); }
+            continue;
+        }
         if let Some(rest) = bare.strip_prefix("@@ ") {
             push_hunk(&mut current, &mut current_hunk);
             if let Some(h) = parse_hunk_header(rest, bare) {
@@ -108,15 +130,25 @@ fn push_file(out: &mut Vec<FileDiff>, file: &mut Option<FileDiff>) {
     if let Some(f) = file.take() { out.push(f); }
 }
 
+// Best-effort guess from the `diff --git` line. Correct only when paths have
+// no spaces; the `---`/`+++` (and `rename from/to`) handlers in parse_unified
+// override this with the authoritative paths whenever those lines are present.
+// Kept as the fallback for headers that emit neither (e.g. binary, mode-only).
 fn parse_diff_paths(rest: &str) -> (String, String) {
     let parts: Vec<&str> = rest.splitn(2, ' ').collect();
-    let strip = |s: &str| -> String {
-        s.strip_prefix("a/").or_else(|| s.strip_prefix("b/")).unwrap_or(s).to_string()
-    };
     match parts.as_slice() {
-        [a, b] => (strip(a), strip(b)),
+        [a, b] => (strip_diff_path(a), strip_diff_path(b)),
         _ => (rest.to_string(), rest.to_string()),
     }
+}
+
+// Strip the `a/`/`b/` prefix from a unified-diff path. `/dev/null` (add or
+// delete side) maps to an empty string so the frontend's `new_path||old_path`
+// resolves to the real side.
+fn strip_diff_path(s: &str) -> String {
+    let s = s.trim();
+    if s == "/dev/null" { return String::new(); }
+    s.strip_prefix("a/").or_else(|| s.strip_prefix("b/")).unwrap_or(s).to_string()
 }
 
 fn parse_hunk_header(rest: &str, full: &str) -> Option<Hunk> {
@@ -165,5 +197,39 @@ mod tests {
         assert_eq!(lines.len(), 4);
         assert_eq!(lines[1].kind, LineKind::Del);
         assert_eq!(lines[2].kind, LineKind::Add);
+    }
+
+    // Regression: paths containing spaces are unparseable from the
+    // `diff --git` line; the `---`/`+++` headers carry the real paths. (audit 2026-05)
+    #[test]
+    fn parses_path_with_spaces() {
+        let input = concat!(
+            "diff --git a/my dir/c d.txt b/my dir/c d.txt\n",
+            "--- a/my dir/c d.txt\n",
+            "+++ b/my dir/c d.txt\n",
+            "@@ -1 +1 @@\n",
+            "-old\n",
+            "+new\n",
+        );
+        let files = parse_unified(input);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].old_path, "my dir/c d.txt");
+        assert_eq!(files[0].new_path, "my dir/c d.txt");
+    }
+
+    // Regression: added file shows /dev/null on the old side → empty old_path.
+    #[test]
+    fn added_file_has_empty_old_path() {
+        let input = concat!(
+            "diff --git a/new.txt b/new.txt\n",
+            "--- /dev/null\n",
+            "+++ b/new.txt\n",
+            "@@ -0,0 +1 @@\n",
+            "+hello\n",
+        );
+        let files = parse_unified(input);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].old_path, "");
+        assert_eq!(files[0].new_path, "new.txt");
     }
 }

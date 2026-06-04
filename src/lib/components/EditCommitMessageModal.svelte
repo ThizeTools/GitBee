@@ -34,10 +34,16 @@
     const repo = get(currentRepo);
     if (!repo) return;
     busy = true;
-    const r = await withBusy(() => ipc.commitCreate(repo, message.trim(), true, false));
+    // commit_create returns `()` → JSON null on SUCCESS, identical to withBusy's
+    // error sentinel. Gate on a local flag, not on the result being null,
+    // otherwise a successful amend shows "Edit failed". (audit 2026-05)
+    let ok = false;
+    await withBusy(async () => {
+      await ipc.commitCreate(repo, message.trim(), true, false);
+      ok = true;
+    });
     busy = false;
-    // withBusy returns null on error; the store already surfaces errorMessage.
-    if (r === null) { notifyError("Edit failed", "Could not amend commit"); return; }
+    if (!ok) { notifyError("Edit failed", "Could not amend commit"); return; }
     notifySuccess("Commit message updated", sha.slice(0, 7));
     closeModal();
   }

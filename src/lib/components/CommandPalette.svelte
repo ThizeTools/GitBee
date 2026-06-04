@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { paletteOpen, theme } from "$lib/stores/ui";
+  import { paletteOpen, activeThemeId, resolveTheme, customThemes } from "$lib/stores/ui";
   import { currentRepo, refreshAll, withBusy, recent, openRepo } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
+  import { get } from "svelte/store";
 
   interface PaletteCmd {
     id: string;
@@ -17,8 +18,14 @@
   const commands = $derived.by<PaletteCmd[]>(() => {
     const list: PaletteCmd[] = [
       { id: "refresh", label: "Refresh repo", run: refreshAll },
-      { id: "theme", label: "Toggle theme",
-        run: () => theme.update(t => t === "dark" ? "light" : "dark") },
+      { id: "theme", label: "Toggle light/dark",
+        // Flip between the two default builtins based on the CURRENT theme's
+        // scheme — the old code string-compared the id to "dark"/"light" and so
+        // discarded any custom/other theme (Dracula, Nord, …). (audit 2026-05)
+        run: () => activeThemeId.update((id) => {
+          const cur = resolveTheme(id, get(customThemes));
+          return cur.vars.scheme === "dark" ? "light" : "dark";
+        }) },
     ];
     if ($currentRepo) {
       list.push(

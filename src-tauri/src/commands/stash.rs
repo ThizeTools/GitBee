@@ -26,13 +26,26 @@ pub async fn stash_list(
     for (idx, line) in text.lines().enumerate() {
         let parts: Vec<&str> = line.splitn(3, '\t').collect();
         if parts.len() < 3 { continue; }
+        // Derive the index from git's own selector (`%gd` → "stash@{N}"),
+        // NOT the enumerate counter: a skipped malformed line would shift the
+        // counter and make stash_apply/pop/drop target the WRONG stash. Fall
+        // back to the counter only if the selector can't be parsed. (audit 2026-05)
         out.push(StashEntry {
-            index: idx,
+            index: parse_stash_index(parts[1], idx),
             message: parts[2].to_string(),
             sha: parts[0].to_string(),
         });
     }
     Ok(out)
+}
+
+// Extract N from git's stash selector "stash@{N}".
+fn parse_stash_index(selector: &str, fallback: usize) -> usize {
+    selector
+        .rsplit_once('{')
+        .and_then(|(_, rest)| rest.strip_suffix('}'))
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(fallback)
 }
 
 #[tauri::command]

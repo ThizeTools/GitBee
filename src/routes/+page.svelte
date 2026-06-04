@@ -30,7 +30,7 @@
   import WorktreeCreateModal from "$lib/components/WorktreeCreateModal.svelte";
   import { activeModal } from "$lib/stores/modals";
   import { get } from "svelte/store";
-  import { graph, selectedSha, activeTab, WIP_SHA } from "$lib/stores/repo";
+  import { graph, selectedSha, activeTab, WIP_SHA, visibleGraphNodes } from "$lib/stores/repo";
   import { graphScrollTarget } from "$lib/stores/graphscroll";
   import { showCommit, showChanges as showRightChanges } from "$lib/stores/rightpanel";
   import {
@@ -44,12 +44,17 @@
   // in the loaded slice. WIP slot above row 0 is reachable with ArrowUp on
   // the topmost commit; pressing ArrowDown on WIP enters the first commit.
   function moveGraphSelection(dir: 1 | -1) {
+    // Navigate over the VISIBLE node list (same filtering the canvas renders),
+    // not the raw graph.nodes — otherwise arrows can land on a stash-helper or
+    // hide/solo-filtered commit that has no row, and the scroll silently fails.
+    // (audit 2026-05)
+    const nodes = get(visibleGraphNodes);
+    if (nodes.length === 0) return;
     const g = get(graph);
-    if (!g || g.nodes.length === 0) return;
     const cur = get(selectedSha);
     if (cur === WIP_SHA) {
       if (dir === 1) {
-        const next = g.nodes[0];
+        const next = nodes[0];
         if (next) {
           selectedSha.set(next.sha);
           showCommit(next.sha);
@@ -60,7 +65,7 @@
     }
     if (cur === null) {
       // No selection yet — start at HEAD if known, else top of slice.
-      const sha = g.head_sha ?? g.nodes[0]?.sha ?? null;
+      const sha = g?.head_sha ?? nodes[0]?.sha ?? null;
       if (sha) {
         selectedSha.set(sha);
         showCommit(sha);
@@ -68,7 +73,7 @@
       }
       return;
     }
-    const idx = g.nodes.findIndex((n) => n.sha === cur);
+    const idx = nodes.findIndex((n) => n.sha === cur);
     if (idx < 0) return;
     const next = idx + dir;
     if (next < 0) {
@@ -77,8 +82,8 @@
       showRightChanges();
       return;
     }
-    if (next >= g.nodes.length) return;
-    const sha = g.nodes[next].sha;
+    if (next >= nodes.length) return;
+    const sha = nodes[next].sha;
     selectedSha.set(sha);
     showCommit(sha);
     graphScrollTarget.set(sha);

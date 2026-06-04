@@ -145,6 +145,29 @@ export const reachableShas = derived(
   },
 );
 
+// `git stash` produces helper commits ("index on <branch>: …" / "untracked
+// files on <branch>: …") as extra parents of the real stash commit. They
+// clutter the graph and GitKraken hides them, so we do too.
+function isStashHelper(subject: string): boolean {
+  return /^(?:index|untracked files)\s+on\s+\S/i.test(subject);
+}
+
+// The graph nodes ACTUALLY rendered: stash-helper commits dropped and, when a
+// hide/solo filter is active, commits unreachable from any visible ref removed.
+// Single source of truth shared by GraphCanvas (paint), keyboard navigation
+// (+page moveGraphSelection) and commit search (graphSearch). Before this they
+// each walked the raw `graph.nodes`, so arrow-nav and search could target rows
+// that aren't drawn (stash helpers, filtered-out commits), then silently fail
+// to scroll. (audit 2026-05)
+export const visibleGraphNodes = derived(
+  [graph, reachableShas],
+  ([$graph, $reachable]) => {
+    const all = ($graph?.nodes ?? []).filter((n) => !isStashHelper(n.subject));
+    if (!$reachable) return all;
+    return all.filter((n) => n.sha === WIP_SHA || $reachable.has(n.sha));
+  },
+);
+
 // For each commit SHA, the branch ref(s) the commit "belongs to" — i.e.
 // branches whose FIRST-PARENT chain from tip reaches the commit. This
 // matches the user's mental model of "which branch was this commit made

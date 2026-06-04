@@ -9,8 +9,9 @@
 //   bun run release 1.2.3      # explicit version
 //   bun run release --notes "Fixed X, added Y"  # custom release notes
 //
-// Reads TAURI_SIGNING_PRIVATE_KEY_PATH from .env (auto-loaded by Bun).
-// Reads RELEASE_REPO from .env or hardcoded default below.
+// Reads TAURI_SIGNING_PRIVATE_KEY from .env (auto-loaded by Bun) — the
+// path to the minisign key, or its full content. See .env.example.
+// Reads RELEASE_REPO from .env or the hardcoded default below.
 // Requires `gh` CLI authenticated for the release repo.
 
 import { spawn } from "node:child_process";
@@ -25,7 +26,7 @@ const OUT_DIR = join(ROOT, "release");
 const PKG_PATH = join(ROOT, "package.json");
 
 const UPDATER_PLATFORM = "windows-x86_64";
-const RELEASE_REPO = process.env.RELEASE_REPO ?? "thize/gitbee-releases";
+const RELEASE_REPO = process.env.RELEASE_REPO ?? "ThizeTools/GitBee";
 
 async function main() {
   // ---- args -----------------------------------------------------------

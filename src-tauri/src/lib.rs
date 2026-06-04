@@ -38,9 +38,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        // Auto-update — manifest + signed binaries hosted on
-        // github.com/thize/gitbee-releases. See docs/specs/auto-update.md
-        // (TODO) for the publish workflow.
+        // Auto-update — manifest + signed binaries served as GitHub
+        // Release assets on github.com/ThizeTools/GitBee (the public project
+        // repo). See docs/specs/auto-update.md for the publish workflow.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {

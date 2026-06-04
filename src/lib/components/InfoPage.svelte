@@ -131,6 +131,7 @@
         { title: "Persisted layout (widths, column order, zoom, collapse states)", status: "done" },
         { title: "Ctrl +/- and 80–200% zoom picker in status bar", status: "done" },
         { title: "Status bar (logs, shortcuts, zoom, version)", status: "done" },
+        { title: "Auto-update: background download + signature-verified one-click install", status: "done" },
         { title: "Light / dark theme toggle", status: "done" },
         { title: "Command palette (Ctrl+P)", status: "done" },
       ],

@@ -107,7 +107,9 @@ Why so light:
 
 ## Download
 
-Three flavors per release, all in `release/`:
+Grab the latest signed build from the
+[**Releases**](https://github.com/ThizeTools/GitBee/releases/latest) page —
+three flavors per release:
 
 - **`GitBee_<ver>_x64-setup.exe`** — NSIS installer, the friendly default.
 - **`GitBee_<ver>_x64_en-US.msi`** — MSI installer, for managed environments.

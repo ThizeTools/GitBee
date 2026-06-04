@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult};
+use crate::git::checked_ref;
 use crate::state::AppState;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -47,8 +48,11 @@ pub async fn file_read_at(
     // already rejects paths outside the repo. Still validate to keep the
     // shape consistent.
     let _ = safe_join(&cwd(&path), &file)?;
+    // Guard the sha so a value starting with '-' can't make the combined
+    // `<sha>:<file>` spec parse as a git option. (audit 2026-05)
+    checked_ref(&sha)?;
     let spec = format!("{sha}:{file}");
-    state.git.run_text(&cwd(&path), ["show", &spec]).await
+    state.git.run_text_lossy(&cwd(&path), ["show", &spec]).await
 }
 
 #[tauri::command]
@@ -117,7 +121,7 @@ pub async fn file_history(
     state: State<'_, AppState>,
 ) -> AppResult<Vec<FileHistoryRow>> {
     let n = limit.unwrap_or(100).min(2000);
-    let text = state.git.run_text(
+    let text = state.git.run_text_lossy(
         &cwd(&path),
         ["log", &format!("-n{n}"), "--format=%H%x09%an%x09%ct%x09%s", "--", &file],
     ).await?;
@@ -146,25 +150,31 @@ pub async fn file_blame(
     state: State<'_, AppState>,
 ) -> AppResult<Vec<BlameRow>> {
     // Use porcelain for stable parsing.
-    let text = state.git.run_text(&cwd(&path), ["blame", "--line-porcelain", &file]).await?;
+    let text = state.git.run_text_lossy(&cwd(&path), ["blame", "--line-porcelain", &file]).await?;
     let mut out = Vec::new();
     let mut cur_sha = String::new();
     let mut cur_author = String::new();
     let mut cur_ts: i64 = 0;
     for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("\t") {
+        if let Some(rest) = line.strip_prefix('\t') {
             out.push(BlameRow {
                 sha: cur_sha.clone(),
                 author: cur_author.clone(),
                 ts: cur_ts,
                 line: rest.to_string(),
             });
-        } else if line.len() >= 40 && line.chars().take(40).all(|c| c.is_ascii_hexdigit()) {
-            cur_sha = line[..40].to_string();
         } else if let Some(v) = line.strip_prefix("author ") {
             cur_author = v.to_string();
         } else if let Some(v) = line.strip_prefix("author-time ") {
             cur_ts = v.parse().unwrap_or(0);
+        } else {
+            // Commit header line: "<sha> <orig-lineno> <final-lineno> [count]".
+            // Take the full first token instead of hardcoding 40 hex chars, so
+            // SHA-256 repos (64-char object names) aren't truncated. (audit 2026-05)
+            let tok = line.split(' ').next().unwrap_or("");
+            if tok.len() >= 40 && tok.bytes().all(|b| b.is_ascii_hexdigit()) {
+                cur_sha = tok.to_string();
+            }
         }
     }
     Ok(out)
@@ -204,16 +214,21 @@ pub async fn stash_edit_message(
     message: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    // Git has no built-in edit; we re-create: get the stash sha, drop it, push a fresh entry.
-    // Simplest portable approach: drop and re-stash with new message — but that loses content
-    // ordering. Instead use `git update-ref` on refs/stash via stash store.
+    // Git has no in-place stash-message edit. We re-create the entry, but order
+    // matters: STORE FIRST, then drop the original. `git stash store` pushes the
+    // sha onto refs/stash as stash@{0}, shifting the original from stash@{index}
+    // to stash@{index+1}; we then drop that. Storing before dropping means a
+    // failure leaves a harmless DUPLICATE rather than LOSING the stash — the old
+    // drop-then-store order could delete the entry and then fail to recreate it.
+    // The edited stash moving to the top is inherent to git's reflog. (audit 2026-05)
     let r = format!("stash@{{{index}}}");
     let sha = state.git
         .run_text(&cwd(&path), ["rev-parse", &r])
         .await?
         .trim()
         .to_string();
-    state.git.run(&cwd(&path), ["stash", "drop", &r]).await?;
     state.git.run(&cwd(&path), ["stash", "store", "-m", &message, &sha]).await?;
+    let shifted = format!("stash@{{{}}}", index + 1);
+    state.git.run(&cwd(&path), ["stash", "drop", &shifted]).await?;
     Ok(())
 }

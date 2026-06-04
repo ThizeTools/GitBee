@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::git::checked_ref;
 use crate::state::AppState;
 use std::path::PathBuf;
 use tauri::State;
@@ -28,9 +29,9 @@ pub async fn commit_show(
 ) -> AppResult<String> {
     state
         .git
-        .run_text(
+        .run_text_lossy(
             &cwd(&path),
-            ["show", "--no-color", "--format=fuller", &sha],
+            ["show", "--no-color", "--format=fuller", checked_ref(&sha)?],
         )
         .await
 }
@@ -41,7 +42,7 @@ pub async fn commit_cherry_pick(
     sha: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    state.git.run(&cwd(&path), ["cherry-pick", &sha]).await?;
+    state.git.run(&cwd(&path), ["cherry-pick", checked_ref(&sha)?]).await?;
     Ok(())
 }
 
@@ -52,6 +53,7 @@ pub async fn commit_revert(
     no_edit: Option<bool>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
+    checked_ref(&sha)?;
     let mut args: Vec<String> = vec!["revert".into()];
     if no_edit.unwrap_or(true) { args.push("--no-edit".into()); }
     args.push(sha);
@@ -73,7 +75,7 @@ pub async fn commit_format_patch(
 ) -> AppResult<String> {
     let output = state
         .git
-        .run_text(&cwd(&path), ["format-patch", "-1", &sha, "-o", &dest_dir])
+        .run_text(&cwd(&path), ["format-patch", "-1", checked_ref(&sha)?, "-o", &dest_dir])
         .await?;
     // `format-patch -1` prints the single resulting filename on stdout,
     // relative to `dest_dir` on some git versions and absolute on
@@ -120,6 +122,6 @@ pub async fn commit_reset(
         "hard" => "--hard",
         _ => "--mixed",
     };
-    state.git.run(&cwd(&path), ["reset", flag, &sha]).await?;
+    state.git.run(&cwd(&path), ["reset", flag, checked_ref(&sha)?]).await?;
     Ok(())
 }
