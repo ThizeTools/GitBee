@@ -1,4 +1,3 @@
-use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent, Wry};
@@ -40,7 +39,7 @@ fn with_platform_icon(
     builder: TrayIconBuilder<Wry>,
     _app: &AppHandle,
 ) -> tauri::Result<TrayIconBuilder<Wry>> {
-    let icon = Image::from_bytes(include_bytes!("../icons/tray-macos-template.png"))?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray-macos-template.png"))?;
     Ok(builder.icon(icon).icon_as_template(true))
 }
 
@@ -50,8 +49,7 @@ fn with_platform_icon(
     builder: TrayIconBuilder<Wry>,
     app: &AppHandle,
 ) -> tauri::Result<TrayIconBuilder<Wry>> {
-    let icon: Image<'static> = app.default_window_icon().cloned().unwrap();
-    Ok(builder.icon(icon))
+    Ok(builder.icon(app.default_window_icon().cloned().unwrap()))
 }
 
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
