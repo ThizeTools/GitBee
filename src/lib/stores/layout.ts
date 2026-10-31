@@ -37,7 +37,7 @@ const DEFAULTS: LayoutState = {
   sidebarWidth: 260,
   rightPanelWidth: 380,
   graphRefsWidth: 200,
-  graphWidth: 140,
+  graphWidth: 180,
   graphMsgWidth: 360,
   graphColOrder: ["refs", "graph", "msg"],
   terminalHeight: 240,

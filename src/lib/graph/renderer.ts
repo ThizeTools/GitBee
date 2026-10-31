@@ -1,27 +1,32 @@
 import type { GraphNode } from "$lib/ipc";
+import type { RowSegment } from "./edges";
 import {
-  DOT_RADIUS, ROW_HEIGHT, TOP_PADDING,
+  AVATAR_SIZE, CORNER_RADIUS, DOT_RADIUS, ROW_HEIGHT, TOP_PADDING,
   laneX, rowY,
 } from "./layout";
 
-// Lane palette: avoids yellow/amber (reserved for the app accent) and the
-// near-white/black of the bg so dots and lines never compete with the
-// brand color. ~45-50% lightness so white text on the lane-colored
-// badges hits AA contrast.
+// Lane palette (10 entries, by lane index): saturated so lanes read apart
+// at a glance, ~40-50% lightness so white text on lane-colored ref pills
+// stays legible. Avoids yellow/amber, reserved for the app accent.
 const LANE_COLORS = [
-  "#0E8C82", // teal — default first branch (HEAD lane)
-  "#A23A78", // magenta
-  "#3F8C3D", // green
-  "#2E6BB8", // blue
-  "#B86A1F", // orange
-  "#6E4DB0", // purple
-  "#B33B3B", // red
-  "#3FA3A0", // cyan
+  "#1389A6", // cyan-blue — lane 0 (HEAD chain)
+  "#2F6FED", // blue
+  "#8B3FD9", // purple
+  "#C2389E", // magenta
+  "#E0356B", // pink
+  "#D93B2B", // red
+  "#D2601C", // orange
+  "#5E9E24", // lime
+  "#2E9E5B", // green
+  "#17917F", // teal
 ];
 
-const LINE_WIDTH = 2.4;
+const LINE_WIDTH = 2;
 const SELECT_RING = "#ffffff";
 const SELECT_GLOW = "rgba(255, 255, 255, 0.35)";
+// Stash + WIP glyphs match the avatar node size since they share its
+// row-anchor role.
+const BIG_RADIUS = AVATAR_SIZE / 2;
 
 // Pull the current --bg theme value at draw time so the "punch" circle
 // behind each dot sits on the actual background color regardless of
@@ -35,6 +40,8 @@ export interface RenderArgs {
   ctx: CanvasRenderingContext2D;
   nodes: GraphNode[];
   shaToRow: Map<string, number>;
+  /** Per-row line segments from `buildRowSegments`, indexed like `nodes`. */
+  segments: RowSegment[][];
   scrollTop: number;
   viewHeight: number;
   width: number;
@@ -43,273 +50,214 @@ export interface RenderArgs {
   dpr: number;
   wipPresent?: boolean;
   wipHeadSha?: string | null;
-  // Rows whose refs cell holds a badge — get a horizontal stub from dot
-  // extending left toward the badge in the lane color.
+  // Rows whose refs cell holds a badge — get a horizontal connector from
+  // the node extending left toward the badge in the lane color.
   rowsWithRefs?: Set<number>;
-  /** Rows whose visible "dot" is actually an HTML avatar overlay. The
-   *  renderer skips drawing a canvas dot for these so the avatar sits
-   *  cleanly on the lane without a colored disc bleeding around it. */
+  /** Rows whose visible node is an HTML avatar overlay. The renderer skips
+   *  drawing a canvas dot for these so the avatar sits cleanly on the lane. */
   avatarRows?: Set<number>;
-  /** Rows that are stash commits — drawn as a special dashed-edge,
-   *  filled-circle glyph instead of the regular dot. */
+  /** Rows that are stash commits — drawn as a dashed square glyph. */
   stashRows?: Set<number>;
   /** Pixels of canvas overflow rendered to the LEFT of the graph column.
-   *  All x-coordinates are translated by this amount so the graph dots
-   *  stay visually anchored to the column while stub lines can extend
-   *  into the gutter / refs cell. */
+   *  All x-coordinates are translated by this amount so the nodes stay
+   *  anchored to the column while connectors extend into the refs cell. */
   extendLeft?: number;
-  /** Per-row, the canvas-space x of the right edge of that row's badge
-   *  (or `wip-inline` chip). Stub lines end here instead of running off
-   *  to the panel edge. Rows missing from the map fall back to drawing
-   *  the stub all the way to the canvas left edge. */
+  /** Per-row, the canvas-space x of the right edge of that row's badge.
+   *  Connectors end here; rows missing from the map run to the canvas
+   *  left edge. */
   badgeEndsByRow?: Map<number, number>;
 }
 
+/** Paints the visible slice of the graph: line segments, then nodes on top.
+ * Example: `render({ ctx, nodes, shaToRow, segments, scrollTop, ... })` */
 export function render(args: RenderArgs): void {
-  const {
-    ctx, nodes, shaToRow, scrollTop, viewHeight, width,
-    selectedSha, hoverRow, dpr, wipPresent, wipHeadSha,
-  } = args;
-  const BG_COLOR = readBgColor();
-
-  const rowsWithRefs = args.rowsWithRefs;
-
+  const { ctx, nodes, scrollTop, viewHeight, width, dpr } = args;
   const extendLeft = args.extendLeft ?? 0;
-
+  const bg = readBgColor();
   ctx.save();
   ctx.scale(dpr, dpr);
-  // Shift the entire drawing rightward by extendLeft so dots line up with
+  // Shift the entire drawing rightward by extendLeft so nodes line up with
   // the graph column even though the canvas itself bleeds into the gutter.
   ctx.translate(extendLeft, 0);
   ctx.clearRect(-extendLeft, 0, width, viewHeight);
-
-  // Stash + WIP are drawn at the same visual weight as the user
-  // avatars (~14px diameter) since they share the row-anchor role.
-  // Merge dots stay at DOT_RADIUS so the donut donut/lane connection
-  // stays compact.
-  const BIG_RADIUS = 7;
-
-  if (wipPresent && wipHeadSha) {
-    const headRow = shaToRow.get(wipHeadSha);
-    if (headRow != null) {
-      const headLane = nodes[headRow]?.lane ?? 0;
-      const wipScreenY = TOP_PADDING + ROW_HEIGHT / 2 - scrollTop - ROW_HEIGHT;
-      const headScreenY = rowY(headRow) - scrollTop;
-      const x = laneX(headLane);
-      ctx.save();
-      ctx.strokeStyle = LANE_COLORS[headLane % LANE_COLORS.length];
-      ctx.lineWidth = LINE_WIDTH;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(x, wipScreenY);
-      ctx.lineTo(x, headScreenY);
-      ctx.stroke();
-      ctx.restore();
-      ctx.save();
-      ctx.strokeStyle = LANE_COLORS[headLane % LANE_COLORS.length];
-      ctx.lineWidth = 1.6;
-      ctx.setLineDash([3, 2]);
-      ctx.beginPath();
-      ctx.arc(x, wipScreenY, BIG_RADIUS, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
-
+  drawWip(ctx, args, bg);
   const startRow = Math.max(0, Math.floor((scrollTop - TOP_PADDING) / ROW_HEIGHT) - 1);
-  const endRow = Math.min(
-    nodes.length,
-    Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT) + 1,
-  );
-
-  // Edges (parents). We must draw any edge that intersects the visible
-  // y-range, even if its child row sits above the viewport — otherwise
-  // long-running lanes appear to "vanish" while scrolling. Iterate from
-  // row 0 up to endRow, and skip only edges that end strictly above the
-  // viewport (parent row < startRow). Nodes are O(N) but the inner work
-  // is just a couple of comparisons per row.
-  ctx.lineWidth = LINE_WIDTH;
-  ctx.lineCap = "round";
-  for (let r = 0; r < endRow; r++) {
-    const node = nodes[r];
-    const y = rowY(r) - scrollTop;
-    const x = laneX(node.lane);
-
-    for (let pi = 0; pi < node.parents.length; pi++) {
-      const parentSha = node.parents[pi];
-      const parentRow = shaToRow.get(parentSha);
-      if (parentRow == null) continue;
-      // Edge is entirely above the viewport — skip.
-      if (parentRow < startRow) continue;
-      // Both endpoints below the viewport — skip (child row > endRow can't
-      // happen because of the outer bound, but parent row can).
-      if (r > endRow && parentRow > endRow) continue;
-      // The lane stored in `parent_lanes[pi]` is the slot the CHILD parked
-      // its parent into during layout. When a side branch later converges
-      // into main, the parent's real lane ends up on main, not on the
-      // child's recorded slot — so trust the parent node's own `lane`
-      // field for the edge endpoint. (parent_lanes only matches when no
-      // convergence happened.) Without this, fork-off edges draw straight
-      // vertical in the side lane and never visually connect to the
-      // parent dot sitting on the main lane.
-      const parentLane = nodes[parentRow].lane;
-      const py = rowY(parentRow) - scrollTop;
-      const px = laneX(parentLane);
-      ctx.strokeStyle = LANE_COLORS[parentLane % LANE_COLORS.length];
-      // Stash edges (either endpoint is a stash row) get a dashed line
-      // so they read as "this isn't real history, it's a stash anchor".
-      const isStashEdge = args.stashRows?.has(r) || args.stashRows?.has(parentRow);
-      ctx.setLineDash(isStashEdge ? [4, 4] : []);
-      // Two distinct edge shapes depending on the topology:
-      //   merge-in   — child has 2+ parents, this parent sits on a side lane.
-      //                Visual: branch drops into the merge dot from below;
-      //                bend at the TOP near the merge.
-      //   fork-off   — single-parent child whose lane differs from its parent.
-      //                Visual: a branch buds off the parent and runs up in a
-      //                new lane; bend at the BOTTOM near the parent dot.
-      const isMergeEdge = node.parents.length >= 2 && parentLane !== node.lane;
-      drawEdge(ctx, x, y, px, py, isMergeEdge);
-    }
-  }
-
-  // Hover/selected highlights at lane positions
-  if (hoverRow != null && hoverRow >= 0 && hoverRow < nodes.length) {
-    const n = nodes[hoverRow];
-    const y = rowY(hoverRow) - scrollTop;
-    const x = laneX(n.lane);
-    ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.06)";
-    ctx.beginPath();
-    ctx.arc(x, y, DOT_RADIUS + 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Dots
+  const endRow = Math.min(nodes.length, Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT) + 1);
   for (let r = startRow; r < endRow; r++) {
-    const node = nodes[r];
-    const x = laneX(node.lane);
-    const y = rowY(r) - scrollTop;
-    const color = LANE_COLORS[node.lane % LANE_COLORS.length];
-    const isSelected = node.sha === selectedSha;
-    const isHead = wipHeadSha != null && node.sha === wipHeadSha;
-    const isMerge = node.parents.length >= 2;
-
-    // Lane-colored stub from dot leftward toward the ref badge. The HEAD
-    // row (the checked-out branch) gets a much heavier stub so the active
-    // branch jumps out across the whole view; everyone else stays thin.
-    if (rowsWithRefs && rowsWithRefs.has(r)) {
-      ctx.save();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = isHead ? 3.2 : 0.8;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      // End the stub at the badge's right edge if we have a measurement;
-      // otherwise extend all the way to the canvas left edge as a fallback.
-      // Canvas-space x of the badge right is `badgeEnd`; we're drawing in
-      // post-translate space, so subtract `extendLeft` to convert.
-      const badgeEnd = args.badgeEndsByRow?.get(r);
-      const stubX = badgeEnd != null ? badgeEnd - extendLeft : -extendLeft;
-      ctx.lineTo(stubX, y);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Rows with an HTML avatar overlay (regular non-merge commits) skip
-    // the canvas dot entirely — the avatar IS the visible dot. Merge
-    // rows always get a solid filled circle (no donut anymore).
-    const hasAvatar = args.avatarRows?.has(r) ?? false;
-    const isStash = args.stashRows?.has(r) ?? false;
-
-    if (!hasAvatar) {
-      if (isStash) {
-        // Stash: rounded SQUARE with dashed border + stash glyph inside.
-        // Square (not circle) so it's visually distinct from a commit
-        // dot — only the WIP ghost stays circular.
-        const half = BIG_RADIUS;
-        // bg punch behind the square
-        ctx.fillStyle = BG_COLOR;
-        ctx.fillRect(x - half - 1, y - half - 1, (half + 1) * 2, (half + 1) * 2);
-
-        ctx.save();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([3, 2]);
-        roundedRect(ctx, x - half, y - half, half * 2, half * 2, 2);
-        ctx.stroke();
-        ctx.restore();
-
-        // Stash glyph centered in the box (small filled square hint —
-        // box-with-content visual, doesn't double up the outer square).
-        ctx.fillStyle = color;
-        ctx.fillRect(x - 2, y - 1, 4, 1);
-        ctx.fillRect(x - 2, y + 1, 4, 1);
-      } else {
-        // Merge: solid filled disc.
-        ctx.fillStyle = BG_COLOR;
-        ctx.beginPath();
-        ctx.arc(x, y, DOT_RADIUS + 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    if (isSelected) {
-      ctx.save();
-      // Outer soft glow so selection pops over any lane color.
-      ctx.strokeStyle = SELECT_GLOW;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(x, y, DOT_RADIUS + 4.5, 0, Math.PI * 2);
-      ctx.stroke();
-      // Crisp inner ring.
-      ctx.strokeStyle = SELECT_RING;
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.arc(x, y, DOT_RADIUS + 3, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
+    drawRowSegments(ctx, args.segments[r] ?? [], nodes[r].lane, rowY(r) - scrollTop);
   }
+  drawHover(ctx, args);
+  for (let r = startRow; r < endRow; r++) drawNode(ctx, args, r, bg);
   ctx.restore();
 }
 
-function drawEdge(
-  ctx: CanvasRenderingContext2D,
-  x1: number, y1: number,
-  x2: number, y2: number,
-  bendAtTop: boolean,
-) {
+// WIP ghost: dashed ring one row above the top, joined to HEAD's node by a
+// dashed line in HEAD's lane. Filled with the bg so the line stops at the ring.
+function drawWip(ctx: CanvasRenderingContext2D, args: RenderArgs, bg: string): void {
+  const { nodes, shaToRow, scrollTop, wipPresent, wipHeadSha } = args;
+  if (!wipPresent || !wipHeadSha) return;
+  const headRow = shaToRow.get(wipHeadSha);
+  if (headRow == null) return;
+  const lane = nodes[headRow]?.lane ?? 0;
+  const x = laneX(lane);
+  const wipY = TOP_PADDING + ROW_HEIGHT / 2 - scrollTop - ROW_HEIGHT;
+  ctx.save();
+  ctx.strokeStyle = laneColor(lane);
+  ctx.lineWidth = LINE_WIDTH;
+  ctx.setLineDash([5, 4]);
   ctx.beginPath();
-  if (x1 === x2) {
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    return;
-  }
-  const sign = Math.sign(y2 - y1) || 1;
-  const dy = Math.abs(y2 - y1);
-  const r = Math.min(dy, ROW_HEIGHT) * 0.55;
-  ctx.moveTo(x1, y1);
-  if (bendAtTop) {
-    // Merge-in: curve out from the child dot horizontally, then run
-    // vertical in the parent's lane down to the parent dot.
-    ctx.quadraticCurveTo(x2, y1, x2, y1 + sign * r);
-    ctx.lineTo(x2, y2);
-  } else {
-    // Fork-off (mirror of merge-in): vertical in the child's lane, then
-    // curve out into the parent dot at the bottom. Same "L with rounded
-    // corner" shape as the top, just flipped — the line approaches the
-    // parent dot horizontally just like the merge-in edge leaves the
-    // child dot horizontally.
-    ctx.lineTo(x1, y2 - sign * r);
-    ctx.quadraticCurveTo(x1, y2, x2, y2);
-  }
+  ctx.moveTo(x, wipY);
+  ctx.lineTo(x, rowY(headRow) - scrollTop);
   ctx.stroke();
+  ctx.lineWidth = 1.6;
+  ctx.setLineDash([3, 2]);
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.arc(x, wipY, BIG_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRowSegments(ctx: CanvasRenderingContext2D, segs: RowSegment[], nodeLane: number, cy: number): void {
+  const top = cy - ROW_HEIGHT / 2;
+  const bottom = cy + ROW_HEIGHT / 2;
+  const nx = laneX(nodeLane);
+  ctx.lineWidth = LINE_WIDTH;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const s of segs) {
+    ctx.strokeStyle = laneColor(s.lane);
+    ctx.setLineDash(s.dashed ? [4, 4] : []);
+    ctx.beginPath();
+    tracePath(ctx, s.kind, laneX(s.lane), nx, top, cy, bottom);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+/** Orthogonal edge with one rounded corner: verticals stay in the lane, the
+ * horizontal run sits on the node's center line. `arcTo` degrades to a
+ * straight line when the lane is the node's own (radius 0). */
+function tracePath(
+  ctx: CanvasRenderingContext2D, kind: RowSegment["kind"],
+  lx: number, nx: number, top: number, cy: number, bottom: number,
+): void {
+  const r = Math.min(CORNER_RADIUS, Math.abs(lx - nx));
+  if (kind === "pass") {
+    ctx.moveTo(lx, top);
+    ctx.lineTo(lx, bottom);
+  } else if (kind === "in") {
+    ctx.moveTo(lx, top);
+    ctx.arcTo(lx, cy, nx, cy, r);
+    ctx.lineTo(nx, cy);
+  } else {
+    ctx.moveTo(nx, cy);
+    ctx.arcTo(lx, cy, lx, bottom, r);
+    ctx.lineTo(lx, bottom);
+  }
+}
+
+function nodeRadius(args: RenderArgs, r: number): number {
+  if (args.avatarRows?.has(r)) return AVATAR_SIZE / 2 + 2;
+  if (args.stashRows?.has(r)) return BIG_RADIUS;
+  return DOT_RADIUS;
+}
+
+function drawHover(ctx: CanvasRenderingContext2D, args: RenderArgs): void {
+  const { hoverRow, nodes, scrollTop } = args;
+  if (hoverRow == null || hoverRow < 0 || hoverRow >= nodes.length) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.beginPath();
+  ctx.arc(laneX(nodes[hoverRow].lane), rowY(hoverRow) - scrollTop, nodeRadius(args, hoverRow) + 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawNode(ctx: CanvasRenderingContext2D, args: RenderArgs, r: number, bg: string): void {
+  const node = args.nodes[r];
+  const x = laneX(node.lane);
+  const y = rowY(r) - args.scrollTop;
+  const color = laneColor(node.lane);
+  if (args.rowsWithRefs?.has(r)) drawRefConnector(ctx, args, r, x, y, color);
+  // Rows with an HTML avatar overlay skip the canvas node: the avatar IS
+  // the node. Merges and author-less commits get a solid dot.
+  if (!args.avatarRows?.has(r)) {
+    if (args.stashRows?.has(r)) drawStashGlyph(ctx, x, y, color, bg);
+    else drawDot(ctx, x, y, color, bg);
+  }
+  if (node.sha === args.selectedSha) drawSelection(ctx, x, y, nodeRadius(args, r));
+}
+
+// Lane-colored connector from the node leftward to its ref pill, ending at
+// the pill's measured right edge. The checked-out branch gets a solid 2px
+// line; others a thinner translucent one so pills read as attached without
+// the connectors dominating the view.
+function drawRefConnector(
+  ctx: CanvasRenderingContext2D, args: RenderArgs, r: number, x: number, y: number, color: string,
+): void {
+  const isHead = args.wipHeadSha != null && args.nodes[r].sha === args.wipHeadSha;
+  const extendLeft = args.extendLeft ?? 0;
+  const badgeEnd = args.badgeEndsByRow?.get(r);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = isHead ? 1 : 0.5;
+  ctx.lineWidth = isHead ? 2 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  // badgeEnd is canvas-space; subtract extendLeft for post-translate space.
+  ctx.lineTo(badgeEnd != null ? badgeEnd - extendLeft : -extendLeft, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Stash: rounded SQUARE with dashed border + two-bar glyph inside. Square
+// (not circle) so it's visually distinct from a commit node — only the WIP
+// ghost stays circular.
+function drawStashGlyph(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, bg: string): void {
+  const half = BIG_RADIUS;
+  ctx.fillStyle = bg;
+  ctx.fillRect(x - half - 1, y - half - 1, (half + 1) * 2, (half + 1) * 2);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6;
+  ctx.setLineDash([3, 2]);
+  roundedRect(ctx, x - half, y - half, half * 2, half * 2, 2);
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 3, y - 2, 6, 1.5);
+  ctx.fillRect(x - 3, y + 1, 6, 1.5);
+}
+
+// Solid dot with a bg "punch" ring so lines visibly stop at the node.
+function drawDot(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, bg: string): void {
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.arc(x, y, DOT_RADIUS + 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Crisp white ring just outside the node plus a soft glow so selection
+// pops over any lane color.
+function drawSelection(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number): void {
+  ctx.save();
+  ctx.strokeStyle = SELECT_GLOW;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 3.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = SELECT_RING;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export function laneColor(lane: number): string {

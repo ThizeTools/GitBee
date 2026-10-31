@@ -1,5 +1,5 @@
 import { writable, get } from "svelte/store";
-import { graph, busy, currentRepo, refreshActive } from "$lib/stores/repo";
+import { graph, busy, currentRepo, localBranches, refreshActive } from "$lib/stores/repo";
 import { ipc } from "$lib/ipc";
 import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
 
@@ -104,14 +104,34 @@ export async function checkoutRemoteAndJump(remote: string, branch: string) {
   const repo = get(currentRepo);
   if (!repo) return;
   const fullRemote = `${remote}/${branch}`;
-  let r = await checkoutBranchAutoStash(repo, branch);
-  if (r !== true) {
+  // Create the tracking branch only when no local one exists. The old flow
+  // tried checkout first and treated ANY failure (even a declined
+  // auto-stash prompt) as "branch missing", then failed again on create.
+  if (!get(localBranches).some((b) => b.name === branch)) {
     const c = await runCheckout(() => ipc.branchCreate(repo, branch, fullRemote));
     if (c !== true) { notifyError("Checkout failed", `Could not create ${branch} from ${fullRemote}: ${c}`); return; }
-    r = await checkoutBranchAutoStash(repo, branch);
-    if (r !== true) { notifyError("Checkout failed", `${branch}: ${r}`); return; }
   }
+  const r = await checkoutBranchAutoStash(repo, branch);
+  if (r !== true) { notifyError("Checkout failed", `${branch}: ${r}`); return; }
   notifySuccess("Checked out", `${branch} (tracking ${fullRemote})`);
   const head = get(graph)?.head_sha;
   if (head) scrollGraphTo(head);
+}
+
+/** Double-click on a graph row: checks out the branch pointing at `sha`.
+ * Prefers a local branch other than the current one, else a remote branch
+ * (creating a local tracking branch). No branch, or only the current one,
+ * is a no-op; detached checkout stays an explicit menu action.
+ * Example: `checkoutBranchAtCommit(node.sha)` */
+export async function checkoutBranchAtCommit(sha: string) {
+  const g = get(graph);
+  if (!g) return;
+  const refs = g.refs.filter((r) => r.target_sha === sha);
+  const local = refs.find((r) => r.kind === "localbranch" && r.name !== g.head_branch);
+  if (local) return checkoutAndJump(local.name);
+  if (refs.some((r) => r.kind === "localbranch")) return;
+  const remote = refs.find((r) => r.kind === "remotebranch" && !r.name.endsWith("/HEAD"));
+  if (!remote) return;
+  const slash = remote.name.indexOf("/");
+  await checkoutRemoteAndJump(remote.name.slice(0, slash), remote.name.slice(slash + 1));
 }

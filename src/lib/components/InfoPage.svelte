@@ -26,6 +26,7 @@
       items: [
         { title: "Live filter (Ctrl+Alt+F)", status: "done" },
         { title: "Single-click to jump graph · double-click to checkout", status: "done" },
+        { title: "Double-click a graph row or branch pill to checkout its branch (remote → tracking branch)", status: "done" },
         { title: "Three-dot button + right-click context menu", status: "done" },
         { title: "Stash apply / pop / delete / edit message / hide", status: "done" },
         { title: "Set upstream (modal with remote + branch picker)", status: "done" },
@@ -35,7 +36,9 @@
     {
       title: "Graph",
       items: [
-        { title: "Virtualized canvas + HTML rows (24px per row)", status: "done" },
+        { title: "Virtualized canvas + HTML rows (28px per row)", status: "done" },
+        { title: "GitKraken-style lanes: straight lines, rounded corners on the commit line, 10-color palette, avatar nodes", status: "done" },
+        { title: "Merge into a branch that kept going joins its line (no duplicate parallel lines)", status: "done" },
         { title: "WIP row inline with branch HEAD", status: "done" },
         { title: "Stash entries (including older stash@{N})", status: "done" },
         { title: "Branch / Tag / Commit Message columns — drag to reorder", status: "done" },
@@ -47,6 +50,7 @@
         { title: "Solo collapses graph to one branch's history (drops WIP + HEAD chain)", status: "done" },
         { title: "Pin = single ref, switching unpins previous", status: "done" },
         { title: "Auto-fetch every 5min + on window focus (rate-limited 30s)", status: "done" },
+        { title: "Background refresh: coalesced, skips gitignored files, no loading veil; watcher paused while the window is unfocused", status: "done" },
       ],
     },
     {

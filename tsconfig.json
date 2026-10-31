@@ -10,6 +10,8 @@
     "sourceMap": true,
     "strict": true,
     "moduleResolution": "bundler",
+    // "bun" types the edge-layout tests (bun test src/lib); "node" is the SvelteKit default.
+    "types": ["node", "bun"],
   },
   // Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
   // except $lib which is handled by https://svelte.dev/docs/kit/configuration#files

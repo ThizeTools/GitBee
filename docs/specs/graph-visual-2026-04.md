@@ -1,4 +1,5 @@
 # Graph visual (2026-04)
+> Superseded for paint and geometry by [graph-visual-2026-10.md](graph-visual-2026-10.md).
 
 Match the GitKraken commit graph as closely as possible. The graph is
 the *centerpiece* of the app and must read instantly: where am I, which

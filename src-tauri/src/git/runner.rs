@@ -19,15 +19,15 @@ impl GitRunner {
         Self { git_exe }
     }
 
-    pub async fn run<I, S>(&self, cwd: &Path, args: I) -> AppResult<Vec<u8>>
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<std::ffi::OsStr>,
-    {
+    // GIT_OPTIONAL_LOCKS=0: read-only commands (notably `git status`) must
+    // not rewrite .git/index or take index.lock. The rewrite re-triggered
+    // the repo watcher in a loop, and the lock made the user's own git
+    // commands in other tools fail. See docs/specs/repo-refresh.md.
+    fn base_command(&self, cwd: &Path, stdin: Stdio) -> Command {
         let mut cmd = Command::new(&self.git_exe);
         cmd.current_dir(cwd)
-            .args(args)
-            .stdin(Stdio::null())
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .stdin(stdin)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         // CREATE_NO_WINDOW (0x08000000): keeps git.exe from popping a flashing
@@ -36,6 +36,16 @@ impl GitRunner {
         // refresh, this otherwise looks like an infinite stream of terminals.
         #[cfg(target_os = "windows")]
         cmd.creation_flags(0x0800_0000);
+        cmd
+    }
+
+    pub async fn run<I, S>(&self, cwd: &Path, args: I) -> AppResult<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        let mut cmd = self.base_command(cwd, Stdio::null());
+        cmd.args(args);
         let output = cmd.output().await?;
 
         if !output.status.success() {
@@ -53,8 +63,7 @@ impl GitRunner {
         S: AsRef<std::ffi::OsStr>,
     {
         let bytes = self.run(cwd, args).await?;
-        String::from_utf8(bytes)
-            .map_err(|e| AppError::Parse(format!("non-utf8 git output: {e}")))
+        String::from_utf8(bytes).map_err(|e| AppError::Parse(format!("non-utf8 git output: {e}")))
     }
 
     /// Like `run_text` but never fails on non-UTF8 bytes — decodes lossily
@@ -73,26 +82,25 @@ impl GitRunner {
     }
 
     pub async fn is_repository(&self, cwd: &Path) -> bool {
-        self.run(cwd, ["rev-parse", "--is-inside-work-tree"]).await.is_ok()
+        self.run(cwd, ["rev-parse", "--is-inside-work-tree"])
+            .await
+            .is_ok()
     }
 
     /// Run git with bytes piped to stdin. Used for `git credential …`
     /// commands that read fields from stdin in their prompt protocol.
     pub async fn run_with_stdin<I, S>(
-        &self, cwd: &Path, args: I, stdin_bytes: &[u8],
+        &self,
+        cwd: &Path,
+        args: I,
+        stdin_bytes: &[u8],
     ) -> AppResult<Vec<u8>>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
-        let mut cmd = Command::new(&self.git_exe);
-        cmd.current_dir(cwd)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        #[cfg(target_os = "windows")]
-        cmd.creation_flags(0x0800_0000);
+        let mut cmd = self.base_command(cwd, Stdio::piped());
+        cmd.args(args);
         let mut child = cmd.spawn()?;
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(stdin_bytes).await?;

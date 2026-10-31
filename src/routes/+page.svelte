@@ -149,6 +149,9 @@
     // Auto-fetch active repo every 5 minutes so remote-tracking refs
     // (e.g. origin/gh-pages pushed externally) stay current without manual pulls.
     import("$lib/stores/autofetch").then(({ startAutoFetch }) => startAutoFetch());
+    // Release the watcher's directory handle while GitBee is in the
+    // background; resume and refresh on focus.
+    import("$lib/stores/windowFocus").then(({ startFocusWatchPause }) => startFocusWatchPause());
     const onKey = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
       // Arrow-key navigation across the graph + commit file list.
@@ -322,7 +325,9 @@
           {#if $busyVisible}
             <!-- Lock the sidebar during git operations so the user can't
                  stack actions while one is running. The overlay catches
-                 pointer events and shows a centered spinner. -->
+                 pointer events and shows a centered spinner.
+                 Shown only after a 250 ms delay (busyVisible), so background
+                 refreshes and fast operations never cover the sidebar. -->
             <div class="busy-veil" aria-hidden="true">
               <div class="spinner"></div>
               <div class="lbl">Working…</div>

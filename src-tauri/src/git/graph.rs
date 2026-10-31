@@ -76,11 +76,8 @@ pub fn assign_lanes(commits: Vec<Commit>, head_sha: Option<&str>) -> Vec<GraphNo
             lanes[my_lane] = Some(c.parents[0].clone());
             parent_lanes.push(my_lane as u32);
             for parent in &c.parents[1..] {
-                // Side parents of a HEAD-chain merge are NOT on HEAD
-                // themselves — they get an outer lane.
-                let new_lane = allocate_lane(&mut lanes, false, head_chain_active);
-                lanes[new_lane] = Some(parent.clone());
-                parent_lanes.push(new_lane as u32);
+                let lane = side_parent_lane(&mut lanes, parent, head_chain_active);
+                parent_lanes.push(lane as u32);
             }
         }
 
@@ -99,6 +96,20 @@ pub fn assign_lanes(commits: Vec<Commit>, head_sha: Option<&str>) -> Vec<GraphNo
 
     compact_lanes_by_first_use(&mut nodes, head_chain_active);
     nodes
+}
+
+/// Lane for a merge's side parent. If some lane already awaits that
+/// parent (e.g. a branch that kept going after being merged), join it
+/// instead of opening a second line that runs parallel down to the same
+/// commit. Otherwise allocate an outer lane: side parents of a HEAD-chain
+/// merge are NOT on HEAD themselves. See docs/specs/graph-visual-2026-10.md.
+fn side_parent_lane(lanes: &mut Vec<Option<String>>, parent: &str, head_chain_active: bool) -> usize {
+    if let Some(existing) = lanes.iter().position(|l| l.as_deref() == Some(parent)) {
+        return existing;
+    }
+    let new_lane = allocate_lane(lanes, false, head_chain_active);
+    lanes[new_lane] = Some(parent.to_string());
+    new_lane
 }
 
 /// Walk parent links from HEAD to collect every commit on the HEAD chain
@@ -240,5 +251,19 @@ mod tests {
         assert_eq!(nodes[0].lane, 0);
         assert_eq!(nodes[1].lane, 1);
         assert_eq!(nodes[2].lane, 0);
+    }
+
+    #[test]
+    fn merge_parent_already_awaited_reuses_its_lane() {
+        // f2 continued the feature after f1 was merged into main by m.
+        let nodes = assign_lanes(vec![
+            c("f2", &["f1"]),
+            c("m", &["p", "f1"]),
+            c("f1", &["base"]),
+            c("p", &["base"]),
+            c("base", &[]),
+        ], None);
+        assert_eq!(nodes[1].parent_lanes[1], nodes[0].lane);
+        assert_eq!(nodes[2].lane, nodes[0].lane);
     }
 }

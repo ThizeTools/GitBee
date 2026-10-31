@@ -27,7 +27,9 @@ async function tick(): Promise<void> {
   inFlight = true;
   try {
     await ipc.remoteFetch(t.path);
-    await refreshActive();
+    // Silent: a background fetch must not cover the sidebar with the veil
+    // (it used to, right when the user came back to the window to click).
+    await refreshActive({ silent: true });
   } catch {
     // Silent — offline, auth prompt, etc. Next tick will retry.
   } finally {

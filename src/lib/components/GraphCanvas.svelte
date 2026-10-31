@@ -16,12 +16,13 @@
   // ClientX/Y and getBoundingClientRect return viewport coords post-zoom.
   // Scroll metrics and our row math are in CSS (logical) px. Divide deltas
   // by uiScale to bridge the two.
-  import { graphScrollTarget } from "$lib/stores/graphscroll";
+  import { graphScrollTarget, checkoutBranchAtCommit } from "$lib/stores/graphscroll";
   import { openMenu, type MenuItem } from "$lib/stores/contextmenu";
   import { commitMenu } from "$lib/menus/refMenus";
   import { ipc } from "$lib/ipc";
   import { render, laneColor } from "$lib/graph/renderer";
-  import { ROW_HEIGHT, TOP_PADDING, rowFromY, measure } from "$lib/graph/layout";
+  import { ROW_HEIGHT, TOP_PADDING, AVATAR_SIZE, laneX, rowFromY, measure } from "$lib/graph/layout";
+  import { buildRowSegments } from "$lib/graph/edges";
   import type { GraphNode } from "$lib/ipc";
   import ResizeHandle from "./ResizeHandle.svelte";
 
@@ -83,6 +84,10 @@
     }
     return s;
   });
+
+  // Per-row line pieces (pass / in / out) — recomputed only when the node
+  // list or stash set changes, not on scroll. See docs/specs/graph-visual-2026-10.md.
+  const rowSegments = $derived(buildRowSegments(nodes, stashRows));
 
   const refsW = $derived($layout.graphRefsWidth);
   // Hard min — never auto-grow beyond this. The canvas is clipped by the
@@ -215,7 +220,7 @@
 
   $effect(() => {
     void nodes; void scrollTop; void viewHeight; void $selectedSha; void hoverRow; void wipChangeCount;
-    void graphW; void avatarRows; void stashRows;
+    void graphW; void avatarRows; void stashRows; void rowSegments;
     drawCanvas();
   });
 
@@ -307,7 +312,7 @@
     const wipShiftPx = wipVisible ? ROW_HEIGHT : 0;
     const wipShiftRow = wipVisible ? 1 : 0;
     render({
-      ctx, nodes, shaToRow,
+      ctx, nodes, shaToRow, segments: rowSegments,
       scrollTop: scrollTop - wipShiftPx,
       viewHeight, width,
       selectedSha: $selectedSha === WIP_SHA ? null : $selectedSha,
@@ -334,6 +339,7 @@
   }
   function onMouseLeave() { hoverRow = null; }
 
+  // Only the first click of a double-click selects; the second used to toggle the selection back off before the dblclick checkout ran.
   function selectRow(row: number) {
     // Click-toggle: clicking the already-selected row deselects it and
     // collapses the right panel. Clicking a new row selects it and expands
@@ -560,7 +566,8 @@
             style:top="{top}px"
             style:grid-template-columns={gridTemplate}
             style:--row-lane={isWip ? "var(--fg-muted)" : laneColor(node!.lane)}
-            onclick={() => selectRow(row)}
+            onclick={(e) => { if (e.detail < 2) selectRow(row); }}
+            ondblclick={() => { if (!isWip) checkoutBranchAtCommit(node!.sha); }}
             oncontextmenu={(e) => onRowContext(e, isWip ? null : node!.sha, isWip)}
           >
             {#each order as col, i (col)}
@@ -588,8 +595,8 @@
               {:else if col === "graph"}
                 <div class="cell-graph">
                   {#if !isWip && avatarRows.has(row - (wipVisible ? 1 : 0))}
-                    {@const lx = 14 + node!.lane * 18}
-                    {@const AVATAR = 14}
+                    {@const lx = laneX(node!.lane)}
+                    {@const AVATAR = AVATAR_SIZE}
                     <!-- Center via flexbox on the parent (.cell-graph is
                          display:flex; align-items:center). Horizontal
                          placement uses `margin-left` from the lane offset
@@ -683,17 +690,17 @@
     position: absolute;
     left: 0; right: 0;
     /* must match ROW_HEIGHT in $lib/graph/layout.ts — used by rowFromY */
-    height: 24px;
+    height: 28px;
     display: grid;
     align-items: stretch;
     color: var(--fg);
     background: transparent;
     border: 0;
     /* Buttons carry browser-default padding (~1-2px). With `box-sizing:
-       border-box; height: 24px`, that padding eats into the inner content
+       border-box; height: 28px`, that padding eats into the inner content
        area, which collapses the cell-graph below the canvas-drawn dot
-       (which uses the full 24px). Force padding/margin to 0 so the cell
-       grid maps 1:1 to the row's outer 24px. */
+       (which uses the full 28px). Force padding/margin to 0 so the cell
+       grid maps 1:1 to the row's outer 28px. */
     padding: 0;
     margin: 0;
     font: inherit;
@@ -755,22 +762,22 @@
   .cell-graph {
     pointer-events: none;
     border-right: 1px solid var(--border);
-    height: 24px;
+    height: 28px;
     display: flex;
     align-items: center;
   }
   .lane-avatar {
-    flex: 0 0 14px;
-    width: 14px; height: 14px;
+    flex: 0 0 18px;
+    width: 18px; height: 18px;
     pointer-events: none;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     line-height: 0;
-    box-shadow:
-      0 0 0 1px var(--bg),
-      0 0 0 2px var(--row-lane);
+    background: var(--bg);
+    /* 2px lane ring → 22px node, matching LANE_WIDTH (graph-visual-2026-10). */
+    box-shadow: 0 0 0 2px var(--row-lane);
   }
   /* Don't force `display: block` here — the fallback span uses
      `display: inline-flex` to center its initials. Block would break
@@ -779,8 +786,8 @@
      display:flex) takes care of centering the inner element on the
      row. */
   .lane-avatar :global(.avatar) {
-    width: 14px !important;
-    height: 14px !important;
+    width: 18px !important;
+    height: 18px !important;
     border-radius: 50%;
   }
   .cell-msg {

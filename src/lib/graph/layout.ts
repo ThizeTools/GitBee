@@ -1,15 +1,17 @@
 import type { GraphNode } from "$lib/ipc";
 
-// Tightened to match the dense, GitKraken-like reference. Each constant is
-// load-bearing — the HTML rows in GraphCanvas.svelte must use ROW_HEIGHT
-// directly so canvas dots and text rows stay perfectly aligned.
-export const ROW_HEIGHT = 24;
-// Lane spacing wide enough that adjacent lane lines read as separate
-// columns rather than a stacked bundle. Below ~16px the dots and lines
-// of neighboring branches visually fuse together.
-export const LANE_WIDTH = 18;
-export const DOT_RADIUS = 5.5;
-export const LEFT_PADDING = 14;
+// GitKraken-like proportions: 28 px rows hold a 22 px node (18 px avatar +
+// 2 px lane ring) with breathing room, and lanes are one node wide so the
+// lines of neighboring branches never fuse. Each constant is load-bearing —
+// the HTML rows in GraphCanvas.svelte must use ROW_HEIGHT directly so canvas
+// lines and text rows stay perfectly aligned. See docs/specs/graph-visual-2026-10.md.
+export const ROW_HEIGHT = 28;
+export const LANE_WIDTH = 22;
+export const AVATAR_SIZE = 18;
+export const DOT_RADIUS = 6;
+// Radius of the single corner where a lane line turns onto a node's center line.
+export const CORNER_RADIUS = 8;
+export const LEFT_PADDING = 16;
 export const TOP_PADDING = 4;
 
 export interface LayoutMetrics {

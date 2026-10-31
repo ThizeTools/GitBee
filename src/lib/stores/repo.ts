@@ -43,24 +43,26 @@ export const recent = writable<RecentRepoDto[]>([]);
 export const errorMessage = writable<string | null>(null);
 export const busy = writable<boolean>(false);
 
-// Debounced/smoothed view of `busy` for UI overlays. Falling edges (true →
-// false) are delayed by BUSY_HIDE_DELAY ms so a quick succession of git
-// operations doesn't flicker the loading veil on/off between them. Rising
-// edges propagate immediately. Use this in components, not raw `busy`.
+// Debounced/smoothed view of `busy` for UI overlays. Rising edges are
+// delayed by BUSY_SHOW_DELAY so fast operations never flash the veil over
+// the sidebar; falling edges by BUSY_HIDE_DELAY so a quick succession of
+// git operations doesn't flicker it on/off between them. Use this in
+// components, not raw `busy`. See docs/specs/repo-refresh.md.
 export const busyVisible = writable<boolean>(false);
+const BUSY_SHOW_DELAY = 250;
 const BUSY_HIDE_DELAY = 350;
+let busyShowTimer: ReturnType<typeof setTimeout> | null = null;
 let busyHideTimer: ReturnType<typeof setTimeout> | null = null;
 busy.subscribe((b) => {
   if (b) {
     if (busyHideTimer) { clearTimeout(busyHideTimer); busyHideTimer = null; }
-    busyVisible.set(true);
-  } else {
-    if (busyHideTimer) clearTimeout(busyHideTimer);
-    busyHideTimer = setTimeout(() => {
-      busyVisible.set(false);
-      busyHideTimer = null;
-    }, BUSY_HIDE_DELAY);
+    if (get(busyVisible) || busyShowTimer) return;
+    busyShowTimer = setTimeout(() => { busyVisible.set(true); busyShowTimer = null; }, BUSY_SHOW_DELAY);
+    return;
   }
+  if (busyShowTimer) { clearTimeout(busyShowTimer); busyShowTimer = null; }
+  if (busyHideTimer) clearTimeout(busyHideTimer);
+  busyHideTimer = setTimeout(() => { busyVisible.set(false); busyHideTimer = null; }, BUSY_HIDE_DELAY);
 });
 
 let unlistenChange: UnlistenFn | null = null;
@@ -231,10 +233,54 @@ function tabName(path: string): string {
 // covering the UI with a spinner every time a file mtime changes is
 // jarring. Foreground actions (pull, push, checkout, …) still pass
 // silent=false so the user gets the usual feedback.
-export async function refreshActive(opts: { silent?: boolean } = {}) {
+// At most one load runs at a time; calls made during a run coalesce into
+// ONE follow-up run that starts after it (silent only if every coalesced
+// caller asked for silent), so a caller awaiting this after an action
+// always sees data loaded after its call. Overlapping watcher / focus /
+// action refreshes used to run 10 git processes each, in parallel.
+let refreshRunning: Promise<void> | null = null;
+let refreshFollowUp: Promise<void> | null = null;
+let followUpSilent = true;
+
+export function refreshActive(opts: { silent?: boolean } = {}): Promise<void> {
+  const silent = opts.silent === true;
+  if (!refreshRunning) return startRefresh(silent);
+  followUpSilent = followUpSilent && silent;
+  if (!refreshFollowUp) {
+    refreshFollowUp = refreshRunning.then(() => {
+      const s = followUpSilent;
+      refreshFollowUp = null;
+      followUpSilent = true;
+      return startRefresh(s);
+    });
+  }
+  return refreshFollowUp;
+}
+
+function startRefresh(silent: boolean): Promise<void> {
+  const run: Promise<void> = loadActiveTab(silent).finally(() => {
+    if (refreshRunning === run) refreshRunning = null;
+  });
+  refreshRunning = run;
+  return run;
+}
+
+type TabSnapshot = Pick<RepoTab, "graph" | "status" | "stashes" | "remotes" | "worktrees" | "opState">;
+
+/** Returns `cur` itself when nothing changed, else a copy with only the
+ * changed fields replaced, so an idle refresh doesn't touch the stores.
+ * Example: `const next = withChangedFields(tab, fresh); if (next !== tab) ...` */
+function withChangedFields(cur: RepoTab, next: TabSnapshot): RepoTab {
+  const changed: Partial<TabSnapshot> = {};
+  for (const key of Object.keys(next) as (keyof TabSnapshot)[]) {
+    if (JSON.stringify(cur[key]) !== JSON.stringify(next[key])) changed[key] = next[key] as never;
+  }
+  return Object.keys(changed).length ? { ...cur, ...changed } : cur;
+}
+
+async function loadActiveTab(silent: boolean): Promise<void> {
   const t = get(activeTab);
   if (!t || t.kind === "newtab" || !t.path) return;
-  const silent = opts.silent === true;
   if (!silent) busy.set(true);
   try {
     const [g, st, sl, rl, wt, op] = await Promise.all([
@@ -245,9 +291,11 @@ export async function refreshActive(opts: { silent?: boolean } = {}) {
       ipc.worktreeList(t.path).catch(() => []),
       ipc.opState(t.path).catch(() => null),
     ]);
-    updateTab(t.id, (cur) => ({
-      ...cur, graph: g, status: st, stashes: sl, remotes: rl, worktrees: wt, opState: op,
-    }));
+    const cur = get(tabs).find((x) => x.id === t.id);
+    const next = cur && withChangedFields(cur, {
+      graph: g, status: st, stashes: sl, remotes: rl, worktrees: wt, opState: op,
+    });
+    if (cur && next && next !== cur) updateTab(t.id, () => next);
     errorMessage.set(null);
   } catch (e) {
     errorMessage.set(String(e));
@@ -256,10 +304,37 @@ export async function refreshActive(opts: { silent?: boolean } = {}) {
   }
 }
 
+// Set while the window is unfocused and the backend watcher is stopped.
+let watcherPaused = false;
+
 async function attachWatcher(path: string) {
+  watcherPaused = false;
   if (unlistenChange) { unlistenChange(); unlistenChange = null; }
   await ipc.watcherStart(path);
   unlistenChange = await listen("repo-changed", () => { refreshActive({ silent: true }); });
+}
+
+/** Stops the backend watcher but keeps the event listener, releasing the
+ * OS directory handle on the repo while the window is in the background
+ * (Windows reports it as "file in use by GitBee").
+ * Example: `window.addEventListener("blur", () => void pauseWatcher())` */
+export async function pauseWatcher(): Promise<void> {
+  const t = get(activeTab);
+  if (!t || t.kind === "newtab" || !t.path) return;
+  watcherPaused = true;
+  await ipc.watcherStop().catch(() => {});
+}
+
+/** Restarts the watcher after `pauseWatcher` and catches up with one
+ * silent refresh. No-op when not paused.
+ * Example: `window.addEventListener("focus", () => void resumeWatcher())` */
+export async function resumeWatcher(): Promise<void> {
+  if (!watcherPaused) return;
+  watcherPaused = false;
+  const t = get(activeTab);
+  if (!t || t.kind === "newtab" || !t.path) return;
+  await ipc.watcherStart(t.path).catch(() => {});
+  await refreshActive({ silent: true });
 }
 
 /// Stale recents auto-prune: when the backend rejects a path with
@@ -348,7 +423,9 @@ export async function activateTab(id: string) {
     }
   }
   await attachWatcher(t.path);
-  await refreshActive();
+  // Veil only on the tab's first load; re-activating a loaded tab
+  // refreshes in the background.
+  await refreshActive({ silent: !!t.graph });
   // Warm caches that downstream menus rely on (#3 round 9: hide push when
   // tag exists on remote). Lazy-import to avoid a cycle.
   import("$lib/menus/refMenus").then((m) => m.refreshRemoteTags()).catch(() => {});

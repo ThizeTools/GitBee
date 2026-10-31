@@ -196,7 +196,7 @@
       title={primary.full}
       role="button"
       tabindex="0"
-      ondblclick={() => checkout(primary)}
+      ondblclick={(e) => { e.stopPropagation(); checkout(primary); }}
       oncontextmenu={(e) => onContext(e, primary)}
     >
       {#if primary.isHead}<span class="head-mark">✓</span>{/if}
@@ -277,9 +277,9 @@
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    font-size: 10px;
+    font-size: 11px;
     padding: 0 6px;
-    line-height: 14px;
+    line-height: 18px;
     white-space: nowrap;
     border: 1px solid;
     background: transparent;
