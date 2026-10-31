@@ -5,6 +5,7 @@
     resolveTheme, applyTheme, saveCustomTheme, deleteCustomTheme,
   } from "$lib/stores/ui";
   import { alertDialog, confirmDialog } from "$lib/stores/dialog";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // Editor state — null means "no editor open, just showing the grid".
   let editor = $state<Theme | null>(null);
@@ -203,12 +204,14 @@
         <h2>{editor ? "Custom theme" : "Theme"}</h2>
         {#if !editor}
           <button class="head-btn" onclick={() => importInput?.click()} title="Import .gkptheme.json">
-            ⬇ Import
+            <Icon name="download" size={14} /> Import
           </button>
           <input type="file" accept=".json,application/json" bind:this={importInput}
             style:display="none" onchange={onImport} />
         {/if}
-        <button class="x" onclick={close} title="Close">×</button>
+        <button class="x" onclick={close} title="Close" aria-label="Close">
+          <Icon name="close" size={16} />
+        </button>
       </header>
 
       {#if !editor}
@@ -234,21 +237,31 @@
               <div class="card-foot">
                 <span class="name">{t.name}</span>
                 <span class="actions">
-                  <button type="button" class="ico-btn" title="Export"
-                    onclick={(e) => { e.stopPropagation(); exportTheme(t); }}>⬆</button>
+                  <button type="button" class="ico-btn" title="Export" aria-label="Export"
+                    onclick={(e) => { e.stopPropagation(); exportTheme(t); }}>
+                    <Icon name="export" size={14} />
+                  </button>
                   {#if !t.builtin}
-                    <button type="button" class="ico-btn" title="Edit"
-                      onclick={(e) => { e.stopPropagation(); startEdit(t); }}>✎</button>
-                    <button type="button" class="ico-btn danger" title="Delete"
-                      onclick={(e) => { e.stopPropagation(); remove(t.id); }}>🗑</button>
+                    <button type="button" class="ico-btn" title="Edit" aria-label="Edit"
+                      onclick={(e) => { e.stopPropagation(); startEdit(t); }}>
+                      <Icon name="file-modified" size={14} />
+                    </button>
+                    <button type="button" class="ico-btn danger" title="Delete" aria-label="Delete"
+                      onclick={(e) => { e.stopPropagation(); remove(t.id); }}>
+                      <Icon name="trash" size={14} />
+                    </button>
                   {/if}
                 </span>
-                {#if t.id === $activeThemeId}<span class="dot">●</span>{/if}
+                {#if t.id === $activeThemeId}
+                  <span class="dot">
+                    <Icon name="check" size={12} title="Active theme" />
+                  </span>
+                {/if}
               </div>
             </div>
           {/each}
           <button class="card add" onclick={() => startCustom(BUILTIN_THEMES[0])}>
-            <div class="add-ico">+</div>
+            <div class="add-ico"><Icon name="add" size={24} /></div>
             <div class="card-foot"><span class="name">New custom theme</span></div>
           </button>
         </div>
@@ -278,7 +291,9 @@
             </label>
           {/each}
           <footer class="foot">
-            <button onclick={() => exportTheme(editor!)}>⬆ Export</button>
+            <button onclick={() => exportTheme(editor!)}>
+              <Icon name="export" size={14} /> Export
+            </button>
             <span style:flex="1"></span>
             <button onclick={cancel}>Cancel</button>
             <button class="primary" onclick={persist}>Save & apply</button>
@@ -303,42 +318,46 @@
     display: flex; flex-direction: column;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 20px 60px rgba(0,0,0,0.55);
     overflow: hidden;
     color: var(--fg);
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   .head {
-    display: flex; align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20);
+    border-bottom: 1px solid var(--border-strong);
   }
-  .head h2 { margin: 0; flex: 1; font-size: 14px; font-weight: 600; }
+  .head h2 { margin: 0; flex: 1; font-size: var(--fs-lg); font-weight: 600; }
   .head-btn {
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    height: 28px;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 4px 10px; cursor: pointer; font-size: 12px;
-    margin-right: 8px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-5); cursor: pointer; font-size: var(--fs-md);
   }
   .head-btn:hover { background: var(--border); }
   .x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 22px; cursor: pointer; line-height: 1; padding: 0 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
   .x:hover { color: var(--fg); }
 
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
-    padding: 16px;
+    gap: var(--sp-6);
+    padding: var(--sp-15) var(--sp-20);
     overflow: auto;
   }
   .card {
     display: flex; flex-direction: column;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 0;
     cursor: pointer;
     color: var(--fg);
@@ -348,32 +367,36 @@
   .card:hover { border-color: var(--border-strong); }
   .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .swatch {
-    height: 80px; padding: 8px;
-    display: flex; flex-direction: column; gap: 6px; justify-content: center;
+    height: 80px; padding: var(--sp-4);
+    display: flex; flex-direction: column; gap: var(--sp-3); justify-content: center;
   }
-  .swatch-row { display: flex; gap: 6px; }
+  .swatch-row { display: flex; gap: var(--sp-3); }
   .swatch-row span {
     flex: 1; height: 18px;
-    border-radius: 3px;
+    border-radius: var(--radius-sm);
     border: 1px solid rgba(255,255,255,0.08);
   }
   .card-foot {
-    display: flex; align-items: center; gap: 6px;
-    padding: 8px 10px;
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-5);
     border-top: 1px solid var(--border);
     background: var(--bg-elev);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
   .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .actions { display: flex; gap: 4px; }
+  .actions { display: flex; gap: var(--sp-2); }
   .ico-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row);
     background: transparent; border: 0;
-    color: var(--fg-muted); padding: 0 4px; border-radius: 3px;
-    cursor: pointer; font-size: 12px;
+    color: var(--fg-muted); border-radius: var(--radius);
+    cursor: pointer;
   }
   .ico-btn:hover { background: var(--border); color: var(--fg); }
   .ico-btn.danger:hover { color: var(--del); }
-  .dot { color: var(--accent); font-size: 10px; }
+  .dot {
+    display: inline-flex; align-items: center; color: var(--accent);
+  }
 
   .card.add {
     align-items: center; justify-content: center;
@@ -381,55 +404,58 @@
   }
   .add-ico {
     flex: 1; display: flex; align-items: center; justify-content: center;
-    font-size: 36px; color: var(--fg-muted);
+    color: var(--fg-muted);
   }
   .card.add:hover .add-ico { color: var(--accent); }
 
   .editor {
-    padding: 14px 16px;
+    padding: var(--sp-15) var(--sp-20);
     overflow: auto;
-    display: flex; flex-direction: column; gap: 10px;
+    display: flex; flex-direction: column; gap: var(--sp-5);
   }
   .row {
     display: grid;
     grid-template-columns: 140px 50px 1fr;
-    align-items: center; gap: 10px;
+    align-items: center; gap: var(--sp-5);
   }
   .row:not(.color-row) { grid-template-columns: 140px 1fr; }
-  .lbl { color: var(--fg-muted); font-size: 12px; }
+  .lbl { color: var(--fg-muted); font-size: var(--fs-md); }
   .row input[type="text"] {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 5px 8px; font: inherit;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-4); font: inherit;
   }
   .row input[type="color"] {
     width: 50px; height: 28px; padding: 0;
-    border: 1px solid var(--border); border-radius: 4px; background: transparent;
+    border: 1px solid var(--border); border-radius: var(--radius); background: transparent;
     cursor: pointer;
   }
-  .hex { font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; }
-  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .hex { font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-md); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .seg button {
     background: transparent; color: var(--fg-muted); border: 0;
-    padding: 5px 14px; cursor: pointer; font-size: 12px;
+    padding: var(--sp-3) var(--sp-8); cursor: pointer; font-size: var(--fs-md);
   }
   .seg button.active { background: var(--accent); color: var(--bg); font-weight: 600; }
 
   .foot {
-    display: flex; gap: 8px; justify-content: flex-end;
-    padding-top: 8px; border-top: 1px solid var(--border);
-    margin-top: 6px;
+    display: flex; gap: var(--sp-4); justify-content: flex-end; align-items: center;
+    padding-top: var(--sp-4); border-top: 1px solid var(--border);
+    margin-top: var(--sp-3);
   }
+  /* Footer buttons: 28 px high. */
   .foot button {
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    height: 28px;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 14px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-6); cursor: pointer; font-size: var(--fs-md);
   }
   .foot button:hover { background: var(--border); }
   .foot button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
 
   .hint {
-    margin: 0; padding: 0 16px 12px;
-    font-size: 11px; color: var(--fg-muted);
+    margin: 0; padding: 0 var(--sp-20) var(--sp-6);
+    font-size: var(--fs-sm); color: var(--fg-muted);
   }
 </style>

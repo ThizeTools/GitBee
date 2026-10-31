@@ -27,18 +27,20 @@
 
 <style>
   li { list-style: none; }
+  /* Palette rows are 28 px high, with the category on the right. */
   button {
     width: 100%;
+    height: 28px;
     background: transparent;
     border: 0;
     color: var(--fg);
     font: inherit;
     text-align: left;
-    padding: 6px 10px;
+    padding: 0 var(--sp-5);
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: var(--radius);
     display: flex;
-    gap: 10px;
+    gap: var(--sp-5);
     align-items: center;
   }
   li.active button,
@@ -57,7 +59,7 @@
   }
   .subtitle {
     color: var(--fg-muted);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     max-width: 45%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -65,7 +67,7 @@
   }
   .category {
     color: var(--fg-muted);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     flex-shrink: 0;
   }
 </style>

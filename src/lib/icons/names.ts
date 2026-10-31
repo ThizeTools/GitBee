@@ -72,6 +72,18 @@ export const ICON_NAMES = [
   "filter",
   "star",
   "home",
+  "sign-out",
+  "export",
+  "grip",
+  "arrow-left",
+  "arrow-right",
+  "chevron-up",
+  "chevron-left",
+  "sort",
+  "blame",
+  "reset",
+  "cherry-pick",
+  "checkout",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -142,6 +154,21 @@ export const ICON_LUCIDE_NAMES = {
   filter: "Funnel",
   star: "Star",
   home: "House",
+  "sign-out": "LogOut",
+  export: "Upload",
+  grip: "GripVertical",
+  "arrow-left": "ArrowLeft",
+  "arrow-right": "ArrowRight",
+  "chevron-up": "ChevronUp",
+  "chevron-left": "ChevronLeft",
+  // Z->A is drawn by the call site (CSS flip), not by a second icon.
+  sort: "ArrowDownAZ",
+  // Lucide has no per-line author icon; FileUser reads as "who wrote this file".
+  blame: "FileUser",
+  reset: "RotateCcw",
+  "cherry-pick": "Cherry",
+  // LogIn reads as sign-in, so checkout uses the switch arrows.
+  checkout: "ArrowRightLeft",
 } as const satisfies Record<IconName, LucideExportName>;
 
 /** Every Lucide export that Icon.svelte must import (exhaustive, see Icon.svelte). */

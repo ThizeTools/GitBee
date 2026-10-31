@@ -100,34 +100,40 @@
 </article>
 
 <style>
-  .detail { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px; overflow-y: auto; min-height: 0; color: var(--fg); font-size: 12px; }
-  header { display: flex; flex-direction: column; gap: 6px; }
-  .heading { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: var(--fg-muted); font-weight: 600; letter-spacing: 0.04em; }
+  .detail { display: flex; flex-direction: column; gap: var(--sp-6); padding: var(--sp-8); overflow-y: auto; min-height: 0; color: var(--fg); font-size: var(--fs-md); }
+  header { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .heading { display: flex; align-items: baseline; gap: var(--sp-4); flex-wrap: wrap; }
+  h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; }
+  h3 { margin: 0 0 var(--sp-3); font-size: var(--fs-sm); text-transform: uppercase; color: var(--fg-muted); font-weight: 600; letter-spacing: 0.04em; }
   .num { color: var(--fg-muted); }
-  .route { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .route { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
   .route code { font-family: "Cascadia Code", Consolas, monospace; color: var(--accent); }
   .muted { color: var(--fg-muted); }
-  .badge { font-size: 10px; padding: 1px 6px; border-radius: 9px; border: 1px solid var(--border-strong); color: var(--fg-muted); }
-  .badge-open { color: #3fb950; border-color: rgba(63, 185, 80, 0.5); }
-  .badge-merged { color: #a371f7; border-color: rgba(163, 113, 247, 0.5); }
-  .badge-closed { color: #f85149; border-color: rgba(248, 81, 73, 0.5); }
-  .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  /* State pill: 18 px high (no token), radius-sm. */
+  .badge {
+    display: inline-flex; align-items: center; height: 18px; font-size: var(--fs-xs);
+    padding: 0 var(--sp-3); border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong); color: var(--fg-muted);
+  }
+  .badge-open { color: var(--add); border-color: color-mix(in srgb, var(--add) 50%, transparent); }
+  .badge-merged { color: var(--remote); border-color: color-mix(in srgb, var(--remote) 50%, transparent); }
+  .badge-closed { color: var(--del); border-color: color-mix(in srgb, var(--del) 50%, transparent); }
+  .actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
   .grow { flex: 1; }
+  /* Action buttons: 24 px high, the toolbar hit size. */
   .actions button {
-    background: transparent; border: 1px solid var(--border-strong); color: var(--fg);
-    padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    height: var(--h-row); background: transparent; border: 1px solid var(--border-strong); color: var(--fg);
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm);
   }
   .actions button:hover:not(:disabled) { background: var(--border); }
   .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
   .actions button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
-  .facts { display: flex; flex-direction: column; gap: 4px; }
+  .facts { display: flex; flex-direction: column; gap: var(--sp-2); }
   .k { display: inline-block; width: 70px; color: var(--fg-muted); }
-  .add { color: #3fb950; }
-  .del { color: #f85149; }
-  .labels { display: flex; gap: 6px; flex-wrap: wrap; }
-  .chip { border: 1px solid; border-radius: 10px; padding: 1px 8px; font-size: 11px; }
-  .reviewers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-  .body { white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: 12px; }
+  .add { color: var(--add); }
+  .del { color: var(--del); }
+  .labels { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+  .chip { border: 1px solid; border-radius: var(--radius-sm); padding: 0 var(--sp-4); font-size: var(--fs-sm); }
+  .reviewers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+  .body { white-space: pre-wrap; word-break: break-word; line-height: 1.5; font-size: var(--fs-md); }
 </style>

@@ -1,44 +1,53 @@
 /* Rows and section headers shared by the sidebar sections. Imported once from
    Sidebar.svelte. Every selector sits under `.sidebar`, so these rules cannot
-   reach other panels that reuse a class name such as `.count` or `.list`. */
+   reach other panels that reuse a class name such as `.count` or `.list`.
+   Sizes come from the layout tokens (docs/specs/ui-layout-2026-11.md, Region 3). */
 
-.sidebar .section { border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-.sidebar .section-head-row { display: flex; align-items: center; }
+/* Section: a 30 px header (chevron, title, count) above its rows. */
+.sidebar .section { border-bottom: 1px solid var(--border); padding-bottom: var(--sp-2); }
+.sidebar .section-head-row { display: flex; align-items: center; height: var(--h-section); }
 .sidebar .section-head {
-  flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+  flex: 1; display: flex; align-items: center; gap: var(--sp-4); min-width: 0;
+  height: var(--h-section); padding: 0 var(--sp-6);
   background: transparent; border: 0; color: var(--fg-muted);
-  padding: 6px 14px; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.7px; font-weight: 700; cursor: pointer; text-align: left;
+  font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em;
+  font-weight: 700; cursor: pointer; text-align: left;
 }
 .sidebar .section-head:hover { color: var(--fg); }
-.sidebar .section-head .caret { font-size: 9px; width: 10px; }
-.sidebar .section-head .title { flex: 1; }
-/* The "⋯" beside a section title. Shown on hover, like the row "⋯" buttons. */
-.sidebar .section-menu {
-  background: transparent; border: 0; color: var(--fg-muted);
-  cursor: pointer; padding: 0 10px; font-size: 14px; line-height: 1;
-  visibility: hidden;
+.sidebar .section-head .caret { display: inline-flex; flex-shrink: 0; color: var(--fg-muted); }
+.sidebar .section-head .title {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sidebar .section-head-row:hover .section-menu { visibility: visible; }
-.sidebar .section-menu:hover { color: var(--fg); }
 .sidebar .count {
-  font-size: 11px; background: var(--bg); color: var(--fg-muted);
-  padding: 1px 8px; border-radius: 10px; font-weight: 600; border: 1px solid var(--border);
+  flex-shrink: 0; font-size: var(--fs-xs); color: var(--fg-muted);
+  background: var(--bg); padding: 1px var(--sp-4); border-radius: 8px;
+  font-weight: 600; border: 1px solid var(--border);
 }
-.sidebar .count-inline { font-size: 10px; color: var(--fg-muted); margin-left: auto; }
 
+/* The "more" button beside a section title. Part of the hover toolbar: 24x24,
+   shown while the header is hovered or the button has keyboard focus. */
+.sidebar .section-menu {
+  width: var(--h-row); height: var(--h-row); flex-shrink: 0; margin-right: var(--sp-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--fg-muted); padding: 0;
+  border-radius: var(--radius); cursor: pointer; visibility: hidden;
+}
+.sidebar .section-head-row:hover .section-menu,
+.sidebar .section-menu:focus-visible { visibility: visible; }
+.sidebar .section-menu:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* Rows. A nested list adds one tree level: 16 px (--sp-8) per level. */
 .sidebar .list { list-style: none; margin: 0; padding: 0; }
-.sidebar .nested { list-style: none; margin: 0; padding: 0 0 0 22px; }
-.sidebar .leaf, .sidebar .group { display: flex; align-items: center; padding-right: 8px; }
+.sidebar .nested { list-style: none; margin: 0; padding: 0 0 0 var(--sp-8); }
+.sidebar .leaf { display: flex; align-items: center; height: var(--h-row); padding-right: var(--sp-2); }
 .sidebar .group { display: block; }
 .sidebar .leaf .link, .sidebar .group-head {
-  flex: 1; background: transparent; border: 0; color: var(--fg);
-  text-align: left; padding: 3px 14px 3px 26px; cursor: pointer;
-  overflow: hidden; display: flex; gap: 8px; align-items: center;
-  font-size: 12px; border-left: 2px solid transparent; width: 100%;
-  line-height: 18px;
+  flex: 1; min-width: 0; height: var(--h-row);
+  background: transparent; border: 0; color: var(--fg);
+  text-align: left; padding: 0 var(--sp-6); cursor: pointer;
+  overflow: hidden; display: flex; gap: var(--sp-3); align-items: center;
+  font-size: var(--fs-md); border-left: 2px solid transparent;
 }
-.sidebar .group-head { padding-left: 28px; }
 /* readonly variant kept for future use (tags / remote heads). */
 .sidebar .leaf .link:hover:not(.readonly), .sidebar .group-head:hover {
   background: var(--bg); border-left-color: var(--border);
@@ -47,25 +56,34 @@
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   border-left-color: var(--accent); color: var(--accent); font-weight: 500;
 }
-.sidebar .leaf .ico { width: 14px; text-align: center; flex-shrink: 0; font-size: 12px; color: var(--fg-muted); }
+/* Leading icon, 14 px (--icon-sm). Rendered by Icon.svelte with class "ico". */
+.sidebar .ico { flex-shrink: 0; color: var(--fg-muted); }
 .sidebar .leaf.active .ico { color: var(--accent); }
 .sidebar .leaf .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar .muted { padding: 6px 28px; color: var(--fg-muted); font-style: italic; font-size: 11px; }
-.sidebar .dots {
-  background: transparent; border: 0; color: var(--fg-muted);
-  cursor: pointer; padding: 0 8px; visibility: hidden;
-  font-size: 16px; line-height: 1; border-radius: 3px;
+.sidebar .muted {
+  display: flex; align-items: center; height: var(--h-row); padding: 0 var(--sp-6);
+  color: var(--fg-muted); font-style: italic; font-size: var(--fs-sm);
 }
-.sidebar .leaf:hover .dots { visibility: visible; }
-.sidebar .dots:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
+
+/* Hover action at the right of a row: 24x24, hidden until the row is hovered
+   or the button takes keyboard focus. Hit target is the full 24x24. */
+.sidebar .row-action {
+  width: var(--h-row); height: var(--h-row); flex-shrink: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--fg-muted);
+  border-radius: var(--radius); cursor: pointer; visibility: hidden;
+}
+.sidebar .leaf:hover .row-action,
+.sidebar .row-action:focus-visible { visibility: visible; }
+.sidebar .row-action:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
 /* Submodule rows: the short sha and the state badge sit after the name. */
 .sidebar .leaf .sha {
-  font-family: ui-monospace, Consolas, monospace; font-size: 10px;
+  font-family: ui-monospace, Consolas, monospace; font-size: var(--fs-xs);
   color: var(--fg-muted); flex-shrink: 0;
 }
 .sidebar .state {
-  margin-left: auto; flex-shrink: 0; font-size: 10px; padding: 0 6px;
+  margin-left: auto; flex-shrink: 0; font-size: var(--fs-xs); padding: 0 var(--sp-3);
   border-radius: 8px; border: 1px solid var(--border); color: var(--fg-muted);
   white-space: nowrap;
 }
@@ -75,20 +93,23 @@
 .sidebar .state-uninitialized { font-style: italic; }
 .sidebar .leaf .link.uninit .name { color: var(--fg-muted); font-style: italic; }
 
+/* Remote group head: the remote name and its branch count. */
+.sidebar .count-inline { font-size: var(--fs-xs); color: var(--fg-muted); margin-left: auto; }
+
 /* Eye toggle: only present while soloing. Sits at the left edge of the
    row (outside the .link's padding) so it reads as the "include this"
    affordance. Hover paints the whole row in accent so the click target
    is unambiguous; rows already in the solo set get the same fill but
-   persistent. */
+   persistent. Unselected eyes are muted by opacity, not by a filter. */
 .sidebar .eye {
+  width: var(--h-row); height: var(--h-row); flex-shrink: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
   background: transparent; border: 0; color: var(--fg-muted);
-  cursor: pointer; padding: 0 4px 0 12px; line-height: 1;
-  font-size: 13px; flex-shrink: 0;
-  filter: grayscale(1) opacity(0.55);
+  cursor: pointer; opacity: 0.55;
 }
-.sidebar .leaf.solo-row:hover .eye { filter: none; color: var(--accent); }
-.sidebar .eye.on { filter: none; color: var(--accent); }
-.sidebar .eye:hover { color: var(--accent); filter: none !important; }
+.sidebar .leaf.solo-row:hover .eye { opacity: 1; color: var(--accent); }
+.sidebar .eye.on { opacity: 1; color: var(--accent); }
+.sidebar .eye:hover { color: var(--accent); opacity: 1; }
 .sidebar .leaf.solo-row:hover {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }

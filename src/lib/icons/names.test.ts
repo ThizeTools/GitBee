@@ -15,4 +15,23 @@ describe("icon name map", () => {
   test("IconName values are unique", () => {
     expect(new Set(ICON_NAMES).size).toBe(ICON_NAMES.length);
   });
+
+  // Pins the Lucide export behind each icon that replaced a glyph stand-in, so
+  // a silent remap shows up here as well as in the Icon.svelte type check.
+  test("replacement icons map to the expected Lucide exports", () => {
+    expect(ICON_LUCIDE_NAMES).toMatchObject({
+      "sign-out": "LogOut",
+      export: "Upload",
+      grip: "GripVertical",
+      "arrow-left": "ArrowLeft",
+      "arrow-right": "ArrowRight",
+      "chevron-up": "ChevronUp",
+      "chevron-left": "ChevronLeft",
+      sort: "ArrowDownAZ",
+      blame: "FileUser",
+      reset: "RotateCcw",
+      "cherry-pick": "Cherry",
+      checkout: "ArrowRightLeft",
+    });
+  });
 });

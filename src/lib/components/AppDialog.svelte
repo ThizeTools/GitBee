@@ -105,33 +105,36 @@
       tabindex="-1" bind:this={card}>
       <form onsubmit={onSubmit}>
         <h3 id="app-dialog-title" class:danger>{entry.view.spec.title}</h3>
-        {#if entry.view.spec.message}
-          <p class="message">{entry.view.spec.message}</p>
-        {/if}
 
-        {#if entry.view.kind === "prompt"}
-          <input type="text" class="input" bind:value
-            placeholder={entry.view.spec.placeholder ?? ""}
-            aria-invalid={error !== null}
-            data-autofocus=""
-            autocomplete="off" spellcheck="false" />
-          {#if error !== null}
-            <div class="error" role="alert">{error}</div>
+        <div class="body">
+          {#if entry.view.spec.message}
+            <p class="message">{entry.view.spec.message}</p>
           {/if}
-        {:else if entry.view.kind === "choice"}
-          <div class="choices">
-            {#each entry.view.spec.choices as choice, i (i)}
-              <button type="button" class="choice" class:danger={choice.danger === true}
-                data-autofocus={i === 0 ? "" : undefined}
-                onclick={() => answerDialog(choice.value)}>
-                <span class="choice-label">{choice.label}</span>
-                {#if choice.description}
-                  <span class="choice-desc">{choice.description}</span>
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
+
+          {#if entry.view.kind === "prompt"}
+            <input type="text" class="input" bind:value
+              placeholder={entry.view.spec.placeholder ?? ""}
+              aria-invalid={error !== null}
+              data-autofocus=""
+              autocomplete="off" spellcheck="false" />
+            {#if error !== null}
+              <div class="error" role="alert">{error}</div>
+            {/if}
+          {:else if entry.view.kind === "choice"}
+            <div class="choices">
+              {#each entry.view.spec.choices as choice, i (i)}
+                <button type="button" class="choice" class:danger={choice.danger === true}
+                  data-autofocus={i === 0 ? "" : undefined}
+                  onclick={() => answerDialog(choice.value)}>
+                  <span class="choice-label">{choice.label}</span>
+                  {#if choice.description}
+                    <span class="choice-desc">{choice.description}</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
 
         <footer class="actions">
           {#if labels.cancel !== null}
@@ -161,7 +164,7 @@
     max-height: 80vh;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 14px 40px rgba(0,0,0,0.5);
     color: var(--fg);
     overflow: hidden;
@@ -170,19 +173,28 @@
   form {
     display: flex; flex-direction: column;
     max-height: 80vh;
-    padding: 18px 20px 14px;
-    gap: 10px;
     min-height: 0;
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   h3 {
     margin: 0;
-    font-size: 14px; font-weight: 600;
+    padding: var(--sp-5) var(--sp-20);
+    border-bottom: 1px solid var(--border-strong);
+    font-size: var(--fs-lg); font-weight: 600;
     color: var(--fg);
   }
   h3.danger { color: var(--del); }
+  /* Dialog body: 15 px 20 px padding. */
+  .body {
+    display: flex; flex-direction: column;
+    gap: var(--sp-5);
+    padding: var(--sp-15) var(--sp-20);
+    min-height: 0;
+    overflow-y: auto;
+  }
   .message {
     margin: 0;
-    font-size: 12px; line-height: 1.5;
+    font-size: var(--fs-md); line-height: 1.5;
     color: var(--fg-muted);
     white-space: pre-wrap;
     overflow-y: auto;
@@ -191,36 +203,39 @@
   }
   .input {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 8px;
-    font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-5);
+    font-size: var(--fs-md);
     font-family: "Cascadia Code", Consolas, monospace;
   }
   .input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .input[aria-invalid="true"] { border-color: var(--del); }
-  .error { font-size: 11px; color: var(--del); }
+  .error { font-size: var(--fs-sm); color: var(--del); }
 
-  .choices { display: flex; flex-direction: column; gap: 6px; }
+  .choices { display: flex; flex-direction: column; gap: var(--sp-3); }
   .choice {
     display: flex; flex-direction: column; align-items: flex-start;
-    gap: 2px;
+    gap: var(--sp-1);
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-4) var(--sp-5);
     text-align: left; cursor: pointer;
   }
   .choice:hover, .choice:focus-visible { border-color: var(--accent); outline: none; }
-  .choice-label { font-size: 12px; font-weight: 600; }
-  .choice-desc { font-size: 11px; color: var(--fg-muted); }
+  .choice-label { font-size: var(--fs-md); font-weight: 600; }
+  .choice-desc { font-size: var(--fs-sm); color: var(--fg-muted); }
   .choice.danger .choice-label { color: var(--del); }
 
+  /* Footer: right-aligned, 28 px buttons. */
   .actions {
-    display: flex; justify-content: flex-end; gap: 8px;
-    padding-top: 4px;
+    display: flex; justify-content: flex-end; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20);
   }
   .btn {
-    padding: 6px 14px; border-radius: 4px; cursor: pointer;
-    font-size: 12px; font-weight: 600;
+    height: 28px;
+    display: inline-flex; align-items: center;
+    padding: 0 var(--sp-6); border-radius: var(--radius); cursor: pointer;
+    font-size: var(--fs-md); font-weight: 600;
   }
   .btn.cancel {
     background: transparent; color: var(--fg);

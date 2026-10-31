@@ -1,9 +1,12 @@
 <script lang="ts">
   import {
     currentRepo, graph, stashes, status, remotes,
-    refreshActive, busy, errorMessage,
   } from "$lib/stores/repo";
   import CreateRepoModal from "./CreateRepoModal.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
+  import Breadcrumb from "./toolbar/Breadcrumb.svelte";
+  import ToolbarButton from "./toolbar/ToolbarButton.svelte";
+  import PullButton from "./toolbar/PullButton.svelte";
   import { themePickerOpen, paletteOpen } from "$lib/stores/ui";
   import {
     canUndo, canRedo, nextUndoLabel, nextRedoLabel, undoLast, redoLast, pushUndo,
@@ -11,35 +14,20 @@
   import { branchCreateUndo, checkoutUndo } from "$lib/stores/undoEntries";
   import { checkoutTargetOf } from "$lib/stores/refLookup";
   import { ipc } from "$lib/ipc";
-  import { logAppend, logAction } from "$lib/stores/logs";
+  import { logAppend } from "$lib/stores/logs";
   import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
   import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
   import { ghAuth } from "$lib/stores/github";
   import { originGitHubRepo } from "$lib/github/url";
-  import { showPullRequests } from "$lib/stores/center";
+  import { showGraph, showPullRequests } from "$lib/stores/center";
+  import { runAction } from "$lib/menus/menuActions";
 
-  // Wrap an async git action: show busy spinner, log start/finish/fail,
-  // refresh repo state on success, and surface real error messages to the
-  // caller. Replaces our older withBusy in places where we want both logs
-  // and the actual error string.
-  async function runAction<T>(label: string, fn: () => Promise<T>) {
-    busy.set(true);
-    errorMessage.set(null);
-    try {
-      const r = await logAction(label, fn);
-      if (r.ok) await refreshActive();
-      else errorMessage.set(r.error);
-      return r;
-    } finally {
-      busy.set(false);
-    }
-  }
-
-  async function pull() {
+  async function pull(rebase: boolean) {
     if (!$currentRepo) return;
     const branch = $graph?.head_branch ?? "HEAD";
     const before = $graph?.head_sha;
-    const r = await runAction(`Pull ${branch}`, () => ipc.remotePull($currentRepo!, false));
+    const label = rebase ? `Pull (rebase) ${branch}` : `Pull ${branch}`;
+    const r = await runAction(label, () => ipc.remotePull($currentRepo!, rebase));
     if (!r.ok) { notifyError("Pull failed", r.error); return; }
     const after = $graph?.head_sha;
     if (before === after) {
@@ -48,6 +36,11 @@
     } else {
       notifySuccess("Pulled Successfully");
     }
+  }
+  async function fetchAll() {
+    if (!$currentRepo) return;
+    const r = await runAction("Fetch all remotes", () => ipc.remoteFetch($currentRepo!));
+    if (!r.ok) notifyError("Fetch failed", r.error);
   }
   async function push() {
     if (!$currentRepo) return;
@@ -99,6 +92,13 @@
     try { await ipc.openTerminal($currentRepo); }
     catch (e) { logAppend("error", `terminal: ${e}`); }
   }
+  // Ctrl+F only opens the bar on the graph view, so the button switches there first.
+  // Loaded on demand like the Ctrl+F path in +page.svelte.
+  function openGraphSearch() {
+    if (!$currentRepo) return;
+    showGraph();
+    import("$lib/stores/graphSearch").then(({ openSearch }) => openSearch());
+  }
 
   const stashHasItems = $derived($stashes.length > 0);
   const hasChanges = $derived($status.length > 0);
@@ -110,6 +110,9 @@
   // The PRs button shows only when origin is a github.com remote and the user is
   // signed in. Spec: docs/specs/github-pull-requests.md.
   const prsAvailable = $derived($ghAuth.authenticated && originGitHubRepo($remotes) !== null);
+  const branchLabel = $derived(
+    $graph?.head_branch ?? ($graph?.head_sha ? "(detached)" : "—"),
+  );
   let publishOpen = $state(false);
   function repoBasename(p: string | null): string {
     if (!p) return "";
@@ -120,64 +123,48 @@
 <header class="topbar">
   <div class="left">
     {#if $currentRepo}
-      <span class="label">repository</span>
-      <span class="repo">{$currentRepo.split(/[\\/]/).filter(Boolean).pop()}</span>
-      <span class="sep"></span>
-      <span class="label">branch</span>
-      <span class="branch" title={$graph?.head_branch ?? ""}>
-        {$graph?.head_branch ?? ($graph?.head_sha ? "(detached)" : "—")}
-      </span>
+      <Breadcrumb
+        repoName={repoBasename($currentRepo)}
+        branchName={branchLabel}
+        branchTitle={$graph?.head_branch ?? ""}
+      />
     {:else}
       <span class="muted">No repository open</span>
     {/if}
   </div>
 
   <div class="actions">
-    <button class="icon-btn" title={$nextUndoLabel ? `Undo: ${$nextUndoLabel}` : "Undo"} onclick={undoLast} disabled={!$canUndo}>
-      <span class="ico">↶</span><span class="lbl">Undo</span>
-    </button>
-    <button class="icon-btn" title={$nextRedoLabel ? `Redo: ${$nextRedoLabel}` : "Redo"} onclick={redoLast} disabled={!$canRedo}>
-      <span class="ico">↷</span><span class="lbl">Redo</span>
-    </button>
+    <ToolbarButton icon="undo" label="Undo" title={$nextUndoLabel ? `Undo: ${$nextUndoLabel}` : "Undo"} onclick={undoLast} disabled={!$canUndo} />
+    <ToolbarButton icon="redo" label="Redo" title={$nextRedoLabel ? `Redo: ${$nextRedoLabel}` : "Redo"} onclick={redoLast} disabled={!$canRedo} />
     <span class="vsep"></span>
-    <button class="icon-btn" title="Pull" onclick={pull} disabled={!$currentRepo}>
-      <span class="ico">↓</span><span class="lbl">Pull</span>
-    </button>
+    <PullButton
+      disabled={!$currentRepo}
+      onPull={() => pull(false)}
+      onPullRebase={() => pull(true)}
+      onFetchAll={fetchAll}
+    />
     {#if $currentRepo && !hasOrigin}
-      <button class="icon-btn" title="Publish this repo to GitHub" onclick={() => publishOpen = true}>
-        <span class="ico">⇪</span><span class="lbl">Publish</span>
-      </button>
+      <ToolbarButton icon="cloud" label="Publish" title="Publish this repo to GitHub" onclick={() => publishOpen = true} />
     {:else}
-      <button class="icon-btn" title="Push" onclick={push} disabled={!$currentRepo}>
-        <span class="ico">↑</span><span class="lbl">Push</span>
-      </button>
+      <ToolbarButton icon="push" label="Push" title="Push" onclick={push} disabled={!$currentRepo} />
     {/if}
     <span class="vsep"></span>
-    <button class="icon-btn" title="New branch" onclick={newBranch} disabled={!$currentRepo}>
-      <span class="ico">⎇</span><span class="lbl">Branch</span>
-    </button>
-    <button class="icon-btn" title={hasChanges ? "Stash all changes" : "Nothing to stash"} onclick={stash} disabled={!$currentRepo || !hasChanges}>
-      <span class="ico">⛶</span><span class="lbl">Stash</span>
-    </button>
-    <button class="icon-btn" title="Pop latest stash" onclick={popStash} disabled={!$currentRepo || !stashHasItems}>
-      <span class="ico">⤴</span><span class="lbl">Pop</span>
-    </button>
+    <ToolbarButton icon="branch" label="Branch" title="New branch" onclick={newBranch} disabled={!$currentRepo} />
+    <ToolbarButton icon="stash" label="Stash" title={hasChanges ? "Stash all changes" : "Nothing to stash"} onclick={stash} disabled={!$currentRepo || !hasChanges} />
+    <ToolbarButton icon="pop" label="Pop" title="Pop latest stash" onclick={popStash} disabled={!$currentRepo || !stashHasItems} />
     <span class="vsep"></span>
-    <button class="icon-btn" title="Open external terminal at repo" onclick={openTerminal} disabled={!$currentRepo}>
-      <span class="ico">▶_</span><span class="lbl">Terminal</span>
-    </button>
+    <ToolbarButton icon="terminal" label="Terminal" title="Open external terminal at repo" onclick={openTerminal} disabled={!$currentRepo} />
     {#if prsAvailable}
       <span class="vsep"></span>
-      <button class="icon-btn" title="Pull requests on GitHub" onclick={showPullRequests}>
-        <span class="ico">⇄</span><span class="lbl">PRs</span>
-      </button>
+      <ToolbarButton icon="pull-request" label="PRs" title="Pull requests on GitHub" onclick={showPullRequests} />
     {/if}
   </div>
 
   <div class="right">
     {#if import.meta.env.DEV}
       <button
-        class="ghost dev"
+        type="button"
+        class="tool"
         onclick={async () => {
           const ok = await confirmDialog({
             title: "Clear ALL local data?",
@@ -190,14 +177,31 @@
           location.reload();
         }}
         title="Dev: clear localStorage + reload (only visible in dev)"
-      >🧹</button>
+        aria-label="Dev: clear localStorage + reload"
+      ><Icon name="trash" size={16} /></button>
     {/if}
     <button
-      class="ghost"
+      type="button"
+      class="tool"
+      onclick={openGraphSearch}
+      disabled={!$currentRepo}
+      title="Search commits (Ctrl+F)"
+      aria-label="Search commits"
+    ><Icon name="search" size={16} /></button>
+    <button
+      type="button"
+      class="tool"
+      onclick={() => paletteOpen.set(true)}
+      title="Command palette (Ctrl+P)"
+      aria-label="Command palette"
+    ><Icon name="palette" size={16} /></button>
+    <button
+      type="button"
+      class="tool"
       onclick={() => themePickerOpen.set(true)}
       title="Themes"
-    >🎨</button>
-    <button class="ghost" onclick={() => paletteOpen.set(true)} title="Command palette (Ctrl+P)">⌘</button>
+      aria-label="Themes"
+    ><Icon name="theme" size={16} /></button>
   </div>
 </header>
 
@@ -211,49 +215,62 @@
 {/if}
 
 <style>
+  /* The 220 px minimum on the left column is a layout width, not a size token. */
   .topbar {
     display: grid;
     grid-template-columns: minmax(220px, max-content) 1fr auto;
     align-items: center;
-    gap: 16px;
-    padding: 4px 12px;
+    gap: var(--sp-8);
+    padding: 0 var(--sp-6);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
-    height: 40px;
+    height: var(--h-toolbar);
     flex-shrink: 0;
   }
   .left {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
     min-width: 0;
   }
-  .label { font-size: 10px; text-transform: uppercase; color: var(--fg-muted); }
-  .repo { color: var(--fg); font-weight: 500; font-size: 13px; }
-  .branch { color: var(--accent); font-weight: 500; font-size: 13px; }
-  .sep { width: 1px; height: 14px; background: var(--border); margin: 0 4px; }
-  .muted { color: var(--fg-muted); font-style: italic; }
+  .muted { color: var(--fg-muted); font-style: italic; font-size: var(--fs-md); }
 
-  .actions { display: flex; justify-content: center; gap: 4px; flex-wrap: nowrap; overflow-x: auto; align-items: center; }
+  .actions {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    align-items: center;
+    min-width: 0;
+  }
   .actions::-webkit-scrollbar { height: 0; }
-  .vsep { width: 1px; height: 26px; background: var(--border); margin: 0 4px; }
-  .icon-btn {
-    display: flex; flex-direction: row; align-items: center; justify-content: center;
-    gap: 6px; background: transparent; color: var(--fg); border: 0;
-    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
-    min-width: 0; height: 28px;
+  /* 26 px is the divider's height; no size token matches it. */
+  .vsep {
+    width: 1px;
+    height: 26px;
+    background: var(--border);
+    margin: 0 var(--sp-2);
+    flex-shrink: 0;
   }
-  .icon-btn .ico { font-size: 13px; line-height: 1; color: var(--fg-muted); }
-  .icon-btn .lbl { color: var(--fg-muted); text-transform: none; font-size: 11px; }
-  .icon-btn:hover:not(:disabled) { background: rgba(255,255,255,0.06); }
-  .icon-btn:hover:not(:disabled) .ico, .icon-btn:hover:not(:disabled) .lbl { color: var(--fg); }
-  .icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-  /* .icon-btn.active style removed — terminal is now external (#12). */
 
-  .right { display: flex; gap: 4px; }
-  .ghost {
-    background: transparent; border: 1px solid var(--border); color: var(--fg-muted);
-    padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;
+  .right { display: flex; align-items: center; gap: var(--sp-1); }
+  /* 32 x 32 icon-only buttons, the spec's right-side size. */
+  .tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius);
+    color: var(--fg-muted);
+    cursor: pointer;
   }
-  .ghost:hover { color: var(--fg); background: var(--border); }
+  .tool:hover:not(:disabled) {
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 6%, transparent);
+  }
+  .tool:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

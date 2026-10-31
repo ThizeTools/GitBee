@@ -78,7 +78,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     // Group 1
     {
       label: `Push ${tagName} to origin`,
-      icon: "↑",
+      icon: "push",
       // Hidden when the tag already exists on origin (#3 round 9).
       hidden: tagExistsOnOrigin(tagName),
       onClick: async () => {
@@ -100,12 +100,12 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     // Group 2
     {
       label: `Fast-forward ${tagName} to ${head}`,
-      icon: "⇉",
+      icon: "pull",
       onClick: () => fastForwardTag(tagName),
     },
     {
       label: `Merge ${tagName} into ${head}`,
-      icon: "⫶",
+      icon: "merge",
       onClick: async () => {
         const r = repo();
         if (!r) return;
@@ -120,7 +120,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     },
     {
       label: `Rebase ${head} onto ${tagName}`,
-      icon: "⇄",
+      icon: "fetch",
       onClick: async () => {
         const r = repo();
         if (!r) return;
@@ -138,7 +138,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     checkoutCommitItem(sha, `Checkout the commit at ${tagName}`),
     {
       label: `Create worktree from ${tagName}`,
-      icon: "📂",
+      icon: "folder",
       // refs/tags/ spells out that this is a tag, so a branch with the same
       // name cannot be picked instead. The worktree is detached at the tag.
       onClick: () => openWorktreeCreate(`refs/tags/${tagName}`, tagName),
@@ -153,7 +153,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     // Group 6
     {
       label: `Delete ${tagName} locally`,
-      icon: "🗑",
+      icon: "trash",
       danger: true,
       onClick: async () => {
         const r = repo();
@@ -170,7 +170,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     // Group 7
     {
       label: "Copy tag name",
-      icon: "⧉",
+      icon: "copy",
       onClick: () => copy(tagName, "tag name"),
     },
     { separator: true, label: "" },
@@ -180,7 +180,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     // Group 9
     {
       label: `Annotate ${tagName}`,
-      icon: "✎",
+      icon: "file-modified",
       onClick: () => annotateTag(tagName),
     },
   ];

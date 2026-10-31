@@ -6,10 +6,11 @@
   import { diffPrefs } from "$lib/stores/diffPrefs";
   import { showCommitFile } from "$lib/stores/center";
   import { commitFiles, selectedFileIndex, focusMode } from "$lib/stores/graphNav";
+  import Icon from "$lib/icons/Icon.svelte";
   import { buildTree, listOrder, type SortMode, type ViewMode } from "$lib/commit/fileTree";
   import { commitDiffCache } from "$lib/commit/commitDiffs";
   import type { DiffKey } from "$lib/commit/diffCache";
-import { renamedFromStats } from "$lib/commit/renamedFrom";
+  import { renamedFromStats } from "$lib/commit/renamedFrom";
   import { commitBody } from "$lib/commit/format";
   import { EXPAND_ALL_CAP, expandAllPaths, notRequested } from "$lib/commit/diffRequests";
   import CommitHeader from "./commit/CommitHeader.svelte";
@@ -41,9 +42,6 @@ import { renamedFromStats } from "$lib/commit/renamedFrom";
   // overwrite the files of the one selected now.
   let loadSeq = 0;
 
-  function sortIcon(): string {
-    return sortMode === "asc" ? "↓A" : "↑A";
-  }
   function sortLabel(): string {
     return sortMode === "asc" ? "Sort: A→Z" : "Sort: Z→A";
   }
@@ -214,14 +212,16 @@ import { renamedFromStats } from "$lib/commit/renamedFrom";
 
     <div class="files-bar">
       <span class="modified">
-        <span class="m-ico">✎</span>
+        <span class="m-ico"><Icon name="file-modified" size={14} /></span>
         <span class="m-count">{files.length}</span>
         <span class="m-lbl">modified</span>
       </span>
-      <button class="bb" onclick={cycleSort} title={sortLabel()}>{sortIcon()}</button>
+      <button class="sort-btn" onclick={cycleSort} title={sortLabel()} aria-label={sortLabel()}><span class:sort-flip={sortMode === "desc"}><Icon name="sort" size={14} /></span></button>
       <span class="seg">
-        <button class:active={viewMode === "path"} onclick={() => viewMode = "path"}>≡ Path</button>
-        <button class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}>⌘ Tree</button>
+        <button class="seg-btn" class:active={viewMode === "path"} onclick={() => viewMode = "path"}
+          title="Path view" aria-label="Path view"><Icon name="file" size={14} /></button>
+        <button class="seg-btn" class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}
+          title="Tree view" aria-label="Tree view"><Icon name="folder" size={14} /></button>
       </span>
       <label class="ck">
         <input type="checkbox" checked={showDiffs}
@@ -260,32 +260,43 @@ import { renamedFromStats } from "$lib/commit/renamedFrom";
     background: var(--bg);
     overflow: hidden;
   }
-  .empty { padding: 30px; text-align: center; color: var(--fg-muted); font-style: italic; }
+  .empty { padding: var(--sp-8) var(--sp-8); text-align: center; color: var(--fg-muted); font-style: italic; }
 
+  /* The file list header: 28 px, count on the left, sort and view controls
+     on the right, same geometry as the Changes list headers. */
   .files-bar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 6px 14px;
+    gap: var(--sp-6);
+    height: 28px;
+    padding: 0 var(--sp-8);
     border-bottom: 1px solid var(--border);
     background: var(--bg-elev);
-    font-size: 11px;
+    font-size: var(--fs-sm);
   }
-  .modified { display: flex; align-items: center; gap: 6px; color: var(--fg-muted); }
-  .m-ico { color: var(--tag); }
+  .modified { display: flex; align-items: center; gap: var(--sp-3); color: var(--fg-muted); }
+  .m-ico { color: var(--tag); display: inline-flex; }
   .m-count { color: var(--fg); font-weight: 600; }
-  .bb {
-    background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 2px 6px; font-size: 13px;
+  .sort-btn {
+    height: var(--h-row); padding: 0 var(--sp-3);
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
   }
-  .bb:hover { color: var(--fg); }
-  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
-  .seg button {
-    background: transparent; color: var(--fg-muted); border: 0;
-    padding: 3px 10px; cursor: pointer; font-size: 11px;
+  .sort-btn:hover { color: var(--fg); background: var(--border); }
+  .sort-flip { display: inline-flex; transform: scaleY(-1); }
+  .seg {
+    display: inline-flex; height: var(--h-row);
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   }
-  .seg button.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
-  .ck { display: flex; align-items: center; gap: 5px; color: var(--fg-muted); font-size: 11px; margin-left: auto; }
+  .seg-btn {
+    width: var(--h-row); height: 100%; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--fg-muted); border: 0; cursor: pointer;
+  }
+  .seg-btn.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+  .seg-btn:hover:not(.active) { color: var(--fg); }
+  .ck { display: flex; align-items: center; gap: var(--sp-3); color: var(--fg-muted); font-size: var(--fs-sm); margin-left: auto; }
 
   .files-body {
     flex: 1;

@@ -79,8 +79,9 @@ fall back to an empty graph; see the QoL backlog.
 ### Repo switch and stale scroll (2026-11, macOS report)
 - `GraphCanvas` is not remounted per tab. On an actual `$currentRepo` change
   it resets scroll to 0, hover, badge measurements, the local hidden-stash
-  set (keyed by stash index, so meaningless in another repo) and the ref
-  hover, then schedules a draw.
+  set (keyed by stash index, so meaningless in another repo), the ref hover
+  and any pending `graphScrollTarget` (a jump queued in the previous repo),
+  then schedules a draw. Ref badge hover popovers close on the same change.
 - WebKit can clamp `scrollTop` when the spacer shrinks without firing
   `scroll`; the virtual window then started a few rows too low (top rows
   missing, canvas lines still drawn). After `nodes`/`totalHeight` change and

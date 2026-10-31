@@ -9,6 +9,8 @@
   import { currentRepo } from "$lib/stores/repo";
   import { currentLfsFlags, requestLfsPaths } from "$lib/stores/lfs";
   import LfsBadge from "$lib/components/lfs/LfsBadge.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
+  import { commitStatusIcon } from "./commitStatusIcon";
 
   interface Props {
     viewMode: ViewMode;
@@ -86,13 +88,16 @@
     <button class="diff-toggle" type="button"
       aria-expanded={requested[f.path] === true}
       title={requested[f.path] ? "Hide diff" : "Show diff"}
+      aria-label={requested[f.path] ? "Hide diff" : "Show diff"}
       onclick={() => onToggleDiff(f.path)}>
-      <span class="caret">{requested[f.path] ? "▼" : "▶"}</span>
+      <Icon name={requested[f.path] ? "chevron-down" : "chevron-right"} size={14} />
     </button>
     <button class="file-btn" type="button"
       class:nav-current={navPath === f.path}
       onclick={() => onOpen(f.path)}>
-      <span class="f-ico" style="color: {statusColor(f.status)}" title={statusName(f.status)}>{f.status}</span>
+      <span class="f-ico" style="color: {statusColor(f.status)}" title={statusName(f.status)}>
+        <Icon name={commitStatusIcon(f.status)} size={16} />
+      </span>
       <span class="f-count">{changeCountLabel(f)}</span>
       <span class="f-path">{label}</span>
       {#if lfsFlags[f.path]}<LfsBadge />{/if}
@@ -106,7 +111,7 @@
   {:else}
     <li class="dir" style="padding-left: {12 + depth * 14}px">
       <button class="dir-toggle" onclick={() => toggleDir(node.path)}>
-        <span class="caret">{collapsed[node.path] ? "▶" : "▼"}</span>
+        <Icon name={collapsed[node.path] ? "chevron-right" : "chevron-down"} size={14} />
         <span class="name">{node.name}</span>
       </button>
     </li>
@@ -120,14 +125,14 @@
 
 <style>
   .expand-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 6px 14px;
+    display: flex; align-items: center; gap: var(--sp-6);
+    padding: var(--sp-4) var(--sp-8);
     border-bottom: 1px solid var(--border);
     background: transparent;
   }
   .link {
     background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; font-size: 11px;
+    cursor: pointer; font-size: var(--fs-sm);
   }
   .link:hover { color: var(--fg); text-decoration: underline; }
   .load-all { margin-left: auto; color: var(--accent); }
@@ -136,22 +141,23 @@
   .file, .dir {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-2);
     padding: 0;
-    font-size: 11px;
+    font-size: var(--fs-sm);
     color: var(--fg);
   }
-  .dir { padding: 3px 12px; }
+  .file { height: var(--h-row); }
+  .dir { height: var(--h-row); padding-right: var(--sp-6); }
   .diff-toggle {
     background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 3px 0; width: 16px; flex-shrink: 0;
+    cursor: pointer; padding: 0; width: var(--h-row); height: 100%; flex-shrink: 0;
     display: inline-flex; align-items: center; justify-content: center;
   }
   .diff-toggle:hover { color: var(--fg); }
   .file-btn {
-    display: flex; align-items: center; gap: 8px;
-    flex: 1; min-width: 0;
-    padding: 3px 12px 3px 0;
+    display: flex; align-items: center; gap: var(--sp-4);
+    flex: 1; min-width: 0; height: 100%;
+    padding: 0 var(--sp-6) 0 0;
     background: transparent; border: 0; color: inherit;
     text-align: left; font: inherit; cursor: pointer;
   }
@@ -162,17 +168,17 @@
     background: color-mix(in srgb, var(--accent) 22%, transparent);
     outline: 1px solid var(--accent);
   }
-  .f-ico { font-size: 11px; font-weight: 600; width: 10px; text-align: center; }
-  .f-count { color: var(--fg-muted); font-size: 10px; min-width: 14px; }
+  .f-ico { display: inline-flex; align-items: center; flex-shrink: 0; }
+  .f-count { color: var(--fg-muted); font-size: var(--fs-xs); min-width: var(--sp-8); }
   .f-path {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
   }
   .dir-toggle {
     background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 6px;
-    font-size: 11px;
+    cursor: pointer; padding: 0; height: 100%;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    font-size: var(--fs-sm);
   }
   .dir-toggle:hover { color: var(--fg); }
-  .caret { font-size: 9px; width: 10px; }
 </style>

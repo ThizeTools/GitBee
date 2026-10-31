@@ -1,3 +1,13 @@
+<script module lang="ts">
+  // DEV only: the browser IPC mock (src/lib/dev/mockIpc.ts) must exist before the
+  // first invoke. The await holds this module, and every child, until it is
+  // installed. import.meta.env.DEV is false in production, so the import is dropped.
+  if (import.meta.env.DEV) {
+    const { startDevMock } = await import("$lib/dev/mockIpc");
+    await startDevMock();
+  }
+</script>
+
 <script lang="ts">
   import { activeThemeId, customThemes, resolveTheme, applyTheme } from "$lib/stores/ui";
   import { onMount } from "svelte";
@@ -77,6 +87,7 @@
     --h-section: 30px;
     --h-row: 24px;
     --h-graph-header: 26px;
+    --h-pill: 18px;
 
     --icon-sm: 14px;
     --icon: 16px;

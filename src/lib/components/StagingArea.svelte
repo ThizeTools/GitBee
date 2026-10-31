@@ -1,8 +1,9 @@
 <script lang="ts">
   import { currentRepo, opState, status } from "$lib/stores/repo";
   import { centerMode } from "$lib/stores/center";
-  import { layout, setSize } from "$lib/stores/layout";
+  import { layout, setSize, COMMIT_AREA_MIN } from "$lib/stores/layout";
   import { activeOp, sideNames } from "$lib/conflict/labels";
+  import Icon from "$lib/icons/Icon.svelte";
   import ResizeHandle from "./ResizeHandle.svelte";
   import OpBanner from "./staging/OpBanner.svelte";
   import ConflictList from "./staging/ConflictList.svelte";
@@ -44,12 +45,11 @@
   let viewMode = $state<ViewMode>("path");
   let sortMode = $state<SortMode>("asc");
   function cycleSort() { sortMode = sortMode === "asc" ? "desc" : "asc"; }
-  function sortIcon(): string { return sortMode === "asc" ? "↓A" : "↑A"; }
   function sortLabel(): string { return sortMode === "asc" ? "Sort: A→Z" : "Sort: Z→A"; }
 
   // ---- Multi-selection (Ctrl/Shift like a file explorer) ----
-  // Two independent selections — the staged and unstaged lists are
-  // visually separate, so a Shift-range across them would be confusing.
+  // Two independent selections — the staged and unstaged lists are visually
+  // separate, so a Shift-range across them would be confusing.
   // Owned here, not by the lists, because a successful commit clears them.
   let unstagedSelection = $state<Set<string>>(new Set());
   let stagedSelection = $state<Set<string>>(new Set());
@@ -74,17 +74,27 @@
 <div class="panel-header">
   <span class="title">Changes</span>
   <span class="badge">{$status.length}</span>
-  <button class="trash" onclick={() => (confirmDiscardAll = true)}
-    disabled={$status.length === 0}
-    title="Discard all changes">🗑</button>
   <span class="spacer"></span>
-  <button class="bb" onclick={cycleSort} title={sortLabel()}>{sortIcon()}</button>
-  <span class="seg view-seg">
-    <button class:active={viewMode === "path"} onclick={() => viewMode = "path"}>≡ Path</button>
-    <button class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}>⌘ Tree</button>
+  <button class="icon-btn danger" onclick={() => (confirmDiscardAll = true)}
+    disabled={$status.length === 0}
+    title="Discard all changes" aria-label="Discard all changes">
+    <Icon name="trash" size={14} />
+  </button>
+  <button class="sort-btn" onclick={cycleSort} title={sortLabel()} aria-label={sortLabel()}><span class:sort-flip={sortMode === "desc"}><Icon name="sort" size={14} /></span></button>
+  <span class="view-seg" role="group" aria-label="View mode">
+    <button class="seg-btn" class:active={viewMode === "path"} onclick={() => viewMode = "path"}
+      title="Path view" aria-label="Path view">
+      <Icon name="file" size={14} />
+    </button>
+    <button class="seg-btn" class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}
+      title="Tree view" aria-label="Tree view">
+      <Icon name="folder" size={14} />
+    </button>
   </span>
   {#if onClose}
-    <button class="close-x" onclick={onClose} title="Close panel (Ctrl+Alt+B)">×</button>
+    <button class="icon-btn" onclick={onClose} title="Close panel (Ctrl+Alt+B)" aria-label="Close panel">
+      <Icon name="close" size={14} />
+    </button>
   {/if}
 </div>
 
@@ -123,12 +133,12 @@
   direction="h"
   invert
   value={$layout.commitAreaHeight}
-  min={290}
+  min={COMMIT_AREA_MIN}
   max={620}
   onChange={(v) => setSize("commitAreaHeight", v)}
 />
 
-<section class="commit-block" style="height: {Math.max(290, $layout.commitAreaHeight)}px">
+<section class="commit-block" style="height: {Math.max(COMMIT_AREA_MIN, $layout.commitAreaHeight)}px">
   <header class="commit-head">
     <button class="tab-btn" class:active={bottomTab === "commit"} onclick={() => bottomTab = "commit"}>Commit</button>
     <button class="tab-btn" class:active={bottomTab === "stash"} onclick={() => bottomTab = "stash"}>Stash</button>
@@ -148,48 +158,49 @@
 {/if}
 
 <style>
+  /* Header is the region-5 title bar: 30 px, title --fs-lg, actions as icon buttons. */
   .panel-header {
-    display: flex; align-items: center; gap: 10px;
-    padding: 6px 14px; background: var(--bg-elev);
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: 0 var(--sp-6); background: var(--bg-elev);
     border-bottom: 1px solid var(--border-strong); flex-shrink: 0;
-    height: 30px;
+    height: var(--h-section);
   }
-  .title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg-muted); }
+  .title { font-size: var(--fs-lg); font-weight: 600; color: var(--fg); }
   .spacer { flex: 1; }
-  .close-x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 18px; cursor: pointer; padding: 0 6px; line-height: 1;
-    border-radius: 3px;
-  }
-  .close-x:hover { color: var(--del); background: color-mix(in srgb, var(--del) 10%, transparent); }
   .badge {
     background: var(--accent); color: var(--bg);
-    padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+    padding: 0 var(--sp-4); border-radius: var(--radius-lg);
+    font-size: var(--fs-xs); font-weight: 700; line-height: 14px;
   }
-  .trash {
-    background: transparent; border: 0; color: var(--del);
-    cursor: pointer; padding: 2px 6px; font-size: 13px; line-height: 1;
-    border-radius: 3px;
+
+  .icon-btn, .seg-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
-  .trash:hover:not(:disabled) {
+  .icon-btn:hover:not(:disabled) { color: var(--fg); background: var(--border); }
+  .icon-btn.danger { color: var(--del); }
+  .icon-btn.danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--del) 18%, transparent);
   }
-  .trash:disabled { color: var(--fg-muted); cursor: not-allowed; opacity: 0.5; }
+  .icon-btn:disabled { color: var(--fg-muted); cursor: not-allowed; opacity: 0.5; }
 
-  .bb {
-    background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 2px 6px; font-size: 11px;
-    font-family: "Cascadia Code", Consolas, monospace;
-    border-radius: 3px;
+  .sort-btn {
+    height: var(--h-row); padding: 0 var(--sp-3);
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
   }
-  .bb:hover { color: var(--fg); background: var(--border); }
-  .view-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
-  .view-seg button {
-    background: transparent; color: var(--fg-muted); border: 0;
-    padding: 2px 8px; cursor: pointer; font-size: 10px;
+  .sort-btn:hover { color: var(--fg); background: var(--border); }
+  .sort-flip { display: inline-flex; transform: scaleY(-1); }
+  .view-seg {
+    display: inline-flex; height: var(--h-row);
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   }
-  .view-seg button.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
-  .view-seg button:hover:not(.active) { color: var(--fg); }
+  .seg-btn { width: var(--h-row); border-radius: 0; }
+  .seg-btn.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+  .seg-btn:hover:not(.active) { color: var(--fg); }
 
   .files-scroll {
     flex: 1; min-height: 0;
@@ -205,8 +216,8 @@
     flex-direction: column;
     overflow: hidden;
     /* Calibrated to fit header + summary + counter + description (min 80) +
-       amend + button + gaps + padding without ever needing to scroll. */
-    min-height: 290px;
+       options + button + gaps + padding without ever needing to scroll. */
+    min-height: 350px; /* = COMMIT_AREA_MIN */
   }
   /* Same geometry as the list headers in StagingFileList, with the
      transparent background and 0 gap of the commit tab bar. */
@@ -214,8 +225,7 @@
     display: flex; align-items: center;
     background: transparent;
     border-bottom: 1px solid var(--border);
-    gap: 0;
-    padding: 0 8px;
+    padding: 0 var(--sp-4);
     flex-shrink: 0;
     height: 28px;
   }
@@ -223,11 +233,12 @@
     background: transparent;
     border: 0;
     color: var(--fg-muted);
-    padding: 10px 16px;
+    height: 100%;
+    padding: 0 var(--sp-8);
     cursor: pointer;
-    font-size: 11px;
+    font-size: var(--fs-sm);
     text-transform: uppercase;
-    letter-spacing: 0.6px;
+    letter-spacing: 0.04em;
     font-weight: 700;
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;

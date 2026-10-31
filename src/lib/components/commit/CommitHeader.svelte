@@ -4,6 +4,7 @@
   // reads the commit and passes in the body.
   import { refsByCommit } from "$lib/stores/repo";
   import Avatar from "../Avatar.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import type { GraphNode } from "$lib/ipc";
   import { formatCommitDate } from "$lib/commit/format";
 
@@ -22,7 +23,9 @@
   <span class="commit-label">commit:</span>
   <span class="commit-sha">{sha.slice(0, 7)}</span>
   <span class="spacer"></span>
-  <button class="close" onclick={onClose} title="Back to changes">×</button>
+  <button class="close" onclick={onClose} title="Back to changes" aria-label="Back to changes">
+    <Icon name="close" size={14} />
+  </button>
 </header>
 
 <div class="subject-box">
@@ -66,11 +69,12 @@
 
 <style>
   .bar {
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 12px;
+    display: flex; align-items: center; gap: var(--sp-3);
+    height: var(--h-section);
+    padding: 0 var(--sp-6);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
-    font-size: 11px;
+    font-size: var(--fs-sm);
   }
   .commit-label { color: var(--fg-muted); }
   .commit-sha {
@@ -79,27 +83,29 @@
   }
   .spacer { flex: 1; }
   .close {
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
     background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 18px; cursor: pointer; padding: 0 8px; line-height: 1;
+    border-radius: var(--radius); cursor: pointer;
   }
   .close:hover { color: var(--del); }
 
   .subject-box {
-    padding: 14px 16px;
+    padding: var(--sp-6) var(--sp-8);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
   }
   .subject {
     color: var(--fg);
-    font-size: 16px;
-    font-weight: 500;
+    font-size: var(--fs-lg);
+    font-weight: 600;
     line-height: 1.4;
   }
   .body {
-    margin: 8px 0 0;
+    margin: var(--sp-4) 0 0;
     color: var(--fg-muted);
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 11px;
+    font-size: var(--fs-sm);
     line-height: 1.5;
     white-space: pre-wrap;
     max-height: 220px;
@@ -110,24 +116,24 @@
     width: 38px;
     background: var(--border-strong);
     border-radius: 2px;
-    margin: 6px auto;
+    margin: var(--sp-3) auto;
     opacity: 0.6;
   }
 
   .meta {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 8px 14px;
+    gap: var(--sp-6);
+    padding: var(--sp-4) var(--sp-8);
     border-bottom: 1px solid var(--border);
   }
-  .author { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .author { display: flex; align-items: center; gap: var(--sp-5); flex: 1; min-width: 0; }
   .author-text { display: flex; flex-direction: column; min-width: 0; }
-  .name { font-size: 12px; color: var(--fg); font-weight: 500; }
-  .when { font-size: 11px; color: var(--fg-muted); }
+  .name { font-size: var(--fs-md); color: var(--fg); font-weight: 500; }
+  .when { font-size: var(--fs-sm); color: var(--fg-muted); }
   .parents {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 11px;
+    display: flex; align-items: center; gap: var(--sp-2);
+    font-size: var(--fs-sm);
     color: var(--fg-muted);
     flex-shrink: 0;
   }
@@ -135,15 +141,15 @@
   .parent-sha { color: var(--sha); font-family: "Cascadia Code", Consolas, monospace; }
 
   .refs-row {
-    padding: 6px 14px;
-    display: flex; gap: 4px; flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-8);
+    display: flex; gap: var(--sp-2); flex-wrap: wrap;
     border-bottom: 1px solid var(--border);
   }
   .ref {
-    font-size: 10px; padding: 1px 7px;
-    border-radius: 3px; border: 1px solid; line-height: 14px;
+    font-size: var(--fs-xs); padding: 1px var(--sp-3);
+    border-radius: var(--radius-sm); border: 1px solid; line-height: 14px;
   }
   .ref.branch { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
   .ref.remote { color: var(--remote); border-color: color-mix(in srgb, var(--remote) 55%, transparent); }
-  .ref.tag { color: var(--tag); border-color: color-mix(in srgb, var(--tag) 55%, transparent); border-radius: 8px; }
+  .ref.tag { color: var(--tag); border-color: color-mix(in srgb, var(--tag) 55%, transparent); }
 </style>

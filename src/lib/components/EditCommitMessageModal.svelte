@@ -12,6 +12,7 @@
   import { withBusy, status, currentRepo } from "$lib/stores/repo";
   import { notifySuccess, notifyError } from "$lib/stores/notifications";
   import { closeModal } from "$lib/stores/modals";
+  import Icon from "$lib/icons/Icon.svelte";
   import { get } from "svelte/store";
   import { untrack } from "svelte";
 
@@ -62,7 +63,9 @@
     onkeydown={(e) => e.stopPropagation()}>
     <header class="modal-head">
       <span class="title">Edit commit message <code>{sha.slice(0, 7)}</code></span>
-      <button class="x" onclick={closeModal} title="Close">×</button>
+      <button class="x" onclick={closeModal} title="Close" aria-label="Close">
+        <Icon name="close" size={16} />
+      </button>
     </header>
 
     <div class="body">
@@ -73,7 +76,8 @@
       ></textarea>
       {#if stagedCount > 0}
         <div class="warn">
-          ⚠ {stagedCount} staged change{stagedCount === 1 ? "" : "s"} will be folded into the amended commit.
+          <Icon name="warning" size={14} />
+          <span>{stagedCount} staged change{stagedCount === 1 ? "" : "s"} will be folded into the amended commit.</span>
         </div>
       {/if}
       <div class="hint">Ctrl+Enter to submit · Esc to cancel</div>
@@ -99,65 +103,78 @@
     width: min(560px, 92vw);
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6);
     display: flex; flex-direction: column;
     color: var(--fg);
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   .modal-head {
     display: flex; align-items: center;
-    padding: 12px 16px;
+    padding: var(--sp-5) var(--sp-20);
     border-bottom: 1px solid var(--border-strong);
   }
-  .title { font-weight: 700; font-size: 13px; flex: 1; }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
   .title code { color: var(--accent); font-family: "Cascadia Code", Consolas, monospace; }
   .x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 20px; line-height: 1; cursor: pointer;
-    padding: 0 4px; border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
   .x:hover { color: var(--fg); }
 
-  .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  /* Dialog body: 15 px 20 px padding. */
+  .body {
+    padding: var(--sp-15) var(--sp-20);
+    display: flex; flex-direction: column; gap: var(--sp-4);
+  }
   textarea {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 8px 10px;
-    font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-4) var(--sp-5);
+    font-size: var(--fs-md);
     font-family: "Cascadia Code", Consolas, monospace;
     resize: vertical;
     min-height: 120px;
   }
   textarea:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .warn {
-    font-size: 11px;
-    color: #d48a2c;
-    background: rgba(212, 138, 44, 0.08);
-    border: 1px solid rgba(212, 138, 44, 0.4);
-    border-radius: 3px;
-    padding: 6px 8px;
+    display: flex; align-items: center; gap: var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--modified);
+    background: color-mix(in srgb, var(--modified) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--modified) 40%, transparent);
+    border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-4);
   }
-  .hint { font-size: 10px; color: var(--fg-muted); }
+  .warn span { flex: 1; min-width: 0; }
+  .hint { font-size: var(--fs-xs); color: var(--fg-muted); }
 
+  /* Footer: right-aligned, 28 px buttons. */
   .modal-foot {
-    display: flex; justify-content: flex-end; gap: 8px;
-    padding: 10px 16px;
+    display: flex; justify-content: flex-end; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20);
     border-top: 1px solid var(--border-strong);
   }
   .ghost {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 14px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-6); cursor: pointer; font-size: var(--fs-md);
   }
   .ghost:hover { border-color: var(--fg-muted); }
   .primary {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
     border: 1px solid var(--accent);
-    border-radius: 4px;
-    padding: 6px 16px;
+    border-radius: var(--radius);
+    padding: 0 var(--sp-8);
     cursor: pointer;
-    font-weight: 700; font-size: 12px;
+    font-weight: 600; font-size: var(--fs-md);
   }
   .primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .primary:disabled {

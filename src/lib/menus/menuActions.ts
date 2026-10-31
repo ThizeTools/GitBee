@@ -121,17 +121,17 @@ export function viewFilterItems(qualifiedName: string, refLabel: string): MenuIt
   return [
     {
       label: hidden ? `Show ${refLabel}` : "Hide",
-      icon: hidden ? "◐" : "○",
+      icon: hidden ? "eye" : "eye-off",
       onClick: () => (hidden ? unhideRef(qualifiedName) : hideRef(qualifiedName)),
     },
     {
       label: pinned ? "Unpin" : "Pin to Left",
-      icon: "📌",
+      icon: "pin",
       onClick: () => togglePin(qualifiedName),
     },
     {
       label: soloLabel,
-      icon: "⊙",
+      icon: "eye",
       onClick: () => toggleSolo(qualifiedName),
     },
   ];
@@ -244,7 +244,7 @@ export async function copyRemoteCommitLink(sha: string): Promise<void> {
 export function revertCommitItem(sha: string): MenuItem {
   return {
     label: "Revert commit",
-    icon: "↶",
+    icon: "undo",
     onClick: async () => {
       const r = repo();
       if (!r) return;
@@ -257,7 +257,7 @@ export function revertCommitItem(sha: string): MenuItem {
 export function cherryPickCommitItem(sha: string): MenuItem {
   return {
     label: "Cherry pick commit",
-    icon: "⤴",
+    icon: "pop",
     onClick: async () => {
       const r = repo();
       if (!r) return;
@@ -270,7 +270,7 @@ export function cherryPickCommitItem(sha: string): MenuItem {
 export function checkoutCommitItem(sha: string, label: string): MenuItem {
   return {
     label,
-    icon: "✓",
+    icon: "check",
     onClick: async () => {
       const r = repo();
       if (!r) return;
@@ -283,7 +283,7 @@ export function checkoutCommitItem(sha: string, label: string): MenuItem {
 export function createBranchHereItem(sha: string): MenuItem {
   return {
     label: "Create branch here",
-    icon: "⎇",
+    icon: "branch",
     onClick: () => createBranchAt(sha),
   };
 }
@@ -291,7 +291,7 @@ export function createBranchHereItem(sha: string): MenuItem {
 export function resetToCommitItem(sha: string): MenuItem {
   return {
     label: `Reset ${headBranch()} to this commit`,
-    icon: "↺",
+    icon: "undo",
     onClick: () => resetMenu(sha),
   };
 }
@@ -301,7 +301,7 @@ export function resetToCommitItem(sha: string): MenuItem {
 export function editCommitMessageItem(sha: string): MenuItem {
   return {
     label: "Edit commit message",
-    icon: "✎",
+    icon: "file-modified",
     disabled: sha !== headSha(),
     onClick: () => openEditCommitMessage(sha),
   };
@@ -310,7 +310,7 @@ export function editCommitMessageItem(sha: string): MenuItem {
 export function copyCommitShaItem(sha: string): MenuItem {
   return {
     label: "Copy commit sha",
-    icon: "⧉",
+    icon: "copy",
     onClick: () => copy(sha, "commit sha"),
   };
 }
@@ -318,7 +318,7 @@ export function copyCommitShaItem(sha: string): MenuItem {
 export function copyCommitLinkItem(sha: string): MenuItem {
   return {
     label: "Copy link to this commit on remote: origin",
-    icon: "⧉",
+    icon: "copy",
     onClick: () => copyRemoteCommitLink(sha),
   };
 }
@@ -327,12 +327,12 @@ export function createTagHereItems(sha: string): MenuItem[] {
   return [
     {
       label: "Create tag here",
-      icon: "🏷",
+      icon: "tag",
       onClick: () => createTag(sha, false),
     },
     {
       label: "Create annotated tag here",
-      icon: "🏷",
+      icon: "tag",
       onClick: () => createTag(sha, true),
     },
   ];

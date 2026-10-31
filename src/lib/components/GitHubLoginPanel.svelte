@@ -2,6 +2,7 @@
   import { ipc } from "$lib/ipc";
   import { ghAuth, loginWithPat } from "$lib/stores/github";
   import { logAppend } from "$lib/stores/logs";
+  import Icon from "$lib/icons/Icon.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
 
   let mode = $state<"oauth" | "pat">("oauth");
@@ -71,7 +72,7 @@
 
 <div class="panel">
   <header class="hd">
-    <span class="ico">⎈</span>
+    <span class="ico"><Icon name="user" size={16} /></span>
     <span>Connect to GitHub</span>
   </header>
 
@@ -96,7 +97,7 @@
       <div class="code-row">
         <code class="user-code">{oauthInfo.userCode}</code>
         <button class="ghost" onclick={copyCode} title="Copy">
-          {copied ? "✓ Copied" : "Copy"}
+          {#if copied}<Icon name="check" size={12} /> Copied{:else}Copy{/if}
         </button>
       </div>
       <p class="hint small">
@@ -133,70 +134,77 @@
 <style>
   .panel {
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 14px;
-    display: flex; flex-direction: column; gap: 10px;
+    border-radius: var(--radius-lg);
+    padding: var(--sp-8);
+    display: flex; flex-direction: column; gap: var(--sp-5);
     background: var(--bg-elev);
   }
-  .hd { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; }
-  .ico { color: var(--accent); font-size: 16px; }
-  .seg { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .hd {
+    display: flex; align-items: center; gap: var(--sp-4);
+    font-weight: 600; font-size: var(--fs-lg);
+  }
+  .ico { display: flex; align-items: center; color: var(--accent); }
+  .seg { display: flex; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .seg button {
-    flex: 1; padding: 6px 10px; background: transparent; border: 0;
-    color: var(--fg-muted); cursor: pointer; font-size: 11px;
+    flex: 1; padding: var(--sp-3) var(--sp-5); background: transparent; border: 0;
+    color: var(--fg-muted); cursor: pointer; font-size: var(--fs-sm);
   }
   .seg button.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
-  .hint { font-size: 11px; color: var(--fg-muted); margin: 0; line-height: 1.5; }
+  .hint { font-size: var(--fs-sm); color: var(--fg-muted); margin: 0; line-height: 1.5; }
   .hint a { color: var(--accent); }
-  .hint code { font-family: "Cascadia Code", Consolas, monospace; font-size: 10px;
-    background: var(--bg); padding: 1px 4px; border-radius: 2px; }
+  .hint code { font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-xs);
+    background: var(--bg); padding: 1px var(--sp-1); border-radius: var(--radius-sm); }
   input {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 7px 10px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-5); font-size: var(--fs-md);
     font-family: "Cascadia Code", Consolas, monospace;
   }
   input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .primary {
+    height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
     border: 1px solid var(--accent);
-    padding: 8px 14px; border-radius: 4px; cursor: pointer;
-    font-weight: 600; font-size: 12px;
+    padding: 0 var(--sp-8); border-radius: var(--radius); cursor: pointer;
+    font-weight: 600; font-size: var(--fs-md);
   }
   .primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .primary:disabled { opacity: 0.5; cursor: not-allowed; }
   .ghost {
+    height: 24px;
+    display: inline-flex; align-items: center; gap: var(--sp-2);
     background: transparent; color: var(--fg-muted);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 10px; cursor: pointer; font-size: 11px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-5); cursor: pointer; font-size: var(--fs-sm);
   }
   .ghost:hover { color: var(--fg); border-color: var(--fg-muted); }
-  .err { color: var(--del); font-size: 11px; margin: 0; }
-  .oauth-wait { display: flex; align-items: center; gap: 12px; }
-  .waiting { color: var(--fg-muted); font-size: 11px; flex: 1; }
+  .err { color: var(--del); font-size: var(--fs-sm); margin: 0; }
+  .oauth-wait { display: flex; align-items: center; gap: var(--sp-6); }
+  .waiting { color: var(--fg-muted); font-size: var(--fs-sm); flex: 1; }
   .code-row {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: var(--sp-5);
     background: var(--bg);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 10px 14px;
+    border-radius: var(--radius-lg);
+    padding: var(--sp-5) var(--sp-6);
   }
   .user-code {
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 22px; font-weight: 700;
+    font-size: var(--fs-xl); font-weight: 700;
     letter-spacing: 4px;
     color: var(--accent);
     flex: 1;
   }
-  .small { font-size: 10px; }
+  .small { font-size: var(--fs-xs); }
   .link {
     background: transparent; border: 0; color: var(--accent);
     cursor: pointer; padding: 0; text-decoration: underline;
-    font: inherit; font-size: 10px;
+    font: inherit; font-size: var(--fs-xs);
   }
   .spinner {
-    width: 16px; height: 16px;
+    width: var(--icon); height: var(--icon);
     border: 2px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;

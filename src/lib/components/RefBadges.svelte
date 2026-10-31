@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CommitRef } from "$lib/ipc";
-  import { graph } from "$lib/stores/repo";
+  import { graph, currentRepo } from "$lib/stores/repo";
   import { layout } from "$lib/stores/layout";
   import { checkoutAndJump, checkoutRemoteAndJump } from "$lib/stores/graphscroll";
   import { openMenu } from "$lib/stores/contextmenu";
@@ -9,6 +9,7 @@
   import { onDestroy } from "svelte";
   import { scheduleRefHover, releaseRefHover } from "$lib/stores/refHover";
   import { dragRefOf, type DragRef } from "$lib/menus/dragOptions";
+  import Icon from "$lib/icons/Icon.svelte";
   import {
     beginRefDrag, endRefDrag, dragOverRef, dropOnRef, leaveDropHover, badgeDropKey, dropHoverKey,
   } from "$lib/stores/refDrag";
@@ -156,6 +157,16 @@
   onDestroy(() => {
     if (primary.target_sha) releaseRefHover(primary.target_sha);
   });
+  // GraphCanvas keeps its rows mounted across repo tabs, so this badge can
+  // outlive the repo or refs it was hovered for. The open popover was placed
+  // from the old rect, so a repo switch or a changed ref set closes it.
+  const refsKey = $derived(refs.map((r) => `${r.kind}:${r.name}:${r.target_sha}`).join("|"));
+  $effect(() => {
+    void $currentRepo;
+    void refsKey;
+    cancelClose();
+    hoverOpen = false;
+  });
 
   function onContext(e: MouseEvent, it: DisplayItem) {
     e.preventDefault();
@@ -256,14 +267,14 @@
       ondrop={(e) => onPillDrop(e, primary)}
       class:drop-target={isDropTarget(primary)}
     >
-      {#if primary.isHead}<span class="head-mark">✓</span>{/if}
+      {#if primary.isHead}<span class="head-mark"><Icon name="check" size={14} /></span>{/if}
       <span class="lbl">{primary.label}</span>
       <!-- #7 round 7 — local/remote indicators -->
       {#if primary.kind !== "tag" && primary.kind !== "stash" && primary.kind !== "head"}
-        {#if primary.hasLocal}<span class="ind" title="local">🏠</span>{/if}
-        {#if primary.hasRemote}<span class="ind" title="remote">☁</span>{/if}
+        {#if primary.hasLocal}<span class="ind" title="local"><Icon name="laptop" size={14} /></span>{/if}
+        {#if primary.hasRemote}<span class="ind" title="remote"><Icon name="cloud" size={14} /></span>{/if}
       {/if}
-      {#if primary.kind === "tag"}<span class="kind-ico right" title="tag">🏷️</span>{/if}
+      {#if primary.kind === "tag"}<span class="kind-ico right" title="tag"><Icon name="tag" size={14} /></span>{/if}
       <!-- +N badge -->
       {#if extras.length > 0}<span class="more">+{extras.length}</span>{/if}
     </span>
@@ -307,13 +318,13 @@
           class:drop-target={isDropTarget(it)}
           title={it.kind === "tag" ? "Tag" : "Double-click to checkout"}
         >
-          {#if it.isHead}<span class="head-mark">✓</span>{/if}
+          {#if it.isHead}<span class="head-mark"><Icon name="check" size={14} /></span>{/if}
           <span class="lbl">{it.label}</span>
           {#if it.kind !== "tag" && it.kind !== "stash" && it.kind !== "head"}
-            {#if it.hasLocal}<span class="ind" title="local">🏠</span>{/if}
-            {#if it.hasRemote}<span class="ind" title="remote">☁</span>{/if}
+            {#if it.hasLocal}<span class="ind" title="local"><Icon name="laptop" size={14} /></span>{/if}
+            {#if it.hasRemote}<span class="ind" title="remote"><Icon name="cloud" size={14} /></span>{/if}
           {/if}
-          {#if it.kind === "tag"}<span class="kind-ico right">🏷️</span>{/if}
+          {#if it.kind === "tag"}<span class="kind-ico right"><Icon name="tag" size={14} /></span>{/if}
         </button>
       {/each}
     </div>
@@ -325,72 +336,70 @@
     position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-2);
   }
   .badges.ghost { opacity: 0.5; }
   /* When the popover for the same badge is open, hide the closed pill so
      the popover visually replaces it (no duplicate sitting behind). */
   .hidden-while-open { visibility: hidden; }
 
-  /* Compact inline ref labels.
-     #8 round 10 — distinct shapes per kind:
-     • branch / HEAD → rectangular with soft radius
-     • tag           → pill (full radius)
-     • stash         → pill */
+  /* Compact inline ref labels (docs/specs/ui-layout-2026-11.md, Region 4):
+     18 px high, --radius-sm, --fs-sm, 4 px gap. The kind is carried by the
+     icon (laptop, cloud, tag, check), so every pill shares one shape.
+     line-height is set here because .cell-refs uses line-height 0 to stop
+     baseline drift; without it the label inherited 0 and rendered empty. */
   .ref {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
-    font-size: 11px;
-    padding: 0 6px;
-    line-height: 18px;
+    gap: var(--sp-2);
+    height: var(--h-pill);
+    line-height: var(--h-pill);
+    font-size: var(--fs-sm);
+    padding: 0 var(--sp-3);
     white-space: nowrap;
     border: 1px solid;
+    border-radius: var(--radius-sm);
     background: transparent;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 220px;
     font-weight: 500;
   }
-  .ref.branch, .ref.head-ref { border-radius: 3px; }
-  .ref.tag                   { border-radius: 8px; }
-  .ref.stash                 { border-radius: 8px; }
   /* Label inside the badge gets the actual truncation so head-mark / icons
      stay visible on the ends and only the name itself ellipses on the right. */
   .lbl { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
   /* Lane-aware coloring — badges fill with the lane's full color and use
      white text so the active branch reads loud on the graph (GitKraken
-     style). HEAD (the checked-out branch — the one with the ✓) gets a
-     bright white outline ring so it stands out across the view. */
+     style). HEAD (the checked-out branch — the one with the check mark)
+     gets a bright white outline ring so it stands out across the view. */
   .ref { color: #ffffff; background: var(--lane-color); border-color: var(--lane-color); }
   .ref.head, .ref.head-ref { font-weight: 700; box-shadow: 0 0 0 1.5px #ffffff; }
   .ref.selected { font-weight: 600; }
   .ref.stash { color: #ffffff; background: var(--renamed); border-color: var(--renamed); }
-  .head-mark { font-weight: 700; color: #ffffff; }
-  .kind-ico  { font-size: 11px; opacity: 1; filter: brightness(0) invert(1); }
-  .kind-ico.right { margin-left: 2px; order: 99; }
-  .ind { color: #ffffff; opacity: 0.85; font-size: 9px; }
+  .head-mark, .ind, .kind-ico { display: inline-flex; flex: 0 0 auto; color: #ffffff; }
+  .ind { opacity: 0.85; }
+  .kind-ico.right { margin-left: var(--sp-1); order: 99; }
   .more {
     background: rgba(255,255,255,0.25);
     color: #ffffff;
-    font-size: 9px;
-    padding: 0 4px;
-    border-radius: 6px;
-    margin-left: 2px;
+    font-size: var(--fs-xs);
+    padding: 0 var(--sp-2);
+    border-radius: var(--radius-lg);
+    margin-left: var(--sp-1);
   }
 
   .popover {
     position: fixed;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-    padding: 2px;
+    padding: var(--sp-1);
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--sp-1);
     pointer-events: auto;
   }
   /* Popover rows use the same lane-fill look as the closed badge — keep

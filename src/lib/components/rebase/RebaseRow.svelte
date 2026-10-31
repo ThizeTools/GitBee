@@ -4,6 +4,7 @@
   // focus, so typing in the message box or the select keeps its own keys.
   import { REBASE_ACTIONS, type RebaseAction, type RebaseEntry } from "$lib/rebase/types";
   import { keyAction, parseAction, shortSha } from "$lib/rebase/model";
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Props {
     index: number;
@@ -82,7 +83,7 @@
       aria-label="Drag to reorder"
       ondragstart={onDragStart}
       ondragend={onDragEnd}
-    >⋮⋮</span>
+    ><Icon name="grip" size={14} /></span>
     <select class="action" aria-label="Action for {shortSha(entry.sha)}" value={entry.action} onchange={onSelect}>
       {#each REBASE_ACTIONS as action (action)}
         <option value={action}>{action}</option>
@@ -112,34 +113,34 @@
 <style>
   .item {
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     background: var(--bg);
-    padding: 6px 8px;
-    display: flex; flex-direction: column; gap: 6px;
+    padding: var(--sp-3) var(--sp-4);
+    display: flex; flex-direction: column; gap: var(--sp-3);
   }
   .item:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .item.target { border-color: var(--accent); }
   .item.dropped .subject, .item.dropped .sha { text-decoration: line-through; color: var(--fg-muted); }
-  .line { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
+  .line { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; font-size: var(--fs-md); }
   .handle {
-    cursor: grab; color: var(--fg-muted); user-select: none; padding: 0 2px;
-    letter-spacing: -2px;
+    display: flex; align-items: center;
+    cursor: grab; color: var(--fg-muted); user-select: none; padding: 0 var(--sp-1);
   }
   .action {
     background: var(--bg-elev); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 3px;
-    padding: 2px 4px; font-size: 11px; width: 88px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-1) var(--sp-2); font-size: var(--fs-sm); width: 88px;
   }
-  .sha { color: var(--accent); font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; }
+  .sha { color: var(--accent); font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm); }
   .subject { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .author { color: var(--fg-muted); font-size: 11px; white-space: nowrap; }
+  .author { color: var(--fg-muted); font-size: var(--fs-sm); white-space: nowrap; }
   .message {
     background: var(--bg-elev); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 8px; font-size: 12px; resize: vertical;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-4); font-size: var(--fs-md); resize: vertical;
     font-family: "Cascadia Code", Consolas, monospace;
   }
   .message:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .message:disabled { color: var(--fg-muted); }
-  .error { font-size: 11px; color: #d46a6a; }
+  .error { font-size: var(--fs-sm); color: var(--del); }
 </style>

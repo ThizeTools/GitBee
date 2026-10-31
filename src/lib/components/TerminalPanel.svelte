@@ -14,6 +14,7 @@
   } from "$lib/stores/terminal";
   import ResizeHandle from "./ResizeHandle.svelte";
   import TerminalSurface from "./TerminalSurface.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
 
   const dockShown = $derived(
     $layout.terminalOpen && $currentRepo !== null && !$showingInfo && !$showingNewTab,
@@ -62,8 +63,9 @@
     max={600}
     onChange={(v) => setSize("terminalHeight", v)}
   />
+  <!-- Dock header: one 30 px row, the tabs and icon-button actions. -->
   <header class="head">
-    <span class="title">▶_ Terminal</span>
+    <span class="title"><Icon name="terminal" size={14} />Terminal</span>
     <div class="tabs" role="tablist">
       {#each $repoSessions as s (s.id)}
         <div class="tab" class:active={s.id === $shownSessionId} class:exited={s.exited}>
@@ -73,12 +75,17 @@
             aria-selected={s.id === $shownSessionId}
             onclick={() => select(s.id)}
           >{s.title}{s.exited ? " (exited)" : ""}</button>
-          <button class="tab-close" title="Close terminal" onclick={() => closeTab(s.id)}>×</button>
+          <button class="tab-close" type="button" title="Close terminal" aria-label="Close terminal"
+            onclick={() => closeTab(s.id)}><Icon name="close" size={12} /></button>
         </div>
       {/each}
-      <button class="ghost" title="New terminal" onclick={newTerminal}>+</button>
+      <button class="icon-btn" type="button" title="New terminal" aria-label="New terminal" onclick={newTerminal}>
+        <Icon name="add" size={14} />
+      </button>
     </div>
-    <button class="ghost" title="Hide terminal (Ctrl+`)" onclick={hide}>⌄</button>
+    <button class="icon-btn" type="button" title="Hide terminal (Ctrl+`)" aria-label="Hide terminal" onclick={hide}>
+      <Icon name="chevron-down" size={14} />
+    </button>
   </header>
   <div class="surfaces">
     {#each $terminalSessions.list as s (s.id)}
@@ -104,45 +111,60 @@
   .head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 2px 8px;
+    gap: var(--sp-5);
+    height: var(--h-section);
+    padding: 0 var(--sp-4);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: var(--fs-sm);
   }
-  .title { font-weight: 600; flex-shrink: 0; }
+  .title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-3);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    flex-shrink: 0;
+  }
   .tabs {
     display: flex;
     align-items: center;
-    gap: 2px;
+    gap: var(--sp-1);
     flex: 1;
     min-width: 0;
     overflow-x: auto;
   }
+  /* Tabs and every icon button are 24 px high, the toolbar hit size. */
   .tab {
     display: flex;
     align-items: center;
-    border-radius: 3px;
+    height: var(--h-row);
+    border-radius: var(--radius);
     color: var(--fg-muted);
     white-space: nowrap;
   }
   .tab.active { background: var(--border); color: var(--fg); }
   .tab.exited .tab-label { font-style: italic; }
   .tab-label {
+    height: 100%;
     background: transparent; border: 0; color: inherit; cursor: pointer;
-    font: inherit; padding: 2px 6px;
+    font: inherit; padding: 0 var(--sp-4);
   }
-  .tab-close {
-    background: transparent; border: 0; color: var(--fg-muted); cursor: pointer;
-    font-size: 12px; padding: 0 4px; border-radius: 3px;
-  }
-  .tab-close:hover { color: var(--fg); }
-  .ghost {
+  .tab-close,
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--h-row);
+    height: var(--h-row);
+    padding: 0;
     background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 2px 8px; font-size: 13px; border-radius: 3px;
+    cursor: pointer; border-radius: var(--radius);
   }
-  .ghost:hover { color: var(--fg); background: var(--border); }
+  .tab-close:hover,
+  .icon-btn:hover { color: var(--fg); background: var(--border); }
+  .icon-btn { flex-shrink: 0; }
   .surfaces {
     flex: 1;
     min-height: 0;

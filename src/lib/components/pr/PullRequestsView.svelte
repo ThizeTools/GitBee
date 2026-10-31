@@ -16,6 +16,7 @@
   import ReviewDialog from "./ReviewDialog.svelte";
   import NewPullRequestDialog from "./NewPullRequestDialog.svelte";
   import { submitReview } from "./pullActions";
+  import Icon from "$lib/icons/Icon.svelte";
 
   type Tab = "open" | "closed";
   interface Repo { owner: string; name: string; }
@@ -124,6 +125,7 @@
 </script>
 
 <section class="pulls">
+  <!-- View header: one 30 px row, the title, the tabs and icon-button actions. -->
   <header class="bar">
     <span class="title">Pull requests</span>
     {#if origin}<span class="repo">{origin.owner}/{origin.name}</span>{/if}
@@ -132,7 +134,8 @@
       <button class:active={tab === "closed"} onclick={() => (tab = "closed")} role="tab" aria-selected={tab === "closed"}>Closed</button>
     </div>
     <span class="grow"></span>
-    <button onclick={refresh} disabled={!origin || !$ghAuth.authenticated}>Refresh</button>
+    <button class="icon-btn" type="button" title="Refresh" aria-label="Refresh pull requests"
+      onclick={refresh} disabled={!origin || !$ghAuth.authenticated}><Icon name="fetch" size={14} /></button>
     <button class="primary" onclick={() => (creating = true)} disabled={!origin || !$currentRepo || !$ghAuth.authenticated}>
       New pull request…
     </button>
@@ -198,24 +201,32 @@
 <style>
   .pulls { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); color: var(--fg); }
   .bar {
-    display: flex; align-items: center; gap: 10px; padding: 6px 12px;
-    border-bottom: 1px solid var(--border); background: var(--bg-elev); flex-shrink: 0; flex-wrap: wrap;
+    display: flex; align-items: center; gap: var(--sp-6);
+    height: var(--h-section); padding: 0 var(--sp-8);
+    border-bottom: 1px solid var(--border-strong); background: var(--bg-elev); flex-shrink: 0; min-width: 0;
   }
-  .title { font-weight: 600; font-size: 13px; }
-  .repo { color: var(--fg-muted); font-size: 12px; font-family: "Cascadia Code", Consolas, monospace; }
-  .tabs { display: flex; gap: 2px; }
+  .title { font-weight: 600; font-size: var(--fs-lg); white-space: nowrap; }
+  .repo { color: var(--fg-muted); font-size: var(--fs-sm); font-family: "Cascadia Code", Consolas, monospace; white-space: nowrap; }
+  .tabs { display: flex; gap: var(--sp-1); }
+  /* Text actions in the header: 24 px high, the toolbar hit size. */
   .tabs button, .bar button {
+    height: var(--h-row); display: inline-flex; align-items: center;
     background: transparent; border: 1px solid transparent; color: var(--fg-muted);
-    padding: 3px 9px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm);
   }
   .tabs button.active { color: var(--fg); border-color: var(--border-strong); }
-  .bar button { border-color: var(--border-strong); color: var(--fg); }
   .bar button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
   .bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+  /* Icon-only action: 24 x 24. */
+  .bar .icon-btn {
+    width: var(--h-row); padding: 0; justify-content: center;
+    color: var(--fg-muted); border-color: transparent;
+  }
+  .bar .icon-btn:hover:not(:disabled) { color: var(--fg); background: var(--border); }
   .grow { flex: 1; }
   .split { display: flex; flex: 1; min-height: 0; }
   .listcol { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
   .detailcol { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-  .empty { padding: 24px 16px; color: var(--fg-muted); font-size: 12px; }
-  .error { margin: 8px 10px; font-size: 11px; color: #f85149; }
+  .empty { padding: var(--sp-8); color: var(--fg-muted); font-size: var(--fs-md); }
+  .error { margin: var(--sp-4) var(--sp-5); font-size: var(--fs-sm); color: var(--del); }
 </style>

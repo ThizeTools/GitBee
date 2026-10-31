@@ -4,14 +4,18 @@
 
    Diff add/del colors stay fixed to the diff semantics (added always green,
    removed always red) via --add/--del. Token colors reuse theme variables so
-   the code reads correctly in light and dark themes. */
+   the code reads correctly in light and dark themes.
+
+   Sizes come from the layout tokens (docs/specs/ui-layout-2026-11.md). Code
+   line heights (1.5) and the geometry of the line-number gutters stay as they
+   were: they set the diff's row grid, not the chrome around it. */
 
 .dv-root {
   height: 100%;
   overflow: auto;
   background: var(--bg);
   font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--fs-md);
 }
 
 /* ---- toolbar (sticky so the toggles stay reachable while scrolling) ---- */
@@ -21,46 +25,52 @@
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
+  gap: var(--sp-6);
+  height: var(--h-section);
+  padding: 0 var(--sp-6);
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   font-family: inherit;
 }
 .dv-seg { display: inline-flex; }
 .dv-seg button {
+  height: var(--h-row);
   background: transparent;
   color: var(--fg-muted);
   border: 1px solid var(--border);
-  padding: 3px 10px;
+  padding: 0 var(--sp-5);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   font-weight: 600;
   font-family: inherit;
 }
-.dv-seg button:first-child { border-radius: 3px 0 0 3px; }
-.dv-seg button:last-child { border-radius: 0 3px 3px 0; border-left: 0; }
+.dv-seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.dv-seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: 0; }
 .dv-seg button.active { background: var(--border-strong); color: var(--fg); }
 .dv-seg button:hover:not(.active) { color: var(--fg); }
 .dv-check {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-3);
   color: var(--fg-muted);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-family: inherit;
   cursor: pointer;
 }
 .dv-check input { accent-color: var(--accent); margin: 0; }
+/* Pill: 18 px high (no token), radius-sm per the spec's pill rule. */
 .dv-badge {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  font-size: var(--fs-xs);
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-radius: 10px;
-  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--sp-4);
   font-family: inherit;
 }
 
@@ -69,9 +79,10 @@
 .dv-file-head {
   display: flex;
   width: 100%;
+  min-height: var(--h-section);
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-5);
   background: var(--bg-elev);
   color: var(--fg);
   border: 0;
@@ -81,21 +92,22 @@
   font-family: inherit;
 }
 .dv-file-head:hover { background: var(--border); }
-.dv-caret { width: 12px; color: var(--fg-muted); }
+.dv-caret { display: inline-flex; width: var(--icon-sm); color: var(--fg-muted); }
 .dv-path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dv-stats { font-size: 11px; color: var(--fg-muted); }
-.dv-note { padding: 12px; color: var(--fg-muted); font-style: italic; }
-.dv-empty { padding: 40px; text-align: center; color: var(--fg-muted); font-style: italic; }
+.dv-stats { font-size: var(--fs-sm); color: var(--fg-muted); }
+.dv-note { padding: var(--sp-6); color: var(--fg-muted); font-style: italic; }
+.dv-empty { padding: var(--sp-20) var(--sp-8); text-align: center; color: var(--fg-muted); font-style: italic; }
 
 /* ---- hunks and lines ---- */
 .dv-hunk-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-4);
+  height: var(--h-row);
   background: color-mix(in srgb, var(--renamed) 12%, transparent);
   color: var(--renamed);
-  padding: 2px 10px;
-  font-size: 11px;
+  padding: 0 var(--sp-5);
+  font-size: var(--fs-sm);
 }
 .dv-hunk-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-line,
@@ -109,14 +121,14 @@
 .dv-num {
   color: var(--fg-muted);
   text-align: right;
-  padding: 0 6px;
+  padding: 0 var(--sp-3);
   user-select: none;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   background: var(--bg-elev);
   border-right: 1px solid var(--border);
 }
 .dv-content {
-  padding: 0 10px;
+  padding: 0 var(--sp-5);
   overflow: hidden;
   min-width: 0;
   color: var(--fg);
@@ -134,7 +146,7 @@
 .dv-sign { color: var(--dv-tone, var(--fg-muted)); }
 .dv-wd {
   background: color-mix(in srgb, var(--dv-tone, var(--fg)) 35%, transparent);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 .dv-nonewline .dv-content { color: var(--fg-muted); font-style: italic; }
 
@@ -166,21 +178,21 @@
 .dv-image-diff {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  padding: 12px;
+  gap: var(--sp-6);
+  padding: var(--sp-6);
 }
 .dv-img-pane {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-3);
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 8px;
+  border-radius: var(--radius);
+  padding: var(--sp-4);
   background: var(--bg-elev);
 }
-.dv-img-pane figcaption { font-size: 11px; color: var(--fg-muted); text-transform: uppercase; }
+.dv-img-pane figcaption { font-size: var(--fs-sm); color: var(--fg-muted); text-transform: uppercase; }
 .dv-img-pane img {
   max-width: 100%;
   max-height: 360px;
@@ -189,11 +201,12 @@
   /* Checkerboard-free backdrop so transparent PNG/SVG edges stay visible. */
   background: repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 50% / 16px 16px;
 }
-.dv-img-none { padding: 24px 8px; text-align: center; color: var(--fg-muted); font-style: italic; }
+.dv-img-none { padding: var(--sp-8) var(--sp-4); text-align: center; color: var(--fg-muted); font-style: italic; }
 
 /* ---- hunk and line staging (docs/specs/hunk-staging.md) ---- */
 /* A pickable gutter is a button, so it takes keyboard focus. Reset the button look
-   so it matches the span gutter beside it. */
+   so it matches the span gutter beside it. Its hit height is the code line, which
+   the diff keeps as it is; its width is the 50 px gutter. */
 button.dv-num {
   margin: 0;
   border: 0;
@@ -208,14 +221,18 @@ button.dv-num:hover { color: var(--fg); }
 .dv-num.dv-picked { background: color-mix(in srgb, var(--accent) 28%, var(--bg-elev)); color: var(--fg); }
 .dv-content.dv-picked { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 
+/* Action button: 24 px high, the toolbar hit size. */
 .dv-hunk-btn {
+  display: inline-flex;
+  align-items: center;
+  height: var(--h-row);
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 1px 8px;
+  border-radius: var(--radius);
+  padding: 0 var(--sp-5);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -227,23 +244,23 @@ button.dv-num:hover { color: var(--fg); }
 }
 .dv-ghost { background: transparent; border-color: transparent; color: var(--fg-muted); }
 
-.dv-hint { font-size: 11px; color: var(--fg-muted); font-style: italic; font-family: inherit; }
+.dv-hint { font-size: var(--fs-sm); color: var(--fg-muted); font-style: italic; font-family: inherit; }
 
 /* Floats at the bottom of its file block while the picked lines are off-screen. */
 .dv-pick-bar {
   position: sticky;
-  bottom: 8px;
+  bottom: var(--sp-4);
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-4);
   width: fit-content;
-  margin: 8px auto;
-  padding: 6px 10px;
+  margin: var(--sp-4) auto;
+  padding: var(--sp-3) var(--sp-5);
   background: var(--bg-elev);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
   font-family: inherit;
 }
-.dv-pick-count { color: var(--fg-muted); font-size: 11px; }
+.dv-pick-count { color: var(--fg-muted); font-size: var(--fs-sm); }

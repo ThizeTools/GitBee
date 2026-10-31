@@ -5,8 +5,8 @@
 <style>
   .lfs-badge {
     flex-shrink: 0;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.4px;
-    line-height: 13px; padding: 0 4px; border-radius: 3px;
+    font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.04em;
+    line-height: 13px; padding: 0 var(--sp-2); border-radius: var(--radius-sm);
     color: var(--accent);
     border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
   }

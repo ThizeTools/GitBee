@@ -2,6 +2,8 @@
   import {
     notices, dismiss, pauseNotice, resumeNotice, type Notice,
   } from "$lib/stores/notifications";
+  import Icon from "$lib/icons/Icon.svelte";
+  import type { IconName } from "$lib/icons/names";
 
   // The progress bar drains with a CSS animation lasting the toast's TTL. A
   // rAF loop used to re-render this component every frame forever, even with
@@ -12,12 +14,12 @@
   // `paused` class sets animation-play-state so the bar stops where it is.
   // Leaving resumes both from the same point, so they never drift apart.
 
-  function icon(k: Notice["kind"]): string {
+  function icon(k: Notice["kind"]): IconName {
     switch (k) {
-      case "success": return "✓";
-      case "warn": return "⚠";
-      case "error": return "✕";
-      default: return "ⓘ";
+      case "success": return "check";
+      case "warn": return "warning";
+      case "error": return "close";
+      default: return "info";
     }
   }
 </script>
@@ -31,9 +33,11 @@
       onmouseenter={() => pauseNotice(n.id)}
       onmouseleave={() => resumeNotice(n.id)}
     >
-      <button class="close" onclick={() => dismiss(n.id)} title="Dismiss">×</button>
+      <button class="close" onclick={() => dismiss(n.id)} title="Dismiss" aria-label="Dismiss">
+        <Icon name="close" size={14} />
+      </button>
       <div class="row">
-        <span class="ico">{icon(n.kind)}</span>
+        <span class="ico"><Icon name={icon(n.kind)} size={16} /></span>
         <div class="text">
           <div class="title">{n.title}</div>
           {#if n.message}<div class="msg">{n.message}</div>{/if}
@@ -49,11 +53,12 @@
 <style>
   .toaster {
     position: fixed;
-    left: 16px;
-    bottom: 38px; /* above status bar */
+    left: var(--sp-8);
+    /* Sits above the status bar: its height plus one 12 px step. */
+    bottom: calc(var(--h-statusbar) + var(--sp-6));
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--sp-5);
     z-index: 900;
     pointer-events: none;
     max-width: 360px;
@@ -63,9 +68,9 @@
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
     border-left: 4px solid;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 6px 18px rgba(0,0,0,0.45);
-    padding: 12px 14px 0;
+    padding: var(--sp-6) var(--sp-8) 0;
     overflow: hidden;
     position: relative;
     min-width: 280px;
@@ -83,35 +88,39 @@
   .row {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding-right: 24px; /* room for close */
+    gap: var(--sp-5);
+    padding-right: var(--h-row); /* room for the close button */
   }
-  .ico { font-size: 16px; line-height: 20px; width: 18px; text-align: center; flex-shrink: 0; }
+  .ico {
+    display: flex; align-items: center; justify-content: center;
+    width: var(--icon); height: var(--icon); flex-shrink: 0;
+    margin-top: var(--sp-1);
+  }
   .toast.info    .ico { color: var(--renamed); }
   .toast.success .ico { color: var(--accent); }
   .toast.warn    .ico { color: var(--modified); }
   .toast.error   .ico { color: var(--del); }
 
   .text { flex: 1; min-width: 0; }
-  .title { font-weight: 600; font-size: 13px; color: var(--fg); }
-  .msg { font-size: 12px; color: var(--fg-muted); margin-top: 3px; line-height: 1.4; }
+  .title { font-weight: 600; font-size: var(--fs-md); color: var(--fg); }
+  .msg { font-size: var(--fs-md); color: var(--fg-muted); margin-top: var(--sp-2); line-height: 1.4; }
 
+  /* 24 px hit target, pinned to the top-right corner. */
   .close {
     position: absolute;
-    top: 6px; right: 8px;
+    top: var(--sp-3); right: var(--sp-3);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row);
     background: transparent;
     border: 0;
+    border-radius: var(--radius);
     color: var(--fg-muted);
     cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
-    padding: 2px 6px;
-    border-radius: 3px;
   }
   .close:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
 
   .bar {
-    margin-top: 10px;
+    margin-top: var(--sp-5);
     height: 3px;
     background: rgba(255,255,255,0.06);
   }

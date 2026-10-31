@@ -7,6 +7,7 @@
   import { pushUndo } from "$lib/stores/history";
   import { commitUndo } from "$lib/stores/undoEntries";
   import { confirmDialog } from "$lib/stores/dialog";
+  import Icon from "$lib/icons/Icon.svelte";
   import { tick } from "svelte";
   import {
     SUMMARY_LIMIT, amendFields, composeMessage, isStaged,
@@ -17,6 +18,7 @@
   import { addCoAuthor, parseCoAuthors, removeCoAuthor, type CoAuthor } from "$lib/commitMsg/trailers";
   import { distinctAuthors, type Identity } from "$lib/commitMsg/coAuthors";
   import SignToggle from "./commit/SignToggle.svelte";
+  import OptionToggle from "./commit/OptionToggle.svelte";
   import CoAuthorPicker from "./commit/CoAuthorPicker.svelte";
   import AiGenerateButton from "./commit/AiGenerateButton.svelte";
   import { identityFor, repoIdentity } from "$lib/profiles/identityStore";
@@ -243,18 +245,21 @@
     bind:value={description}
     onkeydown={onCommitFieldKey}
   ></textarea>
-  <CoAuthorPicker
-    {authors}
-    {coAuthors}
-    onAdd={addPerson}
-    onRemove={removePerson}
-  />
   <div class="options">
-    <label class="amend">
-      <input type="checkbox" bind:checked={amend} />
-      Amend previous commit
-    </label>
+    <OptionToggle
+      icon="history"
+      label="Amend"
+      checked={amend}
+      title="Replace the previous commit instead of adding a new one"
+      onChange={(v) => (amend = v)}
+    />
     <SignToggle signed={signed} onToggle={onSignToggle} />
+    <CoAuthorPicker
+      {authors}
+      {coAuthors}
+      onAdd={addPerson}
+      onRemove={removePerson}
+    />
     <span class="spacer"></span>
     {#if $currentRepo}
       {@const repo = $currentRepo}
@@ -269,14 +274,15 @@
     onclick={commit}
     disabled={!summary.trim() || (stagedCount === 0 && !amend)}
   >
-    ✓ Commit{amend ? " (amend)" : ""}{stagedCount > 0 ? ` ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : ""}
+    <Icon name="check" size={16} />
+    <span>Commit{amend ? " (amend)" : ""}{stagedCount > 0 ? ` ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : ""}</span>
   </button>
 </div>
 
 <style>
   .commit-body {
-    padding: 12px 14px;
-    display: flex; flex-direction: column; gap: 8px;
+    padding: var(--sp-6) var(--sp-8);
+    display: flex; flex-direction: column; gap: var(--sp-4);
     flex: 1;
     /* never scroll — the description shrinks (flex:1 with min-height) */
     overflow: hidden;
@@ -284,46 +290,46 @@
   }
   .field { position: relative; }
   .summary {
-    width: 100%; background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 8px 60px 8px 10px; font-size: 13px; font-weight: 500;
+    width: 100%; height: 32px;
+    background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 60px 0 var(--sp-5);
+    font-size: var(--fs-lg); font-weight: 500;
   }
   .summary:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .counter {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-    font-size: 10px; font-family: "Cascadia Code", Consolas, monospace;
+    position: absolute; right: var(--sp-5); top: 50%; transform: translateY(-50%);
+    font-size: var(--fs-xs); font-family: "Cascadia Code", Consolas, monospace;
     pointer-events: none;
   }
   .counter-bar { height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
   .counter-fill { height: 100%; transition: width 100ms; }
   .description {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 8px 10px; font: inherit; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-4) var(--sp-5); font: inherit; font-size: var(--fs-md);
     resize: none;
     flex: 1;
-    min-height: 50px;
+    min-height: 80px;
   }
   .description:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .options {
-    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    display: flex; gap: var(--sp-4); align-items: center; flex-wrap: wrap;
   }
   .spacer { flex: 1; }
-  .identity-hint { font-size: 11px; color: var(--fg-muted); }
+  .identity-hint { font-size: var(--fs-sm); color: var(--fg-muted); }
   .identity-hint.warn { color: var(--modified); }
-  .amend {
-    font-size: 11px; color: var(--fg-muted);
-    display: flex; gap: 6px; align-items: center;
-  }
   /* Default: translucent fill (low opacity) with the accent border at 100%
      so the button reads as a primary action without dominating the panel.
      Hover: fill goes to 100% and content swaps to the bg for contrast. */
   .commit-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-4);
+    width: 100%; height: 36px; flex-shrink: 0;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
     border: 1px solid var(--accent);
-    padding: 10px 14px; border-radius: 4px; cursor: pointer;
-    font-weight: 700; font-size: 12px;
+    border-radius: var(--radius); cursor: pointer;
+    font-weight: 700; font-size: var(--fs-md);
     transition: background 120ms ease, color 120ms ease;
   }
   .commit-btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }

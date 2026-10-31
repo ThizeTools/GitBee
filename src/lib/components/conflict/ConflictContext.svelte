@@ -1,6 +1,8 @@
 <script lang="ts">
   // Unchanged lines between two conflict blocks. Long runs show only the three
   // lines on each side of the gap, so the blocks stay the focus.
+  import Icon from "$lib/icons/Icon.svelte";
+
   interface Props {
     lines: string[];
     expanded: boolean;
@@ -22,20 +24,22 @@
   {/if}
 {:else}
   <pre class="ctx">{head}</pre>
-  <button class="gap" onclick={onToggle}>⋯ {hidden} unchanged lines · show all</button>
+  <button class="gap" onclick={onToggle}><Icon name="more" size={12} /> {hidden} unchanged lines · show all</button>
   <pre class="ctx">{tail}</pre>
 {/if}
 
 <style>
   .ctx {
-    margin: 0 14px; padding: 2px 10px;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 18px;
+    margin: 0 var(--sp-8); padding: var(--sp-1) var(--sp-5);
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-md); line-height: 18px;
     white-space: pre; color: var(--fg-muted); overflow: hidden;
   }
+  /* Gap row: 24 px high, the toolbar hit size. */
   .gap {
-    display: block; width: calc(100% - 28px); margin: 2px 14px;
+    display: flex; align-items: center; gap: var(--sp-3);
+    width: calc(100% - 2 * var(--sp-8)); height: var(--h-row); margin: var(--sp-1) var(--sp-8);
     background: transparent; border: 1px dashed var(--border); color: var(--fg-muted);
-    padding: 2px 10px; border-radius: 3px; cursor: pointer; font-size: 11px; text-align: left;
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm); text-align: left;
   }
   .gap:hover { color: var(--fg); border-color: var(--accent); }
 </style>

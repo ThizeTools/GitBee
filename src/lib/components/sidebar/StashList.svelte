@@ -7,6 +7,7 @@
   import { dropStashAt } from "$lib/menus/stashActions";
   import { openMenu, type MenuItem } from "$lib/stores/contextmenu";
   import { matchesFilter } from "$lib/components/sidebar/filter";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // Stash rows. "Hide" only removes a row from this list; the stash itself stays.
   // `count` reports the visible rows to the section header.
@@ -45,12 +46,12 @@
 
   function stashMenu(idx: number, message: string): MenuItem[] {
     return [
-      { label: "Apply Stash", icon: "↻", onClick: () => applyStash(idx) },
-      { label: "Pop Stash", icon: "⤴", onClick: () => popStash(idx) },
-      { label: "Delete Stash", icon: "🗑", danger: true, onClick: () => dropStash(idx) },
+      { label: "Apply Stash", icon: "fetch", onClick: () => applyStash(idx) },
+      { label: "Pop Stash", icon: "pop", onClick: () => popStash(idx) },
+      { label: "Delete Stash", icon: "trash", danger: true, onClick: () => dropStash(idx) },
       { separator: true, label: "" },
-      { label: "Edit stash message", icon: "✎", onClick: () => editStashMessage(idx, message) },
-      { label: "Hide", icon: "○", onClick: () => hideStash(idx) },
+      { label: "Edit stash message", icon: "file-modified", onClick: () => editStashMessage(idx, message) },
+      { label: "Hide", icon: "eye-off", onClick: () => hideStash(idx) },
     ];
   }
 </script>
@@ -64,8 +65,22 @@
         onclick={() => selectStash(s.index, s.sha)}
         oncontextmenu={(e) => openMenu(e, stashMenu(s.index, s.message))}
       >
-        <span class="ico">⛶</span>
+        <Icon name="stash" size={14} class="ico" />
         <span class="name">{s.message}</span>
+      </button>
+      <button class="row-action" onclick={() => hideStash(s.index)} title="Hide stash" aria-label="Hide stash">
+        <Icon name="eye-off" size={14} />
+      </button>
+      <button class="row-action" onclick={() => dropStash(s.index)} title="Delete stash" aria-label="Delete stash">
+        <Icon name="trash" size={14} />
+      </button>
+      <button
+        class="row-action"
+        onclick={(e) => openMenu(e, stashMenu(s.index, s.message))}
+        title="More actions"
+        aria-label="More actions"
+      >
+        <Icon name="more" size={14} />
       </button>
     </li>
   {:else}

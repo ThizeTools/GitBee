@@ -5,6 +5,7 @@
   // filtered, plus a one-click escape hatch.
   import { soloRefs, clearSolo, removeSolo } from "$lib/stores/graphFilter";
   import { graph } from "$lib/stores/repo";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // Total ref count for the "N / Total" badge. Counts every commit
   // in the loaded slice (matches the user's screenshot: "1/148").
@@ -27,7 +28,7 @@
           title="Click to remove from solo"
           onclick={() => removeSolo(name)}
         >
-          <span class="x">×</span>
+          <span class="x"><Icon name="close" size={14} /></span>
           <span class="lbl">{name}</span>
         </button>
       {/each}
@@ -39,17 +40,18 @@
 {/if}
 
 <style>
+  /* Sizes from the Region 4 spec: type on --fs-sm/--fs-xs, 24 px controls
+     (the hit-target minimum), 18 px chips (the ref-pill height). */
   .banner {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 6px 12px;
+    gap: var(--sp-6);
+    padding: var(--sp-1) var(--sp-6);
     background: color-mix(in srgb, var(--accent) 22%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-    font-size: 11px;
+    font-size: var(--fs-sm);
     color: var(--fg);
     flex-shrink: 0;
-    min-height: 28px;
   }
   .lead {
     color: var(--fg);
@@ -58,12 +60,12 @@
   .count {
     color: var(--accent);
     font-weight: 700;
-    margin: 0 2px;
+    margin: 0 var(--sp-1);
   }
   .of { color: var(--fg-muted); font-weight: 500; }
   .chips {
     display: flex;
-    gap: 4px;
+    gap: var(--sp-2);
     flex-wrap: wrap;
     flex: 1;
     min-width: 0;
@@ -71,30 +73,31 @@
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--sp-2);
+    height: var(--h-pill, 18px);
     background: var(--bg-elev);
     border: 1px solid var(--border);
     color: var(--fg);
-    border-radius: 12px;
-    padding: 1px 8px;
-    font-size: 10px;
+    border-radius: var(--radius);
+    padding: 0 var(--sp-4);
+    font-size: var(--fs-xs);
     cursor: pointer;
-    line-height: 16px;
   }
   .chip:hover {
     border-color: var(--del);
     color: var(--del);
   }
-  .chip .x { color: var(--fg-muted); font-size: 13px; line-height: 1; }
+  .chip .x { display: inline-flex; color: var(--fg-muted); }
   .chip:hover .x { color: var(--del); }
   .chip .lbl { font-family: "Cascadia Code", Consolas, monospace; }
   .stop {
+    height: var(--h-row);
     background: transparent;
     border: 1px solid var(--accent);
     color: var(--accent);
-    border-radius: 4px;
-    padding: 3px 10px;
-    font-size: 11px;
+    border-radius: var(--radius);
+    padding: 0 var(--sp-5);
+    font-size: var(--fs-sm);
     font-weight: 600;
     cursor: pointer;
     flex-shrink: 0;

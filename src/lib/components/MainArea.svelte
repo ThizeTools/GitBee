@@ -13,6 +13,7 @@
   import NewTabPage from "$lib/components/NewTabPage.svelte";
   import ResizeHandle from "$lib/components/ResizeHandle.svelte";
   import TerminalPanel from "$lib/components/TerminalPanel.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
 </script>
 
 <div class="body-col">
@@ -23,8 +24,8 @@
       <NewTabPage />
     {:else}
       {#if $layout.sidebarCollapsed}
-        <button class="rail" title="Expand sidebar"
-          onclick={() => setSize("sidebarCollapsed", false)}>›</button>
+        <button class="rail" type="button" title="Expand sidebar" aria-label="Expand sidebar"
+          onclick={() => setSize("sidebarCollapsed", false)}><Icon name="chevron-right" size={14} /></button>
       {:else}
         <aside class="left-pane" style:width="{$layout.sidebarWidth}px">
           <Sidebar />
@@ -84,13 +85,13 @@
     backdrop-filter: blur(1px);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 12px;
+    gap: var(--sp-6);
     z-index: 50;
     color: var(--fg);
     cursor: progress;
   }
   .busy-veil .lbl {
-    font-size: 11px; font-weight: 600;
+    font-size: var(--fs-sm); font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.6px;
     color: var(--fg-muted);
   }
@@ -106,15 +107,16 @@
     to { transform: rotate(360deg); }
   }
   .rail {
-    width: 22px;
+    width: var(--h-row);
     flex-shrink: 0;
     background: var(--bg-elev);
     border: 0;
     border-right: 1px solid var(--border-strong);
     color: var(--fg-muted);
     cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: 0;
   }
   .rail:hover { background: var(--border); color: var(--fg); }

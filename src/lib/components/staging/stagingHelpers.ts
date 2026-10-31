@@ -1,4 +1,5 @@
 import type { StatusEntry } from "$lib/ipc";
+import type { IconName } from "$lib/icons/names";
 
 /** Which file list a row belongs to. Decides the stage vs unstage direction. */
 export type ListKind = "unstaged" | "staged";
@@ -27,25 +28,27 @@ export function isStaged(s: StatusEntry): boolean {
 }
 
 /**
- * One-glyph marker for a status entry's index or worktree side. Symbol-first
- * on purpose: `+` new, `−` removed, `●` edited, `→` renamed, `!` conflict.
- * Beats opaque M/A/D/R/U codes that need a legend to read.
+ * Icon for one side of a status entry, drawn at the start of a file row.
+ * Null when that side is unmodified, so the row keeps its alignment slot
+ * without an icon. The row color comes from the status class, not from here.
  *
- * @example statusChar(entry, "worktree") // "●" when the worktree side is modified
+ * @example statusIconFor(entry, "worktree") // "file-modified" when the worktree side is modified
  */
-export function statusChar(s: StatusEntry, side: StatusSide): string {
+export function statusIconFor(s: StatusEntry, side: StatusSide): IconName | null {
   const v = side === "index" ? s.index : s.worktree;
   switch (v) {
-    case "modified": return "●"; case "added": return "+";
-    case "deleted": return "−"; case "renamed": return "→";
-    case "copied": return "⎘"; case "untracked": return "+";
-    case "ignored": return "·"; case "conflicted": return "!";
-    default: return " ";
+    case "modified": return "file-modified";
+    case "added": case "untracked": return "file-added";
+    case "deleted": return "file-deleted";
+    case "renamed": case "copied": return "file-renamed";
+    case "conflicted": return "conflict";
+    case "ignored": return "file";
+    default: return null;
   }
 }
 
 /**
- * Human-readable tooltip for the glyph returned by `statusChar`.
+ * Human-readable tooltip for the icon returned by `statusIconFor`.
  *
  * @example statusTitle(entry, "index") // "Added (new file)" when the index side is added
  */

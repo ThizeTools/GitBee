@@ -1,5 +1,6 @@
 <script lang="ts">
   import FileTree from "$lib/components/FileTree.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import type { StatusEntry } from "$lib/ipc";
   import { showFile } from "$lib/stores/center";
   import { openMenu } from "$lib/stores/contextmenu";
@@ -14,7 +15,7 @@
   import { fileContextMenu } from "./fileContextMenu";
   import {
     batchLabelFor, blockFlex, collapseKeyFor, multiSelectionFor, shiftRange,
-    sideOf, sortByPath, statusChar, statusTitle,
+    sideOf, sortByPath, statusIconFor, statusTitle,
     type ActiveFile, type ListKind, type SortMode, type ViewMode,
   } from "./stagingHelpers";
 
@@ -162,13 +163,14 @@
 >
   <header class="block-head">
     <button class="head-toggle" onclick={toggleCollapsed} title={collapsed ? "Expand" : "Collapse"}>
-      <span class="chev">{collapsed ? "▶" : "▼"}</span>
+      <span class="chev"><Icon name={collapsed ? "chevron-right" : "chevron-down"} size={14} /></span>
       <span class="block-title">{COPY[kind].title}</span>
       <span class="block-count">{total}</span>
     </button>
     <button
-      class="primary-link"
-      class:danger={staged}
+      class="head-action"
+      class:primary={!staged}
+      class:secondary={staged}
       onclick={bulkAction}
       disabled={total === 0}
     >{COPY[kind].bulk}</button>
@@ -184,13 +186,16 @@
       {:else}
         <ul class="flat">
           {#each sortedFiles as f (f.path)}
+            {@const icon = statusIconFor(f, side)}
             <li
               class:active={isActive(f.path)}
               class:multi-selected={selection.has(f.path)}
               oncontextmenu={(e) => onFileContext(e, f)}
             >
               <button class="row" onclick={(e) => handleRowClick(e, f.path)}>
-                <span class="status {f[side]}" title={statusTitle(f, side)}>{statusChar(f, side)}</span>
+                <span class="status {f[side]}" title={statusTitle(f, side)}>
+                  {#if icon}<Icon name={icon} size={16} />{/if}
+                </span>
                 <span class="path {f[side]}">{f.path}</span>
                 {#if lfsFlags[f.path]}<LfsBadge />{/if}
               </button>
@@ -200,7 +205,10 @@
                 class:unstage={staged}
                 onclick={() => batchAction(f.path)}
                 title={batchLabel(f.path)}
-              >{batchLabel(f.path)}</button>
+                aria-label={batchLabel(f.path)}
+              >
+                <Icon name={staged ? "remove" : "add"} size={14} />
+              </button>
             </li>
           {/each}
           {#if total === 0}
@@ -215,77 +223,69 @@
 <style>
   .block {
     border-bottom: 1px solid var(--border-strong);
-    min-height: 36px;
+    min-height: var(--h-section);
     display: flex; flex-direction: column;
     overflow: hidden;
   }
   .block.collapsed { flex: 0 0 auto !important; }
   .list-wrap { flex: 1; overflow: auto; }
   .block-head {
-    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    display: flex; align-items: center; gap: var(--sp-4); padding: 0 var(--sp-6);
     background: var(--bg-elev); border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     height: 28px;
   }
   .head-toggle {
     background: transparent; border: 0; color: inherit;
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: var(--sp-4);
     padding: 0; cursor: pointer;
     flex: 1; min-width: 0; text-align: left;
   }
   .head-toggle:hover .chev,
   .head-toggle:hover .block-title { color: var(--fg); }
-  .chev {
-    color: var(--fg-muted);
-    font-size: 9px; width: 14px;
-    flex-shrink: 0;
-  }
+  .chev { color: var(--fg-muted); display: inline-flex; flex-shrink: 0; }
   .block-title {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em;
     font-weight: 700; color: var(--fg);
   }
   .block-count {
     background: var(--bg); color: var(--fg-muted);
-    padding: 1px 8px; border-radius: 10px; font-size: 11px;
-    font-weight: 600; border: 1px solid var(--border);
+    padding: 0 var(--sp-4); border-radius: var(--radius-lg); font-size: var(--fs-xs);
+    font-weight: 600; border: 1px solid var(--border); line-height: 14px;
   }
-  /* Same look as the Commit button: translucent fill + 100% border by
-     default, fully filled on hover. Keeps every primary action across the
-     panel visually consistent. */
-  .primary-link {
+  /* Stage All is the primary action (translucent accent, filled on hover) and
+     Unstage All the secondary one (neutral outline), so the two read apart.
+     The :not(:disabled) guard lets the disabled rule win when the list is empty. */
+  .head-action {
     margin-left: auto;
-    background: color-mix(in srgb, var(--accent) 18%, transparent);
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    padding: 4px 12px; border-radius: 4px; cursor: pointer;
-    font-weight: 600; font-size: 11px;
+    height: var(--h-row); padding: 0 var(--sp-6);
+    border: 1px solid transparent; border-radius: var(--radius); cursor: pointer;
+    font-size: var(--fs-sm); font-weight: 600;
     transition: background 120ms ease, color 120ms ease;
   }
-  .primary-link:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
-  .primary-link:disabled {
+  .head-action.primary:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent); border-color: var(--accent);
+  }
+  .head-action.primary:not(:disabled):hover { background: var(--accent); color: var(--bg); }
+  .head-action.secondary:not(:disabled) {
+    background: transparent; color: var(--fg); border-color: var(--border-strong);
+  }
+  .head-action.secondary:not(:disabled):hover { background: var(--border-strong); }
+  .head-action:disabled {
     background: transparent; color: var(--fg-muted);
     border-color: var(--border); cursor: not-allowed;
   }
-  /* Danger variant — same translucent-default / fill-on-hover pattern as
-     the Unstage File hover button below, just at section-header scale.
-     `:not(:disabled)` lets the disabled rule above win when there's
-     nothing staged so the button visibly greys out instead of staying red. */
-  .primary-link.danger:not(:disabled) {
-    background: color-mix(in srgb, var(--del) 18%, transparent);
-    color: var(--del);
-    border-color: var(--del);
-  }
-  .primary-link.danger:hover:not(:disabled) { background: var(--del); color: var(--bg); }
 
   .flat { list-style: none; margin: 0; padding: 0; }
   .flat li {
     display: flex; align-items: center; border-bottom: 1px solid var(--border);
-    position: relative;
+    position: relative; height: var(--h-row);
   }
   .flat li:last-child { border-bottom: 0; }
   .flat li.empty {
-    padding: 12px 16px; color: var(--fg-muted);
-    font-style: italic; font-size: 11px; justify-content: center;
+    height: auto; padding: var(--sp-6) var(--sp-8); color: var(--fg-muted);
+    font-style: italic; font-size: var(--fs-sm); justify-content: center;
   }
   .flat li.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .flat li.active::before {
@@ -297,21 +297,19 @@
   .flat li.multi-selected { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .flat li.multi-selected.active { background: color-mix(in srgb, var(--accent) 30%, transparent); }
   .row {
-    flex: 1; background: transparent; border: 0; color: var(--fg);
-    text-align: left; padding: 4px 12px; cursor: pointer;
-    display: flex; gap: 8px; align-items: center;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
-    overflow: hidden; min-width: 0;
-    line-height: 18px;
+    flex: 1; height: 100%; min-width: 0;
+    background: transparent; border: 0; color: var(--fg);
+    text-align: left; padding: 0 var(--sp-6); cursor: pointer;
+    display: flex; gap: var(--sp-4); align-items: center;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
+    overflow: hidden;
   }
   .row:hover { background: rgba(255,255,255,0.04); }
-  /* Status glyph: color-only (no badge box). The shape is the message —
-     `+` reads as "added", `−` as "removed", `●` as "edited", `→` as
-     "renamed", `!` as "conflict". The full word lives in the title attr. */
+  /* Status icon: the shape says what happened, the color comes from the
+     status classes below. The full word lives in the title attr. */
   .status {
-    display: inline-block; width: 12px;
-    text-align: center; font-weight: 700; flex-shrink: 0;
-    font-size: 12px; line-height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--icon); height: var(--icon); flex-shrink: 0;
   }
   .status.modified, .path.modified   { color: var(--modified); }
   .status.added,    .path.added,
@@ -323,23 +321,24 @@
   .path.deleted { text-decoration: line-through; text-decoration-thickness: 1px; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .empty {
-    padding: 12px 16px; color: var(--fg-muted);
-    font-style: italic; font-size: 11px; text-align: center;
+    padding: var(--sp-6) var(--sp-8); color: var(--fg-muted);
+    font-style: italic; font-size: var(--fs-sm); text-align: center;
   }
 
+  /* Hover action: a 24 px icon button at the row's right edge, shown only
+     while the row is hovered. Its label is the title and aria-label. */
   .hover-btn {
     position: absolute;
-    right: 8px;
+    right: var(--sp-4);
     top: 50%;
     transform: translateY(-50%);
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
     background: var(--bg-elev);
-    color: transparent;
+    color: var(--fg-muted);
     border: 1px solid transparent;
-    padding: 4px 12px;
-    border-radius: 3px;
+    border-radius: var(--radius);
     cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
     pointer-events: none;
     opacity: 0;
     transition: opacity 100ms;

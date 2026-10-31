@@ -15,6 +15,10 @@ const KEY = "gkp.layout.v1";
 // keeps working), but the status-bar picker displays it relative to this
 // base so the user sees friendly percentages.
 export const ZOOM_BASE = 1.2;
+// Shortest commit area that still shows the whole commit box (summary,
+// description, options row, identity line, commit button) without the button
+// sliding under the status bar (docs/specs/ui-layout-2026-11.md, Region 5).
+export const COMMIT_AREA_MIN = 350;
 export function displayPercent(scale: number): number {
   return Math.round((scale / ZOOM_BASE) * 100);
 }
@@ -45,13 +49,13 @@ export interface LayoutState {
 }
 
 const DEFAULTS: LayoutState = {
-  sidebarWidth: 260,
-  rightPanelWidth: 380,
-  graphRefsWidth: 200,
-  graphWidth: 180,
+  sidebarWidth: 220,
+  rightPanelWidth: 400,
+  graphRefsWidth: 160,
+  graphWidth: 120,
   graphMsgWidth: 360,
-  graphAuthorWidth: 140,
-  graphDateWidth: 110,
+  graphAuthorWidth: 120,
+  graphDateWidth: 90,
   graphShaWidth: 80,
   graphChangesWidth: 120,
   graphColOrder: [...DEFAULT_COL_ORDER],
@@ -59,7 +63,7 @@ const DEFAULTS: LayoutState = {
   dimMergeCommits: false,
   terminalHeight: 240,
   terminalOpen: false,
-  commitAreaHeight: 290,
+  commitAreaHeight: COMMIT_AREA_MIN,
   unstagedCollapsed: false,
   stagedCollapsed: false,
   uiScale: 1.2, // = displayed as 100% via ZOOM_BASE

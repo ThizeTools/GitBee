@@ -13,11 +13,12 @@ import { checkoutAndJump } from "$lib/stores/graphscroll";
 import { findRefSha, fastForwardFailureMessage } from "$lib/stores/refLookup";
 import { repo, runAction, headBranch } from "$lib/menus/menuActions";
 import { dragOptions, type DragAction, type DragOption, type DragRef } from "$lib/menus/dragOptions";
+import type { IconName } from "$lib/icons/names";
 
-const ICON: Record<DragAction["kind"], string> = {
-  merge: "⊕",
-  rebase: "↷",
-  "fast-forward": "⇡",
+const ICON: Record<DragAction["kind"], IconName> = {
+  merge: "merge",
+  rebase: "branch",
+  "fast-forward": "push",
 };
 
 /** The options for dropping `src` on `target` against the loaded graph. Empty

@@ -2,6 +2,7 @@
   import { logsPanelOpen, appLogs, logsClear, fmtTime } from "$lib/stores/logs";
   import { currentRepo } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
+  import Icon from "$lib/icons/Icon.svelte";
 
   let tab = $state<"app" | "repo">("app");
   let repoLines = $state<Array<{ ts: string; subject: string; author: string }>>([]);
@@ -39,11 +40,14 @@
         <button class:active={tab === "repo"} onclick={() => tab = "repo"}>Repository</button>
       </div>
       {#if tab === "app"}
-        <button class="ghost" onclick={logsClear}>Clear</button>
+        <button class="icon-btn end" type="button" title="Clear application log" aria-label="Clear application log"
+          onclick={logsClear}><Icon name="trash" size={14} /></button>
       {:else}
-        <button class="ghost" onclick={loadRepo}>Refresh</button>
+        <button class="icon-btn end" type="button" title="Refresh repository log" aria-label="Refresh repository log"
+          onclick={loadRepo}><Icon name="fetch" size={14} /></button>
       {/if}
-      <button class="ghost close" onclick={() => logsPanelOpen.set(false)}>×</button>
+      <button class="icon-btn" type="button" title="Close logs" aria-label="Close logs"
+        onclick={() => logsPanelOpen.set(false)}><Icon name="close" size={14} /></button>
     </header>
     <div class="body">
       {#if tab === "app"}
@@ -87,41 +91,47 @@
   }
   .panel {
     position: fixed;
-    right: 16px; bottom: 40px;
+    right: var(--sp-8);
+    bottom: calc(var(--h-statusbar) + var(--sp-8));
     width: 640px;
-    max-width: calc(100vw - 32px);
+    max-width: calc(100vw - 2 * var(--sp-8));
     height: 60vh;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 12px 32px rgba(0,0,0,0.55);
     display: flex;
     flex-direction: column;
     z-index: 801;
   }
+  /* Panel header: 30 px, the title and icon-button actions of the view header. */
   .head {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px;
+    display: flex; align-items: center; gap: var(--sp-5);
+    height: var(--h-section);
+    padding: 0 var(--sp-6);
     border-bottom: 1px solid var(--border);
   }
-  .title { font-weight: 600; }
-  .tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .title { font-weight: 600; font-size: var(--fs-lg); }
+  .tabs { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .tabs button {
+    height: var(--h-row);
     background: transparent; border: 0; color: var(--fg-muted);
-    padding: 4px 12px; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 0 var(--sp-5); cursor: pointer; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.4px;
   }
   .tabs button.active { background: var(--border-strong); color: var(--fg); }
-  .ghost {
-    background: transparent; border: 1px solid var(--border); color: var(--fg-muted);
-    border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 11px;
-    margin-left: auto;
+  /* Icon-only action: 24 x 24, the toolbar hit size. */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
-  .ghost.close { font-size: 18px; padding: 0 8px; line-height: 22px; margin-left: 0; }
-  .ghost:hover { color: var(--fg); background: var(--border); }
-  .body { flex: 1; overflow: auto; padding: 4px 0; }
-  .empty { padding: 30px; color: var(--fg-muted); font-style: italic; text-align: center; }
-  .lines { list-style: none; margin: 0; padding: 0; font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; }
-  .line { display: grid; grid-template-columns: 64px 60px 1fr; gap: 10px; padding: 2px 14px; align-items: baseline; }
+  .icon-btn.end { margin-left: auto; }
+  .icon-btn:hover { color: var(--fg); background: var(--border); }
+  .body { flex: 1; overflow: auto; padding: var(--sp-1) 0; }
+  .empty { padding: var(--sp-8); color: var(--fg-muted); font-style: italic; text-align: center; }
+  .lines { list-style: none; margin: 0; padding: 0; font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm); }
+  .line { display: grid; grid-template-columns: 64px 60px 1fr; gap: var(--sp-5); padding: var(--sp-1) var(--sp-6); align-items: baseline; }
   .line:hover { background: var(--bg); }
   .ts { color: var(--fg-muted); }
   .lvl { text-transform: uppercase; color: var(--fg-muted); }

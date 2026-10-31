@@ -3,6 +3,7 @@
   import { openMenu } from "$lib/stores/contextmenu";
   import { submoduleMenu } from "$lib/components/sidebar/submoduleMenus";
   import { matchesFilter } from "$lib/components/sidebar/filter";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // One row per submodule in .gitmodules. Double-click opens it as a repo tab.
   let { repo, filter }: { repo: string; filter: string } = $props();
@@ -21,12 +22,19 @@
         ondblclick={() => openSubmoduleTab(repo, s)}
         oncontextmenu={(e) => openMenu(e, submoduleMenu(repo, s))}
       >
-        <span class="ico">▤</span>
+        <Icon name="submodule" size={14} class="ico" />
         <span class="name">{s.name}</span>
         <span class="sha">{shortSha(s.sha)}</span>
         <span class="state state-{s.state}">{SUBMODULE_STATE_LABEL[s.state]}</span>
       </button>
-      <button class="dots" onclick={(e) => openMenu(e, submoduleMenu(repo, s))} title="More actions">⋯</button>
+      <button
+        class="row-action"
+        onclick={(e) => openMenu(e, submoduleMenu(repo, s))}
+        title="More actions"
+        aria-label="More actions"
+      >
+        <Icon name="more" size={14} />
+      </button>
     </li>
   {:else}
     <li class="muted">no matches</li>

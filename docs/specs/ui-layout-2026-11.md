@@ -66,7 +66,14 @@ token (e.g. the canvas lane math in `src/lib/graph/layout.ts`).
   user, users, lock (sign), sparkles (AI), keyboard, logs (scroll-text),
   zoom (zoom-in), download (update), pull-request (git-pull-request),
   commit (git-commit-horizontal), submodule (package), lfs (hard-drive),
-  copy, external (external-link), filter, star (HEAD), home.
+  copy, external (external-link), filter, star (HEAD), home, sign-out
+  (log-out), export (upload), grip (grip-vertical), arrow-left / arrow-right,
+  chevron-up / chevron-left, sort (arrow-down-a-z; Z→A is the same glyph flipped
+  by CSS, the label carries the meaning), blame (file-user; Lucide has no
+  per-line author icon), reset (rotate-ccw), cherry-pick (cherry), checkout
+  (arrow-right-left; log-in was rejected because it reads as sign-in).
+- Menu rows (`MenuItem.icon`) take an IconName only. Legacy glyphs are kept in
+  `resolveMenuIcon` as a safety net, not as call-site syntax.
 
 ### Regions (top → bottom, left → right)
 1. **Tab bar** (`--h-tabbar` 34): tabs `padding: 0 25px 0 20px`, max 300 px,

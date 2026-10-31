@@ -137,12 +137,12 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     // Group 1
     {
       label: "Pull (fast-forward if possible)",
-      icon: "↓",
+      icon: "pull",
       onClick: () => pullBranch(branch),
     },
     {
       label: "Push",
-      icon: "↑",
+      icon: "push",
       onClick: async () => {
         const r = repo();
         if (!r) return;
@@ -153,19 +153,19 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
         else notifyError("Push failed", res.error);
       },
     },
-    { label: "Set Upstream", icon: "⇡", onClick: () => openSetUpstream(branch) },
+    { label: "Set Upstream", icon: "push",onClick: () => openSetUpstream(branch) },
     { separator: true, label: "" },
     // Group 2
     {
       label: `Checkout ${branch}`,
-      icon: "✓",
+      icon: "check",
       onClick: () => checkoutAndJump(branch),
     },
     { separator: true, label: "" },
     // Group 3
     {
       label: `Create worktree from ${branch}`,
-      icon: "📂",
+      icon: "folder",
       onClick: () => openWorktreeCreate(branch, branch, false),
     },
     { separator: true, label: "" },
@@ -176,15 +176,15 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     revertCommitItem(sha),
     { separator: true, label: "" },
     // Group 6 (former Group 5 removed — "Explain Branch Changes" dropped)
-    { label: "Apply patch", icon: "⌘", onClick: () => applyPatch() },
+    { label: "Apply patch", icon: "palette",onClick: () => applyPatch() },
     {
       label: `Rename ${branch}`,
-      icon: "✎",
+      icon: "file-modified",
       onClick: () => renameBranch(branch),
     },
     {
       label: `Delete ${branch}`,
-      icon: "🗑",
+      icon: "trash",
       danger: true,
       onClick: () => deleteBranch(branch),
     },
@@ -192,7 +192,7 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     // Group 7
     {
       label: "Copy branch name",
-      icon: "⧉",
+      icon: "copy",
       onClick: () => copy(branch, "branch name"),
     },
     copyCommitShaItem(sha),
@@ -268,14 +268,14 @@ export function remoteBranchMenu(
     // Group 1
     {
       label: `Checkout ${full}`,
-      icon: "✓",
+      icon: "check",
       onClick: () => checkoutRemoteAndJump(remote, branch),
     },
     { separator: true, label: "" },
     // Group 2
     {
       label: `Create worktree from ${full}`,
-      icon: "📂",
+      icon: "folder",
       onClick: () => openWorktreeCreate(full, full, true),
     },
     { separator: true, label: "" },
@@ -289,14 +289,14 @@ export function remoteBranchMenu(
     // in the system browser; GitHub picks the base branch automatically.
     {
       label: "Start a pull request",
-      icon: "↗",
+      icon: "external",
       onClick: () => startPullRequest(branch),
     },
     { separator: true, label: "" },
     // Group 5
     {
       label: `Delete ${full}`,
-      icon: "🗑",
+      icon: "trash",
       danger: true,
       onClick: () => deleteRemoteBranch(remote, branch),
     },
@@ -304,13 +304,13 @@ export function remoteBranchMenu(
     // Group 6
     {
       label: "Copy branch name",
-      icon: "⧉",
+      icon: "copy",
       onClick: () => copy(full, "branch name"),
     },
     copyCommitShaItem(sha),
     {
       label: `Copy link to branch: ${full}`,
-      icon: "⧉",
+      icon: "copy",
       onClick: () => copyRemoteBranchLink(remote, branch),
     },
     copyCommitLinkItem(sha),

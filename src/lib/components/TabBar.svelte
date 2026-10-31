@@ -6,6 +6,7 @@
   import { showingNewTab } from "$lib/stores/newtab";
   import { showingInfo } from "$lib/stores/info";
   import { openMenu, type MenuItem } from "$lib/stores/contextmenu";
+  import Icon from "$lib/icons/Icon.svelte";
   import { ghAuth, bootGithubAuth, logoutGithub } from "$lib/stores/github";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { onMount } from "svelte";
@@ -19,7 +20,7 @@
       return [
         {
           label: "Sign in to GitHub…",
-          icon: "⎈",
+          icon: "user",
           onClick: () => { showingNewTab.set(true); },
         },
       ];
@@ -28,40 +29,40 @@
     return [
       {
         label: login ? `Signed in as ${login}` : "GitHub",
-        icon: "⎈",
+        icon: "user",
         disabled: true,
       },
       { separator: true, label: "" },
       {
         label: "Open profile on GitHub",
-        icon: "↗",
+        icon: "external",
         onClick: () => { if (login) openUrl(`https://github.com/${login}`).catch(() => {}); },
       },
       {
         label: "Your repositories",
-        icon: "📦",
+        icon: "folder",
         onClick: () => { if (login) openUrl(`https://github.com/${login}?tab=repositories`).catch(() => {}); },
       },
       {
         label: "Manage app authorizations",
-        icon: "🔐",
+        icon: "lock",
         onClick: () => { openUrl("https://github.com/settings/connections/applications/Ov23li9Byp22UMrMNVdb").catch(() => {}); },
       },
       { separator: true, label: "" },
       {
         label: "New repository…",
-        icon: "＋",
+        icon: "add",
         onClick: () => { showingNewTab.set(true); },
       },
       {
         label: "Clone repository…",
-        icon: "⤓",
+        icon: "download",
         onClick: () => { showingNewTab.set(true); },
       },
       { separator: true, label: "" },
       {
         label: "Sign out",
-        icon: "⎋",
+        icon: "sign-out",
         danger: true,
         onClick: () => { void logoutGithub(); },
       },
@@ -102,23 +103,23 @@
     const list = $tabs;
     const idx = list.findIndex((t) => t.id === id);
     return [
-      { label: "Close tab", icon: "×", onClick: () => closeTab(id) },
+      { label: "Close tab", icon: "close", onClick: () => closeTab(id) },
       {
         label: "Close other tabs",
-        icon: "−",
+        icon: "remove",
         disabled: list.length < 2,
         onClick: () => closeOtherTabs(id),
       },
       {
         label: "Close tabs to the right",
-        icon: "→",
+        icon: "chevron-right",
         disabled: idx < 0 || idx >= list.length - 1,
         onClick: () => closeTabsToRight(id),
       },
       { separator: true, label: "" },
       {
         label: "Reopen closed tab",
-        icon: "↶",
+        icon: "undo",
         onClick: () => reopenLastClosedTab(),
       },
     ];
@@ -171,7 +172,8 @@
         onclick={(e) => onClose(e, t.id)}
         onkeydown={(e) => e.key === "Enter" && onClose(e as unknown as MouseEvent, t.id)}
         title="Close tab"
-      >×</span>
+        aria-label="Close tab"
+      ><Icon name="close" size={14} /></span>
     </button>
   {/each}
   {#if $showingInfo}
@@ -182,7 +184,7 @@
       onclick={() => { showingNewTab.set(false); }}
       title="GitBee info"
     >
-      <span class="info-ico">ⓘ</span>
+      <span class="info-ico"><Icon name="info" size={14} /></span>
       <span class="name">Info</span>
       <span
         class="close visible"
@@ -193,7 +195,8 @@
         onclick={(e) => { e.stopPropagation(); showingInfo.set(false); }}
         onkeydown={(e) => e.key === "Enter" && showingInfo.set(false)}
         title="Close"
-      >×</span>
+        aria-label="Close"
+      ><Icon name="close" size={14} /></span>
     </button>
   {/if}
   <button
@@ -202,13 +205,15 @@
     class:active={$showingNewTab}
     onclick={openNew}
     title="New tab"
-  >＋</button>
+    aria-label="New tab"
+  ><Icon name="add" size={16} /></button>
   <span class="spacer"></span>
   <button
     type="button"
     class="profile"
     onclick={onProfileClick}
     title={$ghAuth.authenticated ? `Signed in as ${$ghAuth.login}` : "Sign in to GitHub"}
+    aria-label={$ghAuth.authenticated ? `Signed in as ${$ghAuth.login}` : "Sign in to GitHub"}
   >
     {#if $ghAuth.authenticated && $ghAuth.avatarUrl}
       <img src={$ghAuth.avatarUrl} alt={$ghAuth.login ?? ""} referrerpolicy="no-referrer" />
@@ -226,55 +231,62 @@
     overflow-x: auto;
     overflow-y: hidden;
     flex-shrink: 0;
-    height: 28px;
+    height: var(--h-tabbar);
     align-items: stretch;
   }
   .tabbar::-webkit-scrollbar { height: 0; }
+  /* Tab padding and the 300 px cap are the spec's values. 25 px on the right has
+     no size token, so it stays raw. The tab fills the bar height by stretching. */
   .tab {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 12px;
+    gap: var(--sp-4);
+    padding: 0 25px 0 var(--sp-20);
     background: transparent;
     color: var(--fg-muted);
     border: 0;
     border-right: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
     cursor: pointer;
-    font-size: 12px;
-    height: 28px;
-    max-width: 220px;
+    font-size: var(--fs-md);
+    max-width: 300px;
     flex-shrink: 0;
     position: relative;
   }
-  .tab:hover { color: var(--fg); background: rgba(255,255,255,0.04); }
-  .tab.active { color: var(--fg); background: var(--bg); }
+  .tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+  /* The active tab sits on the workspace surface and has no divider. */
+  .tab.active { color: var(--fg); background: var(--bg); border-right-color: transparent; }
   .tab.active::after {
     content: ""; position: absolute; left: 0; right: 0; top: 0;
     height: 2px; background: var(--accent);
   }
   .tab.drop-target { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
   /* #10 — close button hidden by default; visible on the active tab; visible
      on inactive tabs only on hover. */
   .close {
-    width: 16px; height: 16px; line-height: 14px; text-align: center;
-    border-radius: 3px; color: var(--fg-muted); font-size: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); flex-shrink: 0;
+    border-radius: var(--radius-sm); color: var(--fg-muted);
     user-select: none; cursor: pointer;
     opacity: 0;
     transition: opacity 80ms;
   }
   .close.visible { opacity: 0.85; }
   .tab:hover .close { opacity: 0.85; }
-  .close:hover { background: rgba(255,255,255,0.1); color: var(--fg); opacity: 1; }
+  .close:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); opacity: 1; }
 
-  .info-tab .info-ico { color: var(--accent); font-size: 14px; }
+  .info-ico { display: inline-flex; color: var(--accent); }
 
+  /* "+" is 34 x 34: the tab bar's height, square. */
   .add-tab {
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    width: var(--h-tabbar); height: var(--h-tabbar); padding: 0;
     background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 0 12px; height: 32px;
+    cursor: pointer;
     border-right: 1px solid var(--border);
-    font-size: 16px; line-height: 1;
   }
   .add-tab:hover, .add-tab.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
   .add-tab.active { box-shadow: inset 0 2px 0 var(--accent); }
@@ -284,14 +296,15 @@
   .spacer { flex: 1; min-width: 0; }
   .profile {
     background: transparent; border: 0;
-    padding: 0 8px;
-    height: 28px;
+    padding: 0 var(--sp-4);
+    height: var(--h-tabbar);
     display: inline-flex; align-items: center; justify-content: center;
     cursor: pointer;
     border-left: 1px solid var(--border);
     flex-shrink: 0;
   }
-  .profile:hover { background: rgba(255,255,255,0.05); }
+  .profile:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+  /* 20 px avatar: no size token; the spec's measured avatar size. */
   .profile img {
     width: 20px; height: 20px;
     border-radius: 50%;
@@ -303,7 +316,7 @@
     border-radius: 50%;
     background: color-mix(in srgb, var(--accent) 25%, transparent);
     color: var(--accent);
-    font-size: 10px; font-weight: 700;
+    font-size: var(--fs-xs); font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center;
   }
 </style>

@@ -10,6 +10,7 @@
   } from "$lib/stores/refDrag";
   import { openMenu } from "$lib/stores/contextmenu";
   import { matchesFilter } from "$lib/components/sidebar/filter";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // Remote branches grouped under their remote. Clicking the remote name
   // fetches it; double-click on a branch checks out a local tracking branch.
@@ -57,7 +58,8 @@
   {#each [...filteredGroups.entries()] as [remote, branches] (remote)}
     <li class="group">
       <button class="link group-head" onclick={() => fetchRemote(remote)} title="Click to fetch">
-        <span class="ico">☁</span><span class="name">{remote}</span>
+        <Icon name="cloud" size={14} class="ico" />
+        <span class="name">{remote}</span>
         <span class="count-inline">{branches.length}</span>
       </button>
       <ul class="nested">
@@ -65,6 +67,7 @@
           {@const qname = `${remote}/${b.name}`}
           {@const inSolo = $soloRefs.has(qname)}
           {@const ref = remoteRef(remote, b.name)}
+          {@const soloLabel = inSolo ? `Remove ${qname} from solo` : `Add ${qname} to solo`}
           <li
             class="leaf" class:solo-row={soloActive} class:solo-on={inSolo}
             draggable="true"
@@ -80,8 +83,11 @@
                 class="eye"
                 class:on={inSolo}
                 onclick={(e) => { e.stopPropagation(); toggleSolo(qname); }}
-                title={inSolo ? `Remove ${qname} from solo` : `Add ${qname} to solo`}
-              >{inSolo ? "👁" : "👁‍🗨"}</button>
+                title={soloLabel}
+                aria-label={soloLabel}
+              >
+                <Icon name={inSolo ? "eye" : "eye-off"} size={14} />
+              </button>
             {/if}
             <button
               class="link"
@@ -89,12 +95,18 @@
               ondblclick={() => checkoutRemoteAndJump(remote, b.name)}
               oncontextmenu={(e) => openMenu(e, remoteBranchMenu(remote, b.name, b.sha))}
               title="Click to jump · double-click to checkout {remote}/{b.name} locally"
-            ><span class="ico">⎇</span><span class="name">{b.name}</span></button>
+            >
+              <Icon name="branch" size={14} class="ico" />
+              <span class="name">{b.name}</span>
+            </button>
             <button
-              class="dots"
+              class="row-action"
               onclick={(e) => openMenu(e, remoteBranchMenu(remote, b.name, b.sha))}
               title="More actions"
-            >⋯</button>
+              aria-label="More actions"
+            >
+              <Icon name="more" size={14} />
+            </button>
           </li>
         {/each}
       </ul>

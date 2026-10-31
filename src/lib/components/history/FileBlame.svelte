@@ -14,6 +14,7 @@
     BLAME_ROW_HEIGHT, blameRowViews, isUncommittedSha, resultAgeBounds,
   } from "$lib/history/blameRows";
   import { blamePreviousRevision, showCommitInGraph } from "$lib/history/historyActions";
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Props {
     file: string;
@@ -90,14 +91,17 @@
 </script>
 
 <div class="blame">
+  <!-- View header: one 30 px row, the file path as the title and icon-button actions. -->
   <header class="fb-head">
     <span class="path" title={file}>{file}</span>
     <span class="at">{rev ? `at ${rev}` : "working tree"}</span>
     {#if result}
       <span class="count">{result.lines.length.toLocaleString()} lines</span>
     {/if}
-    <button class="link" type="button" onclick={() => showFileHistory(file)}>History</button>
-    <button class="close" type="button" title="Close (Esc)" onclick={() => showGraph()}>×</button>
+    <button class="icon-btn" type="button" title="File history" aria-label="File history"
+      onclick={() => showFileHistory(file)}><Icon name="history" size={14} /></button>
+    <button class="icon-btn" type="button" title="Close (Esc)" aria-label="Close blame"
+      onclick={() => showGraph()}><Icon name="close" size={14} /></button>
   </header>
 
   <div
@@ -140,8 +144,9 @@
                     class="prev"
                     type="button"
                     title="Blame the previous revision (sha^)"
+                    aria-label="Blame the previous revision of {v.line.sha.slice(0, 7)}"
                     onclick={() => blamePreviousRevision(file, v.line.sha)}
-                  >↶</button>
+                  ><Icon name="history" size={12} /></button>
                 {/if}
               {/if}
             </div>
@@ -168,64 +173,69 @@
 <style>
   .blame { height: 100%; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
   .fb-head {
-    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    display: flex; align-items: center; gap: var(--sp-6);
+    height: var(--h-section); padding: 0 var(--sp-8);
     background: var(--bg-elev); border-bottom: 1px solid var(--border-strong); flex-shrink: 0;
   }
   .path {
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; font-weight: 500;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-lg); font-weight: 600;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
   }
-  .at, .count { font-size: 11px; color: var(--fg-muted); white-space: nowrap; }
+  .at, .count { font-size: var(--fs-sm); color: var(--fg-muted); white-space: nowrap; }
   .fb-head .path { flex: 1; }
-  .link {
-    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+  /* Icon-only action: 24 x 24, the toolbar hit size. */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
-  .link:hover { background: var(--border); }
-  .close {
-    background: transparent; border: 0; color: var(--fg-muted); font-size: 18px;
-    width: 30px; line-height: 1; cursor: pointer;
-  }
-  .close:hover { color: var(--del); }
+  .icon-btn:hover { color: var(--fg); background: var(--border); }
+  .icon-btn + .icon-btn:hover { color: var(--del); }
 
   .fb-body { flex: 1; min-height: 0; overflow: auto; position: relative; }
   .spacer { position: relative; min-width: 100%; }
+  /* The row height is BLAME_ROW_HEIGHT (blameRows.ts): the virtualization math
+     depends on it, so it stays 18 px and is not a layout token. */
   .row {
     position: absolute; left: 0; min-width: 100%; width: max-content;
     height: 18px; box-sizing: border-box; display: flex; align-items: center;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 18px;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-md); line-height: 18px;
     white-space: pre;
   }
   .row.group-start { border-top: 1px solid var(--border); }
   .gutter {
     position: relative; width: 300px; flex-shrink: 0; height: 100%; box-sizing: border-box;
-    display: flex; align-items: center; gap: 6px; padding-left: 10px;
-    font-size: 11px; color: var(--fg-muted); background: var(--bg-elev);
+    display: flex; align-items: center; gap: var(--sp-3); padding-left: var(--sp-5);
+    font-size: var(--fs-sm); color: var(--fg-muted); background: var(--bg-elev);
   }
   .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
   .sha {
     background: transparent; border: 0; padding: 0; cursor: pointer; flex-shrink: 0;
-    font-family: inherit; font-size: 11px; color: var(--sha);
+    font-family: inherit; font-size: var(--fs-sm); color: var(--sha);
   }
   .sha:disabled { color: var(--fg-muted); cursor: default; }
   .who { flex: 0 1 90px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .when { flex-shrink: 0; white-space: nowrap; }
-  .prev { background: transparent; border: 0; padding: 0 2px; cursor: pointer; color: var(--fg-muted); }
+  .prev {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 0; padding: 0 var(--sp-2); cursor: pointer; color: var(--fg-muted);
+  }
   .prev:hover { color: var(--fg); }
-  .lno { width: 48px; flex-shrink: 0; text-align: right; padding-right: 12px; color: var(--fg-muted); }
+  .lno { width: 48px; flex-shrink: 0; text-align: right; padding-right: var(--sp-6); color: var(--fg-muted); }
   /* The diff palette (.dv-content) clips long lines; the blame row scrolls them. */
   .code { overflow: visible; min-width: max-content; }
 
   .tip {
     position: fixed; z-index: 50; pointer-events: none; max-width: 360px;
     background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border-strong);
-    border-radius: 4px; padding: 6px 8px; font-size: 11px; white-space: normal;
+    border-radius: var(--radius); padding: var(--sp-3) var(--sp-4); font-size: var(--fs-sm); white-space: normal;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   }
-  .tip-summary { font-weight: 600; margin-bottom: 2px; }
+  .tip-summary { font-weight: 600; margin-bottom: var(--sp-1); }
   .tip-line { color: var(--fg-muted); }
   .sha-full { font-family: "Cascadia Code", Consolas, monospace; word-break: break-all; }
 
-  .note { padding: 12px; font-size: 12px; color: var(--fg-muted); font-style: italic; }
+  .note { padding: var(--sp-6); font-size: var(--fs-md); color: var(--fg-muted); font-style: italic; }
   .note.err { color: var(--del); font-style: normal; }
 </style>

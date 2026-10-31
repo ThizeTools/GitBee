@@ -8,6 +8,7 @@
   import { ipc } from "$lib/ipc";
   import { confirmDialog } from "$lib/stores/dialog";
   import { notifyError } from "$lib/stores/notifications";
+  import Icon from "$lib/icons/Icon.svelte";
   import { formatKiB, parseDiffTooLarge } from "$lib/commitMsg/aiErrors";
   import AiSettingsDialog from "./AiSettingsDialog.svelte";
 
@@ -103,9 +104,11 @@
       : "Stage changes first"}
   >
     {#if generating}
-      <span class="spinner" aria-hidden="true"></span> Generating…
+      <span class="spinner" aria-hidden="true"></span>
+      <span>Generating…</span>
     {:else}
-      ✨ Generate
+      <Icon name="sparkles" size={14} />
+      <span>Generate</span>
     {/if}
   </button>
   <button
@@ -113,7 +116,9 @@
     onclick={() => openSettings(null)}
     title="AI commit message settings"
     aria-label="AI commit message settings"
-  >⚙</button>
+  >
+    <Icon name="settings" size={14} />
+  </button>
 </div>
 
 {#if settingsOpen}
@@ -125,19 +130,22 @@
 {/if}
 
 <style>
-  .ai { display: flex; gap: 4px; align-items: center; }
+  .ai { display: flex; gap: var(--sp-2); align-items: center; }
   .generate {
-    background: none; border: 1px solid var(--border); border-radius: 4px;
-    color: var(--fg); font-size: 11px; padding: 3px 8px; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 5px;
+    height: var(--h-row);
+    background: none; border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-size: var(--fs-sm); padding: 0 var(--sp-5); cursor: pointer;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
   }
   .generate:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .generate:disabled { opacity: 0.5; cursor: not-allowed; }
   .gear {
-    background: none; border: none; color: var(--fg-muted);
-    font-size: 13px; padding: 2px 4px; cursor: pointer; line-height: 1;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: none; border: none; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
   }
-  .gear:hover { color: var(--fg); }
+  .gear:hover { color: var(--fg); background: var(--border); }
   .spinner {
     width: 10px; height: 10px; border-radius: 50%;
     border: 2px solid var(--border); border-top-color: var(--accent);

@@ -108,27 +108,27 @@
     position: fixed; z-index: 1001; top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     width: min(420px, calc(100vw - 32px));
-    display: flex; flex-direction: column; gap: 10px;
+    display: flex; flex-direction: column; gap: var(--sp-5);
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px;
+    border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--sp-8);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   }
-  h2 { margin: 0; font-size: 14px; font-weight: 700; }
-  .consent { margin: 0; font-size: 12px; color: var(--fg-muted); line-height: 1.5; }
-  .field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--fg-muted); }
+  h2 { margin: 0; font-size: var(--fs-lg); font-weight: 700; }
+  .consent { margin: 0; font-size: var(--fs-md); color: var(--fg-muted); line-height: 1.5; }
+  .field { display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--fg-muted); }
   input {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 7px 9px; font: inherit; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-4); font: inherit; font-size: var(--fs-md);
   }
   input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
   .link {
     align-self: flex-start; background: none; border: none; padding: 0;
-    color: var(--accent); font-size: 12px; cursor: pointer; text-decoration: underline;
+    color: var(--accent); font-size: var(--fs-md); cursor: pointer; text-decoration: underline;
   }
-  .actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .actions { display: flex; gap: var(--sp-4); align-items: center; margin-top: var(--sp-2); }
   .spacer { flex: 1; }
-  button { font: inherit; font-size: 12px; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+  button { font: inherit; font-size: var(--fs-md); border-radius: var(--radius); height: 28px; padding: 0 var(--sp-6); cursor: pointer; }
   .ghost { background: none; border: 1px solid var(--border); color: var(--fg); }
   .ghost:hover { border-color: var(--fg-muted); }
   .danger { color: var(--del); border-color: var(--del); }

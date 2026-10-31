@@ -109,23 +109,24 @@
 </div>
 
 <style>
+  /* Height and type come from the Region 4 spec (docs/specs/ui-layout-2026-11.md). */
   .header {
     display: grid;
     align-items: stretch;
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border-strong);
-    font-size: 9px;
+    font-size: var(--fs-xs);
     text-transform: uppercase;
     color: var(--fg-muted);
     flex-shrink: 0;
     letter-spacing: 0.6px;
     font-weight: 600;
-    height: 22px;
+    height: var(--h-graph-header);
   }
   .col-head {
     display: flex;
     align-items: center;
-    padding: 0 12px;
+    padding: 0 var(--sp-5);
     cursor: grab;
     border-right: 1px solid var(--border);
     user-select: none;

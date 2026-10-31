@@ -13,17 +13,17 @@ import {
  * Example: openMenu(e, submoduleMenu(repo, sub)) */
 export function submoduleMenu(repo: string, sub: Submodule): MenuItem[] {
   return [
-    { label: "Update", icon: "↻", onClick: () => void updateSubmodule(repo, sub, false) },
-    { label: "Update (init)", icon: "⤓", onClick: () => void updateSubmodule(repo, sub, true) },
-    { label: "Sync URLs", icon: "⇄", onClick: () => void syncSubmoduleUrls(repo) },
+    { label: "Update", icon: "fetch", onClick: () => void updateSubmodule(repo, sub, false) },
+    { label: "Update (init)", icon: "download", onClick: () => void updateSubmodule(repo, sub, true) },
+    { label: "Sync URLs", icon: "fetch", onClick: () => void syncSubmoduleUrls(repo) },
     { separator: true, label: "" },
-    { label: "Open in new tab", icon: "⧉", onClick: () => void openSubmoduleTab(repo, sub) },
+    { label: "Open in new tab", icon: "copy", onClick: () => void openSubmoduleTab(repo, sub) },
     {
-      label: "Open folder", icon: "📂",
+      label: "Open folder", icon: "folder",
       onClick: () => void ipc.fileShowInFolder(repo, sub.path).catch((e) => errorMessage.set(String(e))),
     },
     {
-      label: "Copy path", icon: "⎘",
+      label: "Copy path", icon: "copy",
       onClick: () => void copyPath(joinRepoPath(repo, sub.path)),
     },
   ];
@@ -33,8 +33,8 @@ export function submoduleMenu(repo: string, sub: Submodule): MenuItem[] {
  * Example: openMenu(e, submoduleHeaderMenu(repo)) */
 export function submoduleHeaderMenu(repo: string): MenuItem[] {
   return [
-    { label: "Update all (init, recursive)", icon: "↻", onClick: () => void updateAllSubmodules(repo) },
-    { label: "Add submodule…", icon: "+", onClick: () => void addSubmodule(repo) },
+    { label: "Update all (init, recursive)", icon: "fetch", onClick: () => void updateAllSubmodules(repo) },
+    { label: "Add submodule…", icon: "add", onClick: () => void addSubmodule(repo) },
   ];
 }
 

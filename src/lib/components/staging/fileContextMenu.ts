@@ -23,13 +23,13 @@ import { fileExtension } from "./stagingHelpers";
 export function fileContextMenu(path: string, staged: boolean): MenuItem[] {
   return [
     staged
-      ? { label: "Unstage File", icon: "−", onClick: () => unstageFile(path) }
-      : { label: "Stage File", icon: "+", onClick: () => stageFile(path) },
-    { label: "Discard Changes", icon: "↺", danger: true, onClick: () => discardFile(path) },
+      ? { label: "Unstage File", icon: "remove", onClick: () => unstageFile(path) }
+      : { label: "Stage File", icon: "add", onClick: () => stageFile(path) },
+    { label: "Discard Changes", icon: "undo", danger: true, onClick: () => discardFile(path) },
     { separator: true, label: "" },
     {
       label: "Ignore",
-      icon: "⊘",
+      icon: "eye-off",
       submenu: [
         { label: `Ignore "${path}"`, onClick: () => addIgnore(path) },
         fileExtension(path)
@@ -37,14 +37,14 @@ export function fileContextMenu(path: string, staged: boolean): MenuItem[] {
           : { label: "(no file extension)", disabled: true },
       ],
     },
-    { label: "Stash File", icon: "⛶", onClick: () => stashOneFile(path) },
-    { label: "File History", icon: "🕮", onClick: () => fileHistory(path) },
+    { label: "Stash File", icon: "stash", onClick: () => stashOneFile(path) },
+    { label: "File History", icon: "history", onClick: () => fileHistory(path) },
     { separator: true, label: "" },
-    { label: "File Blame", icon: "≡", onClick: () => fileBlame(path) },
-    { label: "Show in folder", icon: "📂", onClick: () => showInFolder(path) },
-    { label: "Copy file path", icon: "⧉", onClick: () => copyPath(path) },
-    { label: "Edit file", icon: "✎", onClick: () => editFile(path) },
+    { label: "File Blame", icon: "blame",onClick: () => fileBlame(path) },
+    { label: "Show in folder", icon: "folder", onClick: () => showInFolder(path) },
+    { label: "Copy file path", icon: "copy", onClick: () => copyPath(path) },
+    { label: "Edit file", icon: "file-modified", onClick: () => editFile(path) },
     { separator: true, label: "" },
-    { label: "Delete file", icon: "🗑", danger: true, onClick: () => deleteFile(path) },
+    { label: "Delete file", icon: "trash", danger: true, onClick: () => deleteFile(path) },
   ];
 }

@@ -18,11 +18,11 @@
 
 <style>
   .lfs-card {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-    margin: 8px 12px; padding: 8px 12px;
-    border: 1px solid var(--border); border-radius: 4px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4);
+    margin: var(--sp-4) var(--sp-6); padding: var(--sp-4) var(--sp-6);
+    border: 1px solid var(--border); border-radius: var(--radius);
     background: var(--bg-elev);
-    font-size: 11px; color: var(--fg-muted);
+    font-size: var(--fs-sm); color: var(--fg-muted);
   }
   .lfs-tag { color: var(--accent); font-weight: 700; }
   .lfs-size { color: var(--fg); }

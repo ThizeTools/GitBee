@@ -12,7 +12,9 @@ describe("isWindows", () => {
   test("does not match 'Darwin' in a UA fallback", () => {
     expect(isWindows({ platform: "", userAgent: "GitBee Darwin/25.0" })).toBe(false);
   });
-  test("false without a navigator", () => expect(isWindows(undefined)).toBe(false));
+  // An explicit empty navigator, not `undefined`: a default parameter would read the real
+  // host navigator, which is Windows on this machine.
+  test("false without a navigator", () => expect(isWindows({})).toBe(false));
 });
 
 describe("isMacOS", () => {

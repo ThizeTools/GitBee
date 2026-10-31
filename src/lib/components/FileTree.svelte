@@ -2,6 +2,8 @@
   import type { StatusEntry } from "$lib/ipc";
   import type { LfsFlags } from "$lib/stores/lfs";
   import LfsBadge from "$lib/components/lfs/LfsBadge.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
+  import { statusIconFor, statusTitle } from "$lib/components/staging/stagingHelpers";
 
   interface Props {
     files: StatusEntry[];
@@ -66,6 +68,9 @@
   function fileBtnLabel(p: string): string {
     return batchLabel ? batchLabel(p) : (actionLabel === "stage" ? "Stage File" : "Unstage File");
   }
+  function folderBtnLabel(): string {
+    return actionLabel === "stage" ? "Stage Folder" : "Unstage Folder";
+  }
   function onFileBtnClick(p: string) {
     const targets = batchTargets ? batchTargets(p) : null;
     if (targets && onFolderAction && actionLabel) {
@@ -122,36 +127,6 @@
     });
   }
 
-  // Glyph indicators — match StagingArea so both list views read the same.
-  function statusChar(s: StatusEntry): string {
-    const v = side === "index" ? s.index : s.worktree;
-    switch (v) {
-      case "modified": return "●";
-      case "added": return "+";
-      case "deleted": return "−";
-      case "renamed": return "→";
-      case "copied": return "⎘";
-      case "untracked": return "+";
-      case "ignored": return "·";
-      case "conflicted": return "!";
-      default: return " ";
-    }
-  }
-  function statusTitle(s: StatusEntry): string {
-    const v = side === "index" ? s.index : s.worktree;
-    switch (v) {
-      case "modified": return "Modified";
-      case "added": return "Added (new file)";
-      case "deleted": return "Deleted";
-      case "renamed": return "Renamed";
-      case "copied": return "Copied";
-      case "untracked": return "New file (untracked)";
-      case "ignored": return "Ignored";
-      case "conflicted": return "Conflicted";
-      default: return "";
-    }
-  }
-
   function statusKind(s: StatusEntry): string {
     return side === "index" ? s.index : s.worktree;
   }
@@ -159,6 +134,7 @@
 
 {#snippet treeNode(node: TreeNode, depth: number)}
   {#if node.file}
+    {@const icon = statusIconFor(node.file, side)}
     <li class="file"
         class:active={selected === node.file.path}
         class:multi-selected={selectionSet?.has(node.file.path)}>
@@ -167,7 +143,9 @@
         style="padding-left: {12 + depth * 14}px"
         onclick={(e) => rowClick(node.file!.path, e)}
       >
-        <span class="status {statusKind(node.file)}" title={statusTitle(node.file)}>{statusChar(node.file)}</span>
+        <span class="status {statusKind(node.file)}" title={statusTitle(node.file, side)}>
+          {#if icon}<Icon name={icon} size={16} />{/if}
+        </span>
         <span class="name {statusKind(node.file)}">{node.name}</span>
         {#if lfsFlags?.[node.file.path]}<LfsBadge />{/if}
       </button>
@@ -176,7 +154,10 @@
           class="hover-btn {actionLabel}"
           onclick={() => onFileBtnClick(node.file!.path)}
           title={fileBtnLabel(node.file!.path)}
-        >{fileBtnLabel(node.file!.path)}</button>
+          aria-label={fileBtnLabel(node.file!.path)}
+        >
+          <Icon name={actionLabel === "stage" ? "add" : "remove"} size={14} />
+        </button>
       {/if}
     </li>
   {:else}
@@ -186,15 +167,18 @@
         style="padding-left: {12 + depth * 14}px"
         onclick={() => toggle(node.path)}
       >
-        <span class="caret">{collapsed[node.path] ? "▶" : "▼"}</span>
+        <span class="caret"><Icon name={collapsed[node.path] ? "chevron-right" : "chevron-down"} size={14} /></span>
         <span class="name">{node.name}/</span>
       </button>
       {#if onFolderAction && actionLabel}
         <button
           class="hover-btn {actionLabel}"
           onclick={(e) => { e.stopPropagation(); onFolderAction!(folderPaths(node), actionLabel!); }}
-          title={actionLabel === "stage" ? "Stage Folder" : "Unstage Folder"}
-        >{actionLabel === "stage" ? "Stage Folder" : "Unstage Folder"}</button>
+          title={folderBtnLabel()}
+          aria-label={folderBtnLabel()}
+        >
+          <Icon name={actionLabel === "stage" ? "add" : "remove"} size={14} />
+        </button>
       {/if}
     </li>
     {#if !collapsed[node.path]}
@@ -217,20 +201,20 @@
     margin: 0;
     padding: 0;
   }
-  .file, .dir { display: flex; align-items: center; position: relative; }
+  .file, .dir { display: flex; align-items: center; position: relative; height: var(--h-row); }
   .row {
-    flex: 1;
+    flex: 1; height: 100%;
     background: transparent;
     border: 0;
     color: var(--fg);
     text-align: left;
-    padding: 4px 8px;
+    padding: 0 var(--sp-6);
     cursor: pointer;
     display: flex;
-    gap: 8px;
+    gap: var(--sp-4);
     align-items: center;
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 12px;
+    font-size: var(--fs-sm);
     overflow: hidden;
     min-width: 0;
   }
@@ -241,15 +225,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .caret { width: 10px; color: var(--fg-muted); font-size: 9px; flex-shrink: 0; }
+  .caret { color: var(--fg-muted); display: inline-flex; flex-shrink: 0; }
   .dir-row .name { color: var(--fg-muted); }
   .status {
-    display: inline-block;
-    width: 12px;
-    text-align: center;
-    font-weight: 700;
-    font-size: 12px;
-    line-height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--icon); height: var(--icon);
     flex-shrink: 0;
   }
   .status.modified, .name.modified   { color: var(--modified); }
@@ -260,21 +240,20 @@
   .status.copied,   .name.copied     { color: var(--renamed); }
   .status.conflicted, .name.conflicted { color: var(--del); font-weight: 700; }
   .name.deleted { text-decoration: line-through; text-decoration-thickness: 1px; }
-  /* Single-button hover affordance — same pattern as the Path-mode list
-     in StagingArea so the two views feel identical. */
+  /* Single-button hover affordance — same 24 px icon button as the Path-mode
+     list in StagingFileList, so the two views feel identical. */
   .hover-btn {
     position: absolute;
-    right: 8px;
+    right: var(--sp-4);
     top: 50%;
     transform: translateY(-50%);
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
     background: var(--bg-elev);
-    color: transparent;
+    color: var(--fg-muted);
     border: 1px solid transparent;
-    padding: 4px 12px;
-    border-radius: 3px;
+    border-radius: var(--radius);
     cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
     pointer-events: none;
     opacity: 0;
     transition: opacity 100ms;

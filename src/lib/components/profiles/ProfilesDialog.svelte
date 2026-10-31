@@ -11,6 +11,7 @@
     defaultProfile, identityText, makeProfileId, profileLabel, upsertProfile, type Profile,
   } from "$lib/profiles/profile";
   import { profileFromDraft, type ProfileDraft } from "$lib/profiles/draft";
+  import Icon from "$lib/icons/Icon.svelte";
   import ProfileForm from "./ProfileForm.svelte";
 
   interface Props {
@@ -96,7 +97,9 @@
   >
     <header class="head">
       <span class="title">{form ? (form.editing ? "Edit profile" : "New profile") : "Git profiles"}</span>
-      <button class="x" onclick={onClose} title="Close">×</button>
+      <button class="x" onclick={onClose} title="Close" aria-label="Close">
+        <Icon name="close" size={16} />
+      </button>
     </header>
 
     <div class="body">
@@ -142,7 +145,9 @@
             <li class="empty">No profiles yet. Add one for each identity you commit as.</li>
           {/each}
         </ul>
-        <button class="add" onclick={startAdd}>+ Add profile</button>
+        <button class="add" onclick={startAdd}>
+          <Icon name="add" size={14} /> Add profile
+        </button>
       {/if}
     </div>
   </div>
@@ -159,58 +164,65 @@
     width: min(540px, 92vw); max-height: 85vh;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6);
     display: flex; flex-direction: column;
     color: var(--fg);
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   .head {
     display: flex; align-items: center;
-    padding: 12px 16px;
+    padding: var(--sp-5) var(--sp-20);
     border-bottom: 1px solid var(--border-strong);
   }
-  .title { font-weight: 700; font-size: 13px; flex: 1; }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
   .x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
   .x:hover { color: var(--fg); }
+  /* Dialog body: 15 px 20 px padding. */
   .body {
-    padding: 14px 16px; overflow-y: auto;
-    display: flex; flex-direction: column; gap: 12px;
+    padding: var(--sp-15) var(--sp-20); overflow-y: auto;
+    display: flex; flex-direction: column; gap: var(--sp-6);
   }
   .lbl {
-    font-size: 11px; color: var(--fg-muted);
+    font-size: var(--fs-sm); color: var(--fg-muted);
     text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600;
   }
-  .picker { display: flex; flex-direction: column; gap: 6px; }
-  .row { display: flex; gap: 8px; }
+  .picker { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .row { display: flex; gap: var(--sp-4); }
   .row select {
     flex: 1; min-width: 0;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 7px 10px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-5); font-size: var(--fs-md);
   }
   .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
   .item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 0; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4) 0; border-bottom: 1px solid var(--border);
   }
-  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .name { font-weight: 600; font-size: 12px; display: flex; gap: 6px; align-items: center; }
+  .meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+  .name { font-weight: 600; font-size: var(--fs-md); display: flex; gap: var(--sp-3); align-items: center; }
   .badge {
-    font-size: 9px; font-weight: 600; text-transform: uppercase;
-    color: var(--accent); border: 1px solid var(--accent); border-radius: 3px;
-    padding: 0 4px;
+    font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase;
+    color: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm);
+    padding: 0 var(--sp-2);
   }
   .ident {
-    font-size: 11px; color: var(--fg-muted);
+    font-size: var(--fs-sm); color: var(--fg-muted);
     font-family: "Cascadia Code", Consolas, monospace;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .empty { font-size: 12px; color: var(--fg-muted); padding: 12px 0; }
+  .empty { font-size: var(--fs-md); color: var(--fg-muted); padding: var(--sp-6) 0; }
+  /* Buttons in this dialog: 28 px high. */
   button {
-    padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    height: 28px;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    padding: 0 var(--sp-6); border-radius: var(--radius); font-size: var(--fs-md); cursor: pointer;
     border: 1px solid var(--border-strong); background: transparent; color: var(--fg);
   }
   button:disabled { opacity: 0.5; cursor: not-allowed; }

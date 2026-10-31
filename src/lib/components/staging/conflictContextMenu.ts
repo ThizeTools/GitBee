@@ -14,17 +14,17 @@ export function conflictContextMenu(path: string, names: SideNames): MenuItem[] 
   return [
     {
       label: takeLabel("ours", names),
-      icon: "←",
+      icon: "branch",
       onClick: () => takeSide(path, "ours", names.ours),
     },
     {
       label: takeLabel("theirs", names),
-      icon: "→",
+      icon: "merge",
       onClick: () => takeSide(path, "theirs", names.theirs),
     },
-    { label: "Resolve…", icon: "⎇", onClick: () => showConflict(path) },
+    { label: "Resolve…", icon: "conflict", onClick: () => showConflict(path) },
     { separator: true, label: "" },
-    { label: "Mark resolved", icon: "✓", onClick: () => markResolved(path) },
-    { label: "Open in external editor", icon: "✎", onClick: () => editFile(path) },
+    { label: "Mark resolved", icon: "check", onClick: () => markResolved(path) },
+    { label: "Open in external editor", icon: "external", onClick: () => editFile(path) },
   ];
 }

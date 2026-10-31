@@ -5,6 +5,7 @@
   // reports clicks back through callbacks.
   import RefBadges from "../RefBadges.svelte";
   import Avatar from "../Avatar.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import type { CommitRef, CommitStat, GraphNode } from "$lib/ipc";
   import type { GraphCol } from "$lib/stores/layout";
   import ChangesCell from "./ChangesCell.svelte";
@@ -121,16 +122,16 @@
         {#if isWip && wipChangeCount > 0}
           <span class="wip-stats" title="{wipChangeCount} uncommitted change{wipChangeCount === 1 ? '' : 's'}">
             {#if wipBreakdown.edits > 0}
-              <span class="wip-stat edits">✎ {wipBreakdown.edits}</span>
+              <span class="wip-stat edits"><Icon name="file-modified" size={14} />{wipBreakdown.edits}</span>
             {/if}
             {#if wipBreakdown.news > 0}
-              <span class="wip-stat news">+ {wipBreakdown.news}</span>
+              <span class="wip-stat news"><Icon name="file-added" size={14} />{wipBreakdown.news}</span>
             {/if}
             {#if wipBreakdown.dels > 0}
-              <span class="wip-stat dels">− {wipBreakdown.dels}</span>
+              <span class="wip-stat dels"><Icon name="file-deleted" size={14} />{wipBreakdown.dels}</span>
             {/if}
             {#if wipBreakdown.conflicts > 0}
-              <span class="wip-stat conflicts">! {wipBreakdown.conflicts}</span>
+              <span class="wip-stat conflicts"><Icon name="conflict" size={14} />{wipBreakdown.conflicts}</span>
             {/if}
           </span>
         {/if}
@@ -157,6 +158,9 @@
 </button>
 
 <style>
+  /* Cell paddings, gaps and font sizes come from the layout tokens
+     (docs/specs/ui-layout-2026-11.md, Regions 4). The row height and lane
+     geometry stay raw: they must match ROW_HEIGHT in $lib/graph/layout.ts. */
   .row {
     position: absolute;
     left: 0; right: 0;
@@ -215,8 +219,8 @@
 
   .cell-refs {
     display: flex;
-    gap: 4px;
-    padding: 0 8px 0 12px;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-5);
     overflow: hidden;
     align-items: center;
     border-right: 1px solid var(--border);
@@ -264,10 +268,10 @@
     border-radius: 50%;
   }
   .cell-msg {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: var(--sp-4);
     overflow: hidden;
-    padding: 0 10px;
-    font-size: 12px;
+    padding: 0 var(--sp-5);
+    font-size: var(--fs-md);
     text-align: left;
     height: 100%;
     color: var(--fg);
@@ -279,26 +283,26 @@
   }
   .row.wip .cell-msg {
     color: var(--fg-muted); font-style: italic;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
   }
   /* On the WIP row, "// WIP" hugs its content so the breakdown stats
      sit immediately to the right instead of being pushed to the panel
      edge by the default flex:1 that gives normal commit subjects their
      full width. */
   .row.wip .cell-msg .msg-text { flex: 0 0 auto; }
-  .wip-stats { margin-left: 4px; }
+  .wip-stats { margin-left: var(--sp-2); }
   /* Author / date / sha cells: one line each, ellipsis on overflow. */
   .cell-author, .cell-date, .cell-sha {
     display: flex; align-items: center;
     overflow: hidden; min-width: 0;
-    padding: 0 10px; height: 100%;
-    font-size: 12px; color: var(--fg-muted);
+    padding: 0 var(--sp-5); height: 100%;
+    font-size: var(--fs-sm); color: var(--fg-muted);
   }
   .cell-text {
     display: block; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; min-width: 0;
   }
-  .cell-sha { font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; }
+  .cell-sha { font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm); }
   /* Dimmed rows: merge commits (dimMerges) and rows outside a hovered ref's history. */
   .row.dimmed .cell-msg, .row.dimmed .cell-refs,
   .row.dimmed .cell-author, .row.dimmed .cell-date, .row.dimmed .cell-sha { opacity: 0.4; }
@@ -310,19 +314,17 @@
 
   /* Ref pills moved to RefBadges.svelte. */
 
-  /* WIP inline label — same visual weight as a small ref pill, never larger
-     (#6 of round 8). */
   /* WIP breakdown sits inline next to "// WIP" in the message column —
      reads as a status line (light, monospace counters) rather than a
      branch-tag pill. Each color is the same one used by the file status
-     glyphs in the staging area, for visual consistency. */
+     icons in the staging area, for visual consistency. */
   .wip-stats {
-    display: inline-flex; align-items: center; gap: 8px;
+    display: inline-flex; align-items: center; gap: var(--sp-4);
   }
   .wip-stat {
-    display: inline-flex; align-items: center; gap: 3px;
+    display: inline-flex; align-items: center; gap: var(--sp-1);
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 11px; font-weight: 600;
+    font-size: var(--fs-sm); font-weight: 600;
   }
   .wip-stat.edits { color: var(--modified); }
   .wip-stat.news { color: var(--add, var(--accent)); }

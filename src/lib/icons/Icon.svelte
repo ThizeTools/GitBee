@@ -71,6 +71,18 @@
     Funnel,
     Star,
     House,
+    LogOut,
+    Upload,
+    GripVertical,
+    ArrowLeft,
+    ArrowRight,
+    ChevronUp,
+    ChevronLeft,
+    ArrowDownAZ,
+    FileUser,
+    RotateCcw,
+    Cherry,
+    ArrowRightLeft,
     type LucideIcon,
   } from "@lucide/svelte";
   import {
@@ -150,6 +162,18 @@
     Funnel,
     Star,
     House,
+    LogOut,
+    Upload,
+    GripVertical,
+    ArrowLeft,
+    ArrowRight,
+    ChevronUp,
+    ChevronLeft,
+    ArrowDownAZ,
+    FileUser,
+    RotateCcw,
+    Cherry,
+    ArrowRightLeft,
   };
 
   let {

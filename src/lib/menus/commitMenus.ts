@@ -48,7 +48,7 @@ function interactiveRebaseItems(sha: string): MenuItem[] {
   if (!g || !canStartRebaseFrom(sha, g.head_sha, g.nodes)) return [];
   return [{
     label: "Interactive rebase from here…",
-    icon: "⇅",
+    icon: "branch",
     onClick: () => openInteractiveRebase(sha),
   }];
 }
@@ -59,7 +59,7 @@ export function commitMenu(sha: string): MenuItem[] {
     { separator: true, label: "" },
     {
       label: "Create worktree from this commit",
-      icon: "📂",
+      icon: "folder",
       onClick: () => openWorktreeCreate(sha, sha.slice(0, 7), false),
     },
     { separator: true, label: "" },
@@ -73,12 +73,12 @@ export function commitMenu(sha: string): MenuItem[] {
     copyCommitLinkItem(sha),
     {
       label: "Create patch from commit",
-      icon: "⌘",
+      icon: "palette",
       onClick: () => createPatch(sha),
     },
     {
       label: "Share as Gist…",
-      icon: "☁",
+      icon: "cloud",
       onClick: () => shareCommitAsGist(sha),
     },
     { separator: true, label: "" },

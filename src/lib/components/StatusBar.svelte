@@ -17,6 +17,7 @@
   } from "$lib/stores/gitProgress";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
   import ProfilesDialog from "./profiles/ProfilesDialog.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import { openMenu } from "$lib/stores/contextmenu";
   import { profiles, refreshProfiles } from "$lib/profiles/profilesStore";
   import { identityFor, refreshRepoIdentity, repoIdentity } from "$lib/profiles/identityStore";
@@ -75,8 +76,9 @@
 
 <footer class="status">
   <div class="left">
-    <button class="bi" onclick={openTerm} disabled={!$currentRepo} title="Open external terminal (Ctrl+`)">
-      <span class="ico">▶_</span>
+    <button class="bi" onclick={openTerm} disabled={!$currentRepo}
+      title="Open external terminal (Ctrl+`)" aria-label="Open external terminal">
+      <Icon name="terminal" size={14} />
     </button>
     {#if progress}
       <span class="prog" class:done={progress.done} title="git {progress.op}">
@@ -111,7 +113,7 @@
         onclick={() => retryAutofetch()}
         title={autofetchErrorTooltip(fetchState.lastFetchError)}
       >
-        <span class="ico">⚠</span><span>Auto-fetch failed</span>
+        <Icon name="warning" size={14} /><span>Auto-fetch failed</span>
       </button>
     {:else if fetchState?.lastFetchAt}
       <span class="af" title={absoluteFetchTime(fetchState.lastFetchAt)}>
@@ -119,13 +121,13 @@
       </span>
     {/if}
     <button class="bi" onclick={() => logsPanelOpen.update((v) => !v)} title="Logs (Ctrl+L)">
-      <span class="ico">≡</span><span>Logs</span>
+      <Icon name="logs" size={14} /><span>Logs</span>
     </button>
     <button class="bi" onclick={() => shortcutsOpen = true} title="Keyboard shortcuts">
-      <span class="ico">⌨</span><span>Shortcuts</span>
+      <Icon name="keyboard" size={14} /><span>Shortcuts</span>
     </button>
     <button class="bi" onclick={() => showingInfo.update((v) => !v)} title="Features / about">
-      <span class="ico">ⓘ</span><span>Info</span>
+      <Icon name="info" size={14} /><span>Info</span>
     </button>
     {#if $updateState.kind === "downloading"}
       <span class="upd downloading" title="Downloading update v{$updateState.version}">
@@ -135,17 +137,17 @@
     {:else if $updateState.kind === "ready"}
       <button class="bi upd ready" onclick={installNow}
         title={$updateState.notes ?? `v${$updateState.version} ready to install`}>
-        <span class="ico">⤓</span>
+        <Icon name="download" size={14} />
         <span>Update v{$updateState.version} — click to install</span>
       </button>
     {:else if $updateState.kind === "error"}
       <span class="upd err" title={$updateState.message}>
-        <span class="ico">⚠</span><span>Update check failed</span>
+        <Icon name="warning" size={14} /><span>Update check failed</span>
       </span>
     {/if}
     <div class="zoom">
       <button class="bi" onclick={() => zoomMenu = !zoomMenu} title="UI zoom">
-        <span class="ico">⊕</span>
+        <Icon name="zoom" size={14} />
         <span>{displayPercent($layout.uiScale)}%</span>
       </button>
       {#if zoomMenu}
@@ -169,40 +171,40 @@
 {/if}
 
 <style>
+  /* Status bar: 26 px (--h-statusbar), --fs-xs base, items 11 px (--fs-sm). */
   .status {
     display: flex;
     align-items: center;
-    height: 22px;
+    height: var(--h-statusbar);
     background: var(--bg-elev);
     border-top: 1px solid var(--border-strong);
-    font-size: 10px;
+    font-size: var(--fs-xs);
     flex-shrink: 0;
     z-index: 50;
   }
-  .left { display: flex; padding-left: 4px; }
-  .right { margin-left: auto; display: flex; align-items: center; gap: 2px; padding-right: 8px; }
+  .left { display: flex; padding-left: var(--sp-2); }
+  .right { margin-left: auto; display: flex; align-items: center; gap: var(--sp-1); padding-right: var(--sp-4); }
   .bi {
     background: transparent;
     border: 0;
     color: var(--fg-muted);
     cursor: pointer;
-    padding: 0 8px;
-    height: 22px;
+    padding: 0 var(--sp-4);
+    height: var(--h-statusbar);
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 10px;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
     border-radius: 0;
   }
-  .bi:hover { color: var(--fg); background: rgba(255,255,255,0.05); }
-  .bi .ico { font-size: 13px; }
+  .bi:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 5%, transparent); }
   .version {
     color: var(--fg-muted);
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 10px;
-    padding: 0 8px 0 12px;
+    font-size: var(--fs-xs);
+    padding: 0 var(--sp-4) 0 var(--sp-6);
     border-left: 1px solid var(--border);
-    margin-left: 4px;
+    margin-left: var(--sp-2);
   }
   .zoom { position: relative; }
   .zoom-menu {
@@ -211,10 +213,10 @@
     right: 0;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 6px 20px rgba(0,0,0,0.5);
-    padding: 4px;
-    margin-bottom: 4px;
+    padding: var(--sp-2);
+    margin-bottom: var(--sp-2);
     display: flex;
     flex-direction: column;
     min-width: 90px;
@@ -223,24 +225,26 @@
     background: transparent;
     border: 0;
     color: var(--fg);
-    padding: 6px 12px;
+    height: var(--h-row);
+    padding: 0 var(--sp-6);
     cursor: pointer;
     text-align: right;
-    border-radius: 3px;
+    border-radius: var(--radius);
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 11px;
+    font-size: var(--fs-sm);
   }
   .zoom-menu button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .zoom-menu button:hover { background: rgba(255,255,255,0.06); }
+  .zoom-menu button:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); }
 
   /* Update pill — three states. Downloading is informational (no click),
-     ready is an inviting accent-colored CTA, error is a quiet warning. */
+     ready is an inviting accent-colored CTA, error is a quiet warning. The
+     pill is the bar height minus a 2 px margin top and bottom. */
   .upd {
-    display: inline-flex; align-items: center; gap: 6px;
-    height: 22px;
-    padding: 0 10px;
-    font-size: 10px;
-    margin-right: 4px;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    height: calc(var(--h-statusbar) - 2 * var(--sp-1));
+    padding: 0 var(--sp-5);
+    font-size: var(--fs-sm);
+    margin-right: var(--sp-2);
   }
   .upd.downloading {
     color: var(--fg-muted);
@@ -249,7 +253,7 @@
     background: color-mix(in srgb, var(--add, var(--accent)) 18%, transparent);
     color: var(--add, var(--accent));
     border: 1px solid var(--add, var(--accent));
-    border-radius: 3px;
+    border-radius: var(--radius);
     cursor: pointer;
     font-weight: 600;
   }
@@ -261,7 +265,7 @@
     color: var(--del);
   }
   .upd-spin {
-    width: 10px; height: 10px;
+    width: var(--sp-5); height: var(--sp-5);
     border: 1.5px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;
@@ -272,8 +276,8 @@
   /* Git progress pill: label plus a thin bar. Indeterminate (no percent yet)
      slides a short segment instead of showing a fake fraction. */
   .prog {
-    display: inline-flex; align-items: center; gap: 6px;
-    height: 22px; padding: 0 8px;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    height: var(--h-statusbar); padding: 0 var(--sp-4);
     color: var(--fg-muted);
     white-space: nowrap;
   }
@@ -306,7 +310,7 @@
   .ident-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ident.none { color: var(--modified); }
   .dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    width: var(--sp-3); height: var(--sp-3); border-radius: 50%; flex-shrink: 0;
     background: var(--fg-muted);
   }
   .dot.tone-accent { background: var(--accent); }
@@ -314,8 +318,9 @@
 
   /* Auto-fetch status: quiet age text, or a warning pill that retries on click. */
   .af {
-    display: inline-flex; align-items: center; gap: 5px;
-    height: 22px; padding: 0 8px;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    height: var(--h-statusbar); padding: 0 var(--sp-4);
+    font-size: var(--fs-sm);
     color: var(--fg-muted);
     white-space: nowrap;
   }

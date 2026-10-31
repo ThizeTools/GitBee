@@ -220,13 +220,18 @@ describe("buildGridTemplate", () => {
   const widths: Partial<Record<GraphCol, number>> = { refs: 200, graph: 140, msg: 300 };
   const widthPx = (c: GraphCol): number => widths[c] ?? 0;
 
-  test("interleaves 6px gutters and makes the last track 1fr", () => {
+  test("interleaves 6px gutters and lets the message column flex", () => {
     expect(buildGridTemplate(["refs", "graph", "msg"], widthPx))
-      .toBe("200px 6px 140px 6px 1fr");
+      .toBe("200px 6px 140px 6px minmax(120px, 1fr)");
   });
 
-  test("a single column is just 1fr", () => {
-    expect(buildGridTemplate(["msg"], widthPx)).toBe("1fr");
+  test("message flexes even when it is not last, so later columns keep their width", () => {
+    expect(buildGridTemplate(["refs", "msg", "graph"], widthPx))
+      .toBe("200px 6px minmax(120px, 1fr) 6px 140px");
+  });
+
+  test("without a message column the last column flexes", () => {
+    expect(buildGridTemplate(["refs", "graph"], widthPx)).toBe("200px 6px 1fr");
   });
 });
 

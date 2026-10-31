@@ -2,6 +2,7 @@
   import { currentRepo, opState, status, withBusy } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
   import { confirmDialog } from "$lib/stores/dialog";
+  import Icon from "$lib/icons/Icon.svelte";
   import { activeOp, type ConflictOp } from "$lib/conflict/labels";
 
   // Shown while a merge, rebase, cherry-pick or revert is in progress.
@@ -36,7 +37,7 @@
 
 {#if op !== null}
   <div class="op-banner">
-    <span>⚠ {LABELS[op]}</span>
+    <span class="kind"><Icon name="warning" size={14} />{LABELS[op]}</span>
     {#if remaining > 0}
       <span class="left">{remaining} conflicted {remaining === 1 ? "file" : "files"} left</span>
     {/if}
@@ -49,15 +50,20 @@
 
 <style>
   .op-banner {
-    background: color-mix(in srgb, var(--modified) 18%, transparent); color: var(--modified); padding: 10px 14px;
+    background: color-mix(in srgb, var(--modified) 18%, transparent); color: var(--modified);
+    padding: var(--sp-5) var(--sp-6);
     border-bottom: 1px solid var(--border-strong);
-    display: flex; gap: 8px; align-items: center; font-size: 12px; flex-shrink: 0;
+    display: flex; gap: var(--sp-4); align-items: center;
+    font-size: var(--fs-md); flex-shrink: 0;
   }
+  .kind { display: inline-flex; align-items: center; gap: var(--sp-3); }
   .left { color: var(--del); font-weight: 600; margin-right: auto; }
   .cont { display: inline-flex; }
   .op-banner button {
+    height: var(--h-row);
     background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer;
+    font-size: var(--fs-sm);
   }
   .op-banner button:disabled { opacity: 0.5; cursor: not-allowed; }
   .op-banner button.danger:hover { background: color-mix(in srgb, var(--del) 22%, transparent); border-color: var(--del); }

@@ -7,8 +7,9 @@
   import { logAppend } from "$lib/stores/logs";
   import { ghAuth, bootGithubAuth } from "$lib/stores/github";
   import { openRepo } from "$lib/stores/repo";
+  import Icon from "$lib/icons/Icon.svelte";
   import GitHubLoginPanel from "./GitHubLoginPanel.svelte";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   type Mode = "new" | "publish-existing";
   interface Props {
@@ -23,8 +24,9 @@
 
   type Source = "local" | "github";
   // Publish flow always uses the GitHub tab — local-only doesn't apply
-  // because the local repo already exists.
-  let source = $state<Source>(mode === "publish-existing" ? "github" : "local");
+  // because the local repo already exists. The props are read once at mount:
+  // the modal is remounted for each open, so a snapshot is the intent.
+  let source = $state<Source>(untrack(() => (mode === "publish-existing" ? "github" : "local")));
 
   let busy = $state(false);
   let busyLabel = $state<string>("");
@@ -35,7 +37,7 @@
   let owners = $state<GhOwner[]>([]);
   let ownersLoading = $state(false);
   let owner = $state<string>("");
-  let name = $state(initialName ?? "");
+  let name = $state(untrack(() => initialName ?? ""));
   let description = $state("");
   let isPrivate = $state(true);
   let defaultBranch = $state("main");
@@ -198,17 +200,19 @@
       <span class="title">
         {mode === "publish-existing" ? "Publish to GitHub" : "Create a Repository"}
       </span>
-      <button class="x" onclick={() => { if (!busy) onClose(); }} title="Close">×</button>
+      <button class="x" onclick={() => { if (!busy) onClose(); }} title="Close" aria-label="Close">
+        <Icon name="close" size={16} />
+      </button>
     </header>
 
     <div class="body">
       {#if mode === "new"}
         <nav class="sources">
           <button class="src" class:active={source === "local"} onclick={() => source = "local"}>
-            <span class="ico">＋</span><span>Local only</span>
+            <span class="ico"><Icon name="laptop" size={16} /></span><span>Local only</span>
           </button>
           <button class="src" class:active={source === "github"} onclick={() => source = "github"}>
-            <span class="ico">⎈</span><span>On GitHub</span>
+            <span class="ico"><Icon name="cloud" size={16} /></span><span>On GitHub</span>
           </button>
         </nav>
       {/if}
@@ -217,7 +221,7 @@
         {#if source === "local"}
           <h2>New local repository</h2>
           <div class="field">
-            <label for="dest-local">Folder</label>
+            <label class="field-label" for="dest-local">Folder</label>
             <div class="row">
               <input id="dest-local" placeholder="folder for git init" bind:value={dest} />
               <button class="ghost" onclick={browseDest}>Browse</button>
@@ -231,7 +235,7 @@
           {:else}
             <div class="grid">
               <div class="field">
-                <label for="owner">Owner</label>
+                <label class="field-label" for="owner">Owner</label>
                 <select id="owner" bind:value={owner} disabled={ownersLoading}>
                   {#each owners as o}
                     <option value={o.login}>{o.login}{o.kind === "organization" ? " (org)" : ""}</option>
@@ -239,16 +243,16 @@
                 </select>
               </div>
               <div class="field">
-                <label for="name">Repository name</label>
+                <label class="field-label" for="name">Repository name</label>
                 <div class="name-row">
                   <input id="name" placeholder="my-cool-repo" bind:value={name}
                     oninput={scheduleNameCheck} />
                   <span class="name-status" class:ok={nameStatus === "available"}
                     class:bad={nameStatus === "taken" || nameStatus === "invalid"}>
                     {#if nameStatus === "checking"}…
-                    {:else if nameStatus === "available"}✓
-                    {:else if nameStatus === "taken"}✗ taken
-                    {:else if nameStatus === "invalid"}✗ invalid
+                    {:else if nameStatus === "available"}<Icon name="check" size={14} title="Name is available" />
+                    {:else if nameStatus === "taken"}<Icon name="close" size={14} /><span>taken</span>
+                    {:else if nameStatus === "invalid"}<Icon name="close" size={14} /><span>invalid</span>
                     {:else}&nbsp;
                     {/if}
                   </span>
@@ -257,13 +261,13 @@
             </div>
 
             <div class="field">
-              <label for="desc">Description (optional)</label>
+              <label class="field-label" for="desc">Description (optional)</label>
               <input id="desc" bind:value={description} maxlength={350} />
             </div>
 
             <div class="grid">
               <div class="field">
-                <label>Visibility</label>
+                <span class="field-label">Visibility</span>
                 <div class="radios">
                   <label class="radio">
                     <input type="radio" bind:group={isPrivate} value={true} />
@@ -276,14 +280,14 @@
                 </div>
               </div>
               <div class="field">
-                <label for="branch">Default branch</label>
+                <label class="field-label" for="branch">Default branch</label>
                 <input id="branch" bind:value={defaultBranch} placeholder="main" />
               </div>
             </div>
 
             {#if mode === "new"}
               <div class="field">
-                <label for="dest-gh">Where to put it locally</label>
+                <label class="field-label" for="dest-gh">Where to put it locally</label>
                 <div class="row">
                   <input id="dest-gh" placeholder="parent folder" bind:value={dest} />
                   <button class="ghost" onclick={browseDest}>Browse</button>
@@ -331,23 +335,25 @@
     max-height: 88vh;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6);
     display: flex; flex-direction: column;
     overflow: hidden;
     color: var(--fg);
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   .modal-head {
     display: flex; align-items: center;
-    padding: 14px 18px;
+    padding: var(--sp-5) var(--sp-20);
     border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
-  .title { font-weight: 700; font-size: 14px; flex: 1; }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
   .x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 22px; line-height: 1; cursor: pointer;
-    padding: 0 6px; border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
   .x:hover { color: var(--fg); }
 
@@ -355,98 +361,108 @@
   .sources {
     width: 180px; flex-shrink: 0;
     border-right: 1px solid var(--border-strong);
-    padding: 12px 6px;
-    display: flex; flex-direction: column; gap: 2px;
+    padding: var(--sp-6) var(--sp-3);
+    display: flex; flex-direction: column; gap: var(--sp-1);
   }
   .src {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 12px;
+    display: flex; align-items: center; gap: var(--sp-5);
+    height: 28px;
+    padding: 0 var(--sp-6);
     background: transparent; border: 0;
     color: var(--fg-muted);
-    cursor: pointer; font-size: 12px;
-    border-radius: 4px; text-align: left; width: 100%;
+    cursor: pointer; font-size: var(--fs-md);
+    border-radius: var(--radius); text-align: left; width: 100%;
   }
   .src:hover { color: var(--fg); background: rgba(255,255,255,0.04); }
   .src.active {
     color: var(--fg);
     background: color-mix(in srgb, var(--accent) 18%, transparent);
   }
-  .src .ico { color: var(--accent); width: 16px; text-align: center; }
+  .src .ico {
+    display: flex; align-items: center; justify-content: center;
+    width: var(--icon); color: var(--accent);
+  }
 
   .content {
     flex: 1; min-width: 0;
-    padding: 18px 22px;
+    padding: var(--sp-15) var(--sp-20);
     overflow-y: auto;
-    display: flex; flex-direction: column; gap: 12px;
+    display: flex; flex-direction: column; gap: var(--sp-6);
   }
   .content h2 {
-    margin: 0 0 6px; font-size: 14px; font-weight: 700;
+    margin: 0 0 var(--sp-3); font-size: var(--fs-lg); font-weight: 600;
   }
   .grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6);
   }
-  .field { display: flex; flex-direction: column; gap: 6px; }
-  .field label {
-    font-size: 11px; color: var(--fg-muted);
+  .field { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .field-label {
+    font-size: var(--fs-sm); color: var(--fg-muted);
     text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600;
   }
   .field input, .field select {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 7px 10px; font-size: 12px; width: 100%;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-5); font-size: var(--fs-md); width: 100%;
     font: inherit;
   }
   .field input:focus, .field select:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
-  .row { display: flex; gap: 6px; }
+  .row { display: flex; gap: var(--sp-3); }
   .row input { flex: 1; }
-  .name-row { display: flex; gap: 6px; align-items: center; }
+  .name-row { display: flex; gap: var(--sp-3); align-items: center; }
   .name-row input { flex: 1; }
   .name-status {
-    font-size: 11px; min-width: 60px;
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    font-size: var(--fs-sm); min-width: 60px;
     color: var(--fg-muted);
   }
-  .name-status.ok { color: var(--add, #6f9); }
-  .name-status.bad { color: var(--del, #f77); }
-  .radios { display: flex; gap: 14px; padding-top: 4px; }
+  .name-status.ok { color: var(--add); }
+  .name-status.bad { color: var(--del); }
+  .radios { display: flex; gap: var(--sp-8); padding-top: var(--sp-2); }
   .radio, .checkbox {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 12px; color: var(--fg);
+    display: flex; align-items: center; gap: var(--sp-3);
+    font-size: var(--fs-md); color: var(--fg);
     cursor: pointer;
   }
-  .checkbox { padding-top: 6px; }
+  .checkbox { padding-top: var(--sp-3); }
   .ghost {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 14px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-6); cursor: pointer; font-size: var(--fs-md);
   }
   .ghost:hover:not(:disabled) { border-color: var(--fg-muted); }
   .ghost:disabled { opacity: 0.5; cursor: not-allowed; }
-  .hint { font-size: 11px; color: var(--fg-muted); }
+  .hint { font-size: var(--fs-sm); color: var(--fg-muted); }
   .error-banner {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 10px;
-    background: color-mix(in srgb, var(--del, #f77) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--del, #f77) 40%, transparent);
-    border-radius: 4px;
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-4) var(--sp-5);
+    background: color-mix(in srgb, var(--del) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--del) 40%, transparent);
+    border-radius: var(--radius);
     color: var(--fg);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
-  .error-banner .copy { padding: 4px 10px; font-size: 11px; }
+  .error-banner .copy { height: 24px; padding: 0 var(--sp-5); font-size: var(--fs-sm); }
   .error-banner span { flex: 1; }
 
+  /* Footer: right-aligned, 28 px buttons. */
   .modal-foot {
-    display: flex; justify-content: flex-end; gap: 10px;
-    padding: 12px 18px;
+    display: flex; justify-content: flex-end; gap: var(--sp-5);
+    padding: var(--sp-5) var(--sp-20);
     border-top: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
   .primary {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
     border: 1px solid var(--accent);
-    border-radius: 4px;
-    padding: 7px 18px; cursor: pointer;
-    font-weight: 700; font-size: 12px;
+    border-radius: var(--radius);
+    padding: 0 var(--sp-8); cursor: pointer;
+    font-weight: 600; font-size: var(--fs-md);
   }
   .primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .primary:disabled {

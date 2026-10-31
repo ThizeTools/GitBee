@@ -13,7 +13,7 @@ import {
   sideOf,
   sortByPath,
   stashTitleFor,
-  statusChar,
+  statusIconFor,
   statusTitle,
   summaryColor,
   summaryPercent,
@@ -34,20 +34,28 @@ describe("isStaged", () => {
   });
 });
 
-describe("statusChar and statusTitle", () => {
-  test("glyph follows the requested side", () => {
+describe("statusIconFor and statusTitle", () => {
+  test("icon follows the requested side", () => {
     const e = entry("a", "added", "modified");
-    expect(statusChar(e, "index")).toBe("+");
-    expect(statusChar(e, "worktree")).toBe("●");
+    expect(statusIconFor(e, "index")).toBe("file-added");
+    expect(statusIconFor(e, "worktree")).toBe("file-modified");
   });
-  test("unmodified side renders blank with no title", () => {
+  test("unmodified side has no icon and no title", () => {
     const e = entry("a", "unmodified", "unmodified");
-    expect(statusChar(e, "index")).toBe(" ");
+    expect(statusIconFor(e, "index")).toBeNull();
     expect(statusTitle(e, "index")).toBe("");
   });
-  test("conflicted side renders the bang glyph and its title", () => {
+  test("deleted and renamed sides get their own icons", () => {
+    expect(statusIconFor(entry("a", "deleted", "unmodified"), "index")).toBe("file-deleted");
+    expect(statusIconFor(entry("a", "renamed", "unmodified"), "index")).toBe("file-renamed");
+  });
+  test("untracked files read as added, ignored files as plain files", () => {
+    expect(statusIconFor(entry("a", "untracked", "untracked"), "worktree")).toBe("file-added");
+    expect(statusIconFor(entry("a", "ignored", "ignored"), "worktree")).toBe("file");
+  });
+  test("conflicted side uses the conflict icon and its title", () => {
     const e = entry("a", "conflicted", "conflicted", true);
-    expect(statusChar(e, "worktree")).toBe("!");
+    expect(statusIconFor(e, "worktree")).toBe("conflict");
     expect(statusTitle(e, "worktree")).toBe("Conflicted");
   });
 });

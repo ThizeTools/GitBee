@@ -12,6 +12,7 @@
   import { editFile } from "$lib/components/staging/fileActions";
   import ConflictBlockView from "./ConflictBlockView.svelte";
   import ConflictContext from "./ConflictContext.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // Center-pane resolver for one conflicted file. Shows every block with both
   // sides, takes a choice per block, and saves only when none is left undecided.
@@ -107,6 +108,7 @@
 </script>
 
 <section class="editor">
+  <!-- View header: one 30 px row (it wraps only on a narrow pane). -->
   <header class="top">
     <div class="id">
       <span class="kind">Conflict</span>
@@ -120,8 +122,12 @@
       {/if}
     </span>
     <div class="nav">
-      <button onclick={() => step(-1)} disabled={count === 0 || current === 0}>◀ Previous</button>
-      <button onclick={() => step(1)} disabled={count === 0 || current >= count - 1}>Next ▶</button>
+      <button onclick={() => step(-1)} disabled={count === 0 || current === 0}>
+        <Icon name="chevron-left" size={12} />Previous
+      </button>
+      <button onclick={() => step(1)} disabled={count === 0 || current >= count - 1}>
+        Next<Icon name="chevron-right" size={12} />
+      </button>
     </div>
     <span class="spacer"></span>
     <button class="cancel" onclick={showGraph}>Cancel</button>
@@ -180,42 +186,46 @@
 <style>
   .editor { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
   .top {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    padding: 8px 14px; background: var(--bg-elev); border-bottom: 1px solid var(--border-strong);
+    display: flex; align-items: center; gap: var(--sp-6); flex-wrap: wrap;
+    min-height: var(--h-section); padding: var(--sp-1) var(--sp-8);
+    background: var(--bg-elev); border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
-  .id { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 40%; }
+  .id { display: flex; align-items: center; gap: var(--sp-4); min-width: 0; max-width: 40%; }
   .kind {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700;
+    font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700;
     color: var(--del);
   }
   .file {
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; color: var(--fg);
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-lg); font-weight: 600; color: var(--fg);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .progress { font-size: 11px; color: var(--fg-muted); }
-  .nav { display: flex; gap: 6px; }
+  .progress { font-size: var(--fs-sm); color: var(--fg-muted); }
+  .nav { display: flex; gap: var(--sp-3); }
   .spacer { flex: 1; }
+  /* Text actions: 24 px high, the toolbar hit size. */
   .top button {
+    display: inline-flex; align-items: center; gap: var(--sp-2);
+    height: var(--h-row);
     background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm);
   }
   .top button:disabled { opacity: 0.45; cursor: not-allowed; }
   .top button.save {
     background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); border-color: var(--accent);
   }
   .top button.save:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
-  .body { flex: 1; min-height: 0; overflow: auto; padding-bottom: 14px; }
+  .body { flex: 1; min-height: 0; overflow: auto; padding-bottom: var(--sp-6); }
   .notice {
-    margin: 12px 14px 0; padding: 8px 12px; border-radius: 4px; font-size: 12px;
-    color: var(--fg-muted); border: 1px solid var(--border);
+    margin: var(--sp-6) var(--sp-8) 0; padding: var(--sp-3) var(--sp-6); border-radius: var(--radius);
+    font-size: var(--fs-md); color: var(--fg-muted); border: 1px solid var(--border);
   }
   .notice.warn { color: var(--modified); border-color: var(--modified); }
   .notice.err { color: var(--del); border-color: var(--del); }
-  .notice button { margin-left: 8px; }
-  .whole { display: flex; gap: 8px; margin: 12px 14px; }
+  .notice button { margin-left: var(--sp-4); }
+  .whole { display: flex; gap: var(--sp-4); margin: var(--sp-6) var(--sp-8); }
   .whole button {
-    background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
-    padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 12px;
+    height: var(--h-row); background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
+    padding: 0 var(--sp-6); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-md);
   }
 </style>

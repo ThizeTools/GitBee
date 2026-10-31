@@ -13,6 +13,7 @@
   import { formatCommitDate } from "$lib/commit/format";
   import DiffViewer from "../DiffViewer.svelte";
   import HistoryRow from "./HistoryRow.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import {
     blameAtCommit, copyCommitSha, showCommitInGraph,
   } from "$lib/history/historyActions";
@@ -116,12 +117,14 @@
 </script>
 
 <div class="history">
+  <!-- View header: one 30 px row, the file path as the title. -->
   <header class="fh-head">
     <span class="path" title={file}>{file}</span>
     <span class="count">
       {entries.length} commit{entries.length === 1 ? "" : "s"}{hasMore ? "+" : ""}
     </span>
-    <button class="close" type="button" title="Close (Esc)" onclick={() => showGraph()}>×</button>
+    <button class="icon-btn" type="button" title="Close (Esc)" aria-label="Close history"
+      onclick={() => showGraph()}><Icon name="close" size={14} /></button>
   </header>
 
   <div class="fh-body">
@@ -181,19 +184,23 @@
 <style>
   .history { height: 100%; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
   .fh-head {
-    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    display: flex; align-items: center; gap: var(--sp-6);
+    height: var(--h-section); padding: 0 var(--sp-8);
     background: var(--bg-elev); border-bottom: 1px solid var(--border-strong); flex-shrink: 0;
   }
   .path {
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; font-weight: 500;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-lg); font-weight: 600;
   }
-  .count { font-size: 11px; color: var(--fg-muted); }
-  .close {
-    background: transparent; border: 0; color: var(--fg-muted); font-size: 18px;
-    width: 30px; line-height: 1; cursor: pointer;
+  .count { font-size: var(--fs-sm); color: var(--fg-muted); white-space: nowrap; }
+  /* Icon-only action: 24 x 24, the toolbar hit size. */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
-  .close:hover { color: var(--del); }
+  .icon-btn:hover { color: var(--del); background: var(--border); }
 
   .fh-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(240px, 320px) 1fr; }
   .list { border-right: 1px solid var(--border-strong); overflow: auto; min-height: 0; }
@@ -201,21 +208,23 @@
   .detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
   .d-head {
-    display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+    display: flex; align-items: center; gap: var(--sp-6); padding: var(--sp-4) var(--sp-6);
     border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
   }
   .d-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .d-text .subject { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .d-text .meta { font-size: 11px; color: var(--fg-muted); }
-  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .d-text .subject { font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-text .meta { font-size: var(--fs-sm); color: var(--fg-muted); }
+  .actions { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+  /* Text actions: 24 px high, the toolbar hit size. */
   .actions button, .more {
+    height: var(--h-row); display: inline-flex; align-items: center; justify-content: center;
     background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm);
   }
   .actions button:hover, .more:hover { background: var(--border); }
-  .more { display: block; width: calc(100% - 24px); margin: 8px 12px; }
+  .more { display: flex; width: calc(100% - 2 * var(--sp-6)); margin: var(--sp-4) var(--sp-6); }
   .d-body { flex: 1; min-height: 0; overflow: auto; }
-  .note { padding: 12px; font-size: 12px; color: var(--fg-muted); font-style: italic; }
+  .note { padding: var(--sp-6); font-size: var(--fs-md); color: var(--fg-muted); font-style: italic; }
   .note.err { color: var(--del); font-style: normal; }
-  .empty { padding: 40px; text-align: center; color: var(--fg-muted); font-style: italic; }
+  .empty { padding: var(--sp-20) var(--sp-8); text-align: center; color: var(--fg-muted); font-style: italic; }
 </style>

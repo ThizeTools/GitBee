@@ -27,16 +27,17 @@
 </div>
 
 <style>
+  /* The bar thickness (3px) is a graphic, not a layout token. */
   .cell-changes {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 3px;
-    padding: 0 10px;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-5);
     height: 100%;
     min-width: 0;
     overflow: hidden;
-    font-size: 11px;
+    font-size: var(--fs-sm);
     color: var(--fg-muted);
   }
   .cell-text {
@@ -45,7 +46,7 @@
     font-family: "Cascadia Code", Consolas, monospace;
   }
   .track {
-    display: block; width: 100%; height: 3px; border-radius: 2px;
+    display: block; width: 100%; height: 3px; border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--border) 60%, transparent);
     overflow: hidden;
   }
@@ -53,7 +54,7 @@
   .add { display: block; height: 100%; background: var(--add, var(--accent)); }
   .del { display: block; flex: 1; height: 100%; background: var(--del); }
   .placeholder {
-    display: block; width: 45%; height: 3px; border-radius: 2px;
+    display: block; width: 45%; height: 3px; border-radius: var(--radius-sm);
     background: var(--border); opacity: 0.5;
   }
 </style>

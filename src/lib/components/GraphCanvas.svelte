@@ -85,7 +85,7 @@
 
   // ------- column layout (reorder + resize) -------
   // `order` is the full layout order (hidden columns included); `visibleOrder`
-  // is what is painted. The last VISIBLE column takes the 1fr track.
+  // is what is painted. The message column takes the flexible track.
   const order = $derived($layout.graphColOrder);
   const hiddenCols = $derived($layout.hiddenCols);
   const dimMerges = $derived($layout.dimMergeCommits);
@@ -168,11 +168,11 @@
     lastRepo = repo;
   });
   // Each field here is per-repo. hiddenStashes is keyed by stash INDEX, which
-  // names a different stash in another repo.
+  // names a different stash in another repo; a queued scroll jump is a sha of the old one.
   function resetViewForRepo(): void {
     if (scrollEl) scrollEl.scrollTop = 0;
     scrollTop = 0;
-    hoverRow = null;
+    hoverRow = null; graphScrollTarget.set(null);
     hiddenStashes = new Set();
     badgeEndsByRow = new Map();
     clearRefHover();

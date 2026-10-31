@@ -8,6 +8,7 @@
   import { pushUndo } from "$lib/stores/history";
   import { interactiveRebaseUndo } from "$lib/stores/undoEntries";
   import { notifySuccess, notifyWarn } from "$lib/stores/notifications";
+  import Icon from "$lib/icons/Icon.svelte";
   import {
     editableFlags, firstProblem, indexOfSha, moveRow, shortSha, summary, toItems, updateRow,
   } from "$lib/rebase/model";
@@ -162,7 +163,9 @@
   >
     <header class="modal-head">
       <span class="title">Interactive rebase <code>onto {shortSha(base)}</code></span>
-      <button class="x" onclick={closeUnlessBusy} title="Close" disabled={busy}>×</button>
+      <button class="x" onclick={closeUnlessBusy} title="Close" aria-label="Close" disabled={busy}>
+        <Icon name="close" size={16} />
+      </button>
     </header>
 
     <div class="hint">
@@ -219,62 +222,69 @@
     max-height: 86vh;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6);
     display: flex; flex-direction: column;
     color: var(--fg);
     min-height: 0;
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   .modal-head {
     display: flex; align-items: center;
-    padding: 12px 16px;
+    padding: var(--sp-5) var(--sp-20);
     border-bottom: 1px solid var(--border-strong);
   }
-  .title { font-weight: 700; font-size: 13px; flex: 1; }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
   .title code { color: var(--accent); font-family: "Cascadia Code", Consolas, monospace; }
   .x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 20px; line-height: 1; cursor: pointer;
-    padding: 0 4px; border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
   .x:hover:not(:disabled) { color: var(--fg); }
   .hint {
-    font-size: 11px; color: var(--fg-muted);
-    padding: 8px 16px 0;
+    font-size: var(--fs-sm); color: var(--fg-muted);
+    padding: var(--sp-4) var(--sp-20) 0;
   }
   .list {
-    display: flex; flex-direction: column; gap: 6px;
-    padding: 10px 16px;
+    display: flex; flex-direction: column; gap: var(--sp-3);
+    padding: var(--sp-5) var(--sp-20);
     overflow: auto;
     min-height: 0;
   }
   .error {
-    font-size: 11px; color: #d46a6a;
-    margin: 0 16px 8px;
+    font-size: var(--fs-sm); color: var(--del);
+    margin: 0 var(--sp-20) var(--sp-4);
   }
+  /* Footer: right-aligned, 28 px buttons. */
   .modal-foot {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 16px;
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20);
     border-top: 1px solid var(--border-strong);
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
-  .count { font-weight: 700; white-space: nowrap; }
-  .problem { color: #d48a2c; font-size: 11px; }
+  .count { font-weight: 600; white-space: nowrap; }
+  .problem { color: var(--modified); font-size: var(--fs-sm); }
   .spacer { flex: 1; }
   .ghost {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 14px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-6); cursor: pointer; font-size: var(--fs-md);
   }
   .ghost:hover:not(:disabled) { border-color: var(--fg-muted); }
   .primary {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
     border: 1px solid var(--accent);
-    border-radius: 4px;
-    padding: 6px 16px;
+    border-radius: var(--radius);
+    padding: 0 var(--sp-8);
     cursor: pointer;
-    font-weight: 700; font-size: 12px;
+    font-weight: 600; font-size: var(--fs-md);
   }
   .primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .primary:disabled {

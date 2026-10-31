@@ -10,6 +10,7 @@
   import { runAction } from "$lib/menus/menuActions";
   import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
   import { ipc } from "$lib/ipc";
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Props { sha: string; }
   let { sha }: Props = $props();
@@ -65,36 +66,54 @@
   }
 </script>
 
-<nav class="actions">
-  <button onclick={cherryPick}>Cherry-pick</button>
-  <button onclick={revert}>Revert</button>
-  <button onclick={createBranch}>+ Branch</button>
-  <button onclick={createTag}>+ Tag</button>
-  <button onclick={checkoutDetached}>Checkout</button>
-  <span class="reset-group">
+<nav class="actions" aria-label="Commit actions">
+  <button class="act" onclick={cherryPick} title="Cherry-pick this commit" aria-label="Cherry-pick this commit">
+    <Icon name="cherry-pick" size={16} />
+  </button>
+  <button class="act" onclick={revert} title="Revert this commit" aria-label="Revert this commit">
+    <Icon name="undo" size={16} />
+  </button>
+  <button class="act" onclick={createBranch} title="Create a branch here" aria-label="Create a branch here">
+    <Icon name="branch" size={16} />
+  </button>
+  <button class="act" onclick={createTag} title="Create a tag here" aria-label="Create a tag here">
+    <Icon name="tag" size={16} />
+  </button>
+  <button class="act" onclick={checkoutDetached} title="Check out this commit (detached HEAD)" aria-label="Check out this commit (detached HEAD)">
+    <Icon name="checkout" size={16} />
+  </button>
+  <span class="reset-group" title="Reset the current branch to this commit">
     Reset:
-    <button onclick={() => resetTo("soft")}>soft</button>
-    <button onclick={() => resetTo("mixed")}>mixed</button>
-    <button class="danger" onclick={() => resetTo("hard")}>hard</button>
+    <button class="mode" onclick={() => resetTo("soft")}>soft</button>
+    <button class="mode" onclick={() => resetTo("mixed")}>mixed</button>
+    <button class="mode danger" onclick={() => resetTo("hard")}>hard</button>
   </span>
 </nav>
 
 <style>
   .actions {
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-    padding: 8px 12px;
+    display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+    padding: var(--sp-4) var(--sp-6);
     border-top: 1px solid var(--border);
     background: var(--bg-elev);
   }
-  .actions button {
+  /* Icon actions: 24 px square, the glyph is the only label, so each has a title. */
+  .act, .mode {
+    height: var(--h-row);
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); padding: 4px 10px;
-    border-radius: 3px; cursor: pointer; font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius); cursor: pointer;
+    font-size: var(--fs-sm);
   }
-  .actions button:hover:not(.danger) { background: var(--border-strong); }
-  .actions button.danger:hover { background: color-mix(in srgb, var(--del) 22%, transparent); border-color: var(--del); color: var(--del); }
+  .act {
+    width: var(--h-row); padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .mode { padding: 0 var(--sp-5); }
+  .act:hover, .mode:hover:not(.danger) { background: var(--border-strong); }
+  .mode.danger:hover { background: color-mix(in srgb, var(--del) 22%, transparent); border-color: var(--del); color: var(--del); }
   .reset-group {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 11px; color: var(--fg-muted); margin-left: auto;
+    display: inline-flex; align-items: center; gap: var(--sp-3);
+    font-size: var(--fs-sm); color: var(--fg-muted); margin-left: auto;
   }
 </style>

@@ -9,6 +9,7 @@
   } from "$lib/stores/refDrag";
   import { openMenu } from "$lib/stores/contextmenu";
   import { matchesFilter } from "$lib/components/sidebar/filter";
+  import Icon from "$lib/icons/Icon.svelte";
 
   // Local branch rows: click jumps the graph, double-click checks out, and the
   // rows are drag sources and drop targets for ref drag-and-drop.
@@ -27,6 +28,7 @@
   {#each shown as b (b.name)}
     {@const inSolo = $soloRefs.has(b.name)}
     {@const ref = localRef(b.name)}
+    {@const soloLabel = inSolo ? `Remove ${b.name} from solo` : `Add ${b.name} to solo`}
     <li
       class="leaf" class:active={isHead(b.name)} class:solo-row={soloActive} class:solo-on={inSolo}
       draggable="true"
@@ -42,8 +44,11 @@
           class="eye"
           class:on={inSolo}
           onclick={(e) => { e.stopPropagation(); toggleSolo(b.name); }}
-          title={inSolo ? `Remove ${b.name} from solo` : `Add ${b.name} to solo`}
-        >{inSolo ? "👁" : "👁‍🗨"}</button>
+          title={soloLabel}
+          aria-label={soloLabel}
+        >
+          <Icon name={inSolo ? "eye" : "eye-off"} size={14} />
+        </button>
       {/if}
       <button
         class="link"
@@ -52,14 +57,17 @@
         oncontextmenu={(e) => openMenu(e, localBranchMenu(b.name, b.target_sha))}
         title="Click to jump · double-click to checkout: {b.name}"
       >
-        <span class="ico">{isHead(b.name) ? "★" : "⎇"}</span>
+        <Icon name={isHead(b.name) ? "star" : "laptop"} size={14} class="ico" />
         <span class="name">{b.name}</span>
       </button>
       <button
-        class="dots"
+        class="row-action"
         onclick={(e) => openMenu(e, localBranchMenu(b.name, b.target_sha))}
         title="More actions"
-      >⋯</button>
+        aria-label="More actions"
+      >
+        <Icon name="more" size={14} />
+      </button>
     </li>
   {:else}
     <li class="muted">no branches</li>

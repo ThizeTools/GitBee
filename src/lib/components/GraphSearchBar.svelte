@@ -18,6 +18,7 @@
     cancelOlderLoad, olderLoading,
   } from "$lib/stores/historySearch";
   import { graphScrollTarget } from "$lib/stores/graphscroll";
+  import Icon from "$lib/icons/Icon.svelte";
   import { tick } from "svelte";
 
   let inputEl: HTMLInputElement | null = $state(null);
@@ -82,14 +83,17 @@
 </script>
 
 <div class="bar" role="search">
-  <input
-    bind:this={inputEl}
-    bind:value={$searchQuery}
-    onkeydown={onKeyDown}
-    placeholder="Search SHA, subject, author…"
-    spellcheck="false"
-    aria-label="Search commits"
-  />
+  <div class="field">
+    <Icon name="search" size={14} />
+    <input
+      bind:this={inputEl}
+      bind:value={$searchQuery}
+      onkeydown={onKeyDown}
+      placeholder="Search SHA, subject, author…"
+      spellcheck="false"
+      aria-label="Search commits"
+    />
+  </div>
   <span class="count" class:empty={$matchShas.length === 0 && $olderMatchShas.length === 0 && $searchQuery.trim().length > 0}>
     {#if $searchQuery.trim().length === 0}
       &nbsp;
@@ -111,45 +115,67 @@
     </span>
   {/if}
   <button
-    class="btn"
+    class="btn icon"
     onclick={() => jumpTo(prevMatch())}
     disabled={$matchShas.length === 0}
     title="Previous match (Shift+Enter)"
-  >↑</button>
+    aria-label="Previous match"
+  >
+    <Icon name="chevron-up" size={14} />
+  </button>
   <button
-    class="btn"
+    class="btn icon"
     onclick={() => jumpTo(nextMatch())}
     disabled={$matchShas.length === 0}
     title="Next match (Enter)"
-  >↓</button>
-  <button class="btn close" onclick={closeSearch} title="Close (Esc)">×</button>
+    aria-label="Next match"
+  >
+    <Icon name="chevron-down" size={14} />
+  </button>
+  <button class="btn icon" onclick={closeSearch} title="Close (Esc)" aria-label="Close search">
+    <Icon name="close" size={14} />
+  </button>
 </div>
 
 <style>
+  /* Bar and controls follow the Region 4 sizes: 30 px bar, 24 px controls
+     (the hit-target minimum), --fs-sm / --fs-md text. */
   .bar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
-    height: 28px;
+    height: var(--h-section);
   }
+  .field {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+    height: var(--h-row);
+    padding: 0 var(--sp-4);
+    background: var(--bg);
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .field:focus-within { border-color: var(--accent); }
   input {
     flex: 1;
-    background: var(--bg);
-    color: var(--fg);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 4px 8px;
-    font-size: 12px;
-    outline: 0;
     min-width: 0;
+    background: transparent;
+    color: var(--fg);
+    border: 0;
+    outline: 0;
+    padding: 0;
+    font-size: var(--fs-md);
   }
-  input:focus { border-color: var(--accent); }
   .count {
-    font-size: 11px;
+    font-size: var(--fs-sm);
     color: var(--fg-muted);
     min-width: 56px;
     text-align: right;
@@ -160,23 +186,26 @@
   .older {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
+    gap: var(--sp-3);
+    font-size: var(--fs-sm);
     color: var(--fg-muted);
     white-space: nowrap;
   }
   .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 3px;
+    border-radius: var(--radius);
     color: var(--fg-muted);
-    padding: 0 8px;
-    height: 22px;
+    height: var(--h-row);
+    padding: 0 var(--sp-4);
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--fs-md);
     line-height: 1;
   }
+  .btn.icon { width: var(--h-row); padding: 0; }
   .btn:hover:not(:disabled) { color: var(--fg); border-color: var(--fg-muted); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .btn.close { font-size: 16px; padding: 0 6px; }
 </style>

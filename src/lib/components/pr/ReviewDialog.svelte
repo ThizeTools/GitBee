@@ -4,6 +4,7 @@
   // backend). Inline comments and review threads are out of scope (spec).
   import type { ReviewEvent } from "$lib/github/pullTypes";
   import { reviewBodyError } from "$lib/github/pulls";
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Props {
     number: number;
@@ -42,7 +43,7 @@
     onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
     <header>
       <span class="title">Review #{number} <span class="muted">{title}</span></span>
-      <button class="x" onclick={onClose} title="Close">×</button>
+      <button class="x" type="button" onclick={onClose} title="Close" aria-label="Close review"><Icon name="close" size={14} /></button>
     </header>
 
     <div class="body">
@@ -61,32 +62,45 @@
 </div>
 
 <style>
+  /* Dialog layout: header 10 / 20 px with a bottom border, body 15 / 20 px,
+     footer buttons 28 px high, radius-lg (layout spec, Region 7). */
   .backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,0.55);
     display: flex; align-items: center; justify-content: center; z-index: 1500;
   }
   .modal {
     width: min(560px, 92vw); background: var(--bg-elev);
-    border: 1px solid var(--border-strong); border-radius: 8px;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; color: var(--fg);
   }
-  header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-strong); }
-  .title { font-weight: 700; font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20); border-bottom: 1px solid var(--border-strong);
+  }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .muted { color: var(--fg-muted); font-weight: 400; }
-  .x { background: transparent; border: 0; color: var(--fg-muted); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px; }
-  .x:hover { color: var(--fg); }
-  .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .x {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+  }
+  .x:hover { color: var(--fg); background: var(--border); }
+  .body { padding: var(--sp-15) var(--sp-20); display: flex; flex-direction: column; gap: var(--sp-4); }
   textarea {
-    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
-    padding: 8px 10px; font-size: 12px; resize: vertical; min-height: 120px; font-family: inherit;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-4) var(--sp-5); font-size: var(--fs-md); resize: vertical; min-height: 120px; font-family: inherit;
   }
   textarea:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
-  .error { font-size: 11px; color: #f85149; }
-  footer { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border-strong); }
+  .error { font-size: var(--fs-sm); color: var(--del); }
+  footer {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20); border-top: 1px solid var(--border-strong);
+  }
   .grow { flex: 1; }
   button {
-    background: transparent; border: 1px solid var(--border-strong); color: var(--fg);
-    padding: 5px 12px; border-radius: 3px; cursor: pointer; font-size: 12px;
+    height: 28px; background: transparent; border: 1px solid var(--border-strong); color: var(--fg);
+    padding: 0 var(--sp-6); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-md);
   }
   button:hover:not(:disabled) { background: var(--border); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }

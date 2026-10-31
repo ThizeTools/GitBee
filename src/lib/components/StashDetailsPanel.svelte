@@ -17,6 +17,7 @@
   import { showCommitFile } from "$lib/stores/center";
   import { promptDialog } from "$lib/stores/dialog";
   import { dropStashAt } from "$lib/menus/stashActions";
+  import Icon from "$lib/icons/Icon.svelte";
   import type { FileDiff, GraphNode } from "$lib/ipc";
 
   interface Props { index: number; onClose: () => void; }
@@ -87,7 +88,6 @@
   }
 
   function cycleSort() { sortMode = sortMode === "asc" ? "desc" : "asc"; }
-  function sortIcon(): string { return sortMode === "asc" ? "↓A" : "↑A"; }
   function sortLabel(): string { return sortMode === "asc" ? "Sort: A→Z" : "Sort: Z→A"; }
   function pathOf(f: FileDiff): string { return f.new_path || f.old_path; }
   const sortedDiffs = $derived.by<FileDiff[]>(() => {
@@ -178,7 +178,9 @@
       <span class="commit-label">stash:</span>
       <span class="commit-sha">{entry.sha.slice(0, 7)}</span>
       <span class="spacer"></span>
-      <button class="close" onclick={onClose} title="Back to changes">×</button>
+      <button class="close" onclick={onClose} title="Back to changes" aria-label="Back to changes">
+        <Icon name="close" size={14} />
+      </button>
     </header>
 
     <div class="subject-box">
@@ -207,14 +209,16 @@
 
     <div class="files-bar">
       <span class="modified">
-        <span class="m-ico">✎</span>
+        <span class="m-ico"><Icon name="file-modified" size={14} /></span>
         <span class="m-count">{diffs.length}</span>
         <span class="m-lbl">modified</span>
       </span>
-      <button class="bb" onclick={cycleSort} title={sortLabel()}>{sortIcon()}</button>
+      <button class="sort-btn" onclick={cycleSort} title={sortLabel()} aria-label={sortLabel()}><span class:sort-flip={sortMode === "desc"}><Icon name="sort" size={14} /></span></button>
       <span class="seg">
-        <button class:active={viewMode === "path"} onclick={() => viewMode = "path"}>≡ Path</button>
-        <button class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}>⌘ Tree</button>
+        <button class="seg-btn" class:active={viewMode === "path"} onclick={() => viewMode = "path"}
+          title="Path view" aria-label="Path view"><Icon name="file" size={14} /></button>
+        <button class="seg-btn" class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}
+          title="Tree view" aria-label="Tree view"><Icon name="folder" size={14} /></button>
       </span>
       <label class="ck">
         <input type="checkbox" bind:checked={showDiffs} />
@@ -247,7 +251,7 @@
               <li>
                 <button class="file-btn" type="button"
                   onclick={() => showCommitFile(entry.sha, f.new_path || f.old_path)}>
-                  <span class="f-ico">✎</span>
+                  <span class="f-ico"><Icon name="file-modified" size={16} /></span>
                   <span class="f-count">{c.add + c.del}</span>
                   <span class="f-path">{f.new_path || f.old_path}</span>
                 </button>
@@ -275,7 +279,7 @@
       <button class="file-btn" type="button"
         style="padding-left: {12 + depth * 14}px"
         onclick={() => showCommitFile(entry!.sha, fp)}>
-        <span class="f-ico">✎</span>
+        <span class="f-ico"><Icon name="file-modified" size={16} /></span>
         <span class="f-count">{c.add + c.del}</span>
         <span class="f-path">{node.name}</span>
       </button>
@@ -283,7 +287,7 @@
   {:else}
     <li class="dir" style="padding-left: {12 + depth * 14}px">
       <button class="dir-toggle" onclick={() => toggle(node.path)}>
-        <span class="caret">{collapsed[node.path] ? "▶" : "▼"}</span>
+        <Icon name={collapsed[node.path] ? "chevron-right" : "chevron-down"} size={14} />
         <span class="name">{node.name}</span>
       </button>
     </li>
@@ -299,120 +303,129 @@
   /* Mirror CommitDetailsPanel — same class names so the visual is
      identical; future tweaks to that file should be ported here too. */
   .commit-panel { height: 100%; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
-  .empty { padding: 30px; text-align: center; color: var(--fg-muted); font-style: italic; }
+  .empty { padding: var(--sp-8) var(--sp-8); text-align: center; color: var(--fg-muted); font-style: italic; }
 
   .bar {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 14px;
+    display: flex; align-items: center; gap: var(--sp-4);
+    height: var(--h-section);
+    padding: 0 var(--sp-6);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
-  .commit-label { font-size: 11px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-  .commit-sha { font-family: "Cascadia Code", Consolas, monospace; color: var(--sha); font-size: 12px; }
+  .commit-label { font-size: var(--fs-sm); color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .commit-sha { font-family: "Cascadia Code", Consolas, monospace; color: var(--sha); font-size: var(--fs-md); }
   .spacer { flex: 1; }
   .close {
-    width: 28px; height: 22px; padding: 0;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 4px; cursor: pointer; font-size: 16px; line-height: 1;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: 0;
+    border-radius: var(--radius); cursor: pointer;
     color: var(--fg-muted);
   }
-  .close:hover { color: var(--del); background: color-mix(in srgb, var(--del) 10%, transparent); }
+  .close:hover { color: var(--del); }
 
   .subject-box {
     background: var(--bg-elev);
-    padding: 14px 16px;
+    padding: var(--sp-6) var(--sp-8);
     border-bottom: 1px solid var(--border);
   }
   .subject {
-    font-size: 16px; font-weight: 600; color: var(--fg);
+    font-size: var(--fs-lg); font-weight: 600; color: var(--fg);
     line-height: 1.3;
     word-break: break-word;
   }
   .grip { height: 1px; }
 
   .meta {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 14px;
+    display: flex; align-items: center; gap: var(--sp-6);
+    padding: var(--sp-5) var(--sp-8);
     border-bottom: 1px solid var(--border);
   }
-  .author { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .author { display: flex; align-items: center; gap: var(--sp-5); flex: 1; min-width: 0; }
   .author-text { display: flex; flex-direction: column; min-width: 0; }
-  .name { font-size: 12px; color: var(--fg); font-weight: 500; }
-  .when { font-size: 11px; color: var(--fg-muted); }
-  .parents { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-muted); flex-shrink: 0; }
+  .name { font-size: var(--fs-md); color: var(--fg); font-weight: 500; }
+  .when { font-size: var(--fs-sm); color: var(--fg-muted); }
+  .parents { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--fg-muted); flex-shrink: 0; }
   .parent-label { color: var(--fg-muted); }
   .parent-sha { color: var(--sha); font-family: "Cascadia Code", Consolas, monospace; }
 
+  /* The file list header: 28 px, same geometry as the Changes list headers. */
   .files-bar {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 14px;
+    display: flex; align-items: center; gap: var(--sp-6);
+    height: 28px;
+    padding: 0 var(--sp-8);
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
   }
-  .modified { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
-  .m-ico { color: var(--modified); }
+  .modified { display: inline-flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); }
+  .m-ico { color: var(--modified); display: inline-flex; }
   .m-count { font-weight: 700; color: var(--fg); }
-  .m-lbl { color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.4px; font-size: 10px; }
-  .bb {
-    background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 2px 6px; font-size: 11px;
-    font-family: "Cascadia Code", Consolas, monospace;
-    border-radius: 3px;
+  .m-lbl { color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: var(--fs-xs); }
+  .sort-btn {
+    height: var(--h-row); padding: 0 var(--sp-3);
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
   }
-  .bb:hover { color: var(--fg); background: var(--border); }
-  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
-  .seg button {
-    background: transparent; color: var(--fg-muted); border: 0;
-    padding: 2px 8px; cursor: pointer; font-size: 10px;
+  .sort-btn:hover { color: var(--fg); background: var(--border); }
+  .sort-flip { display: inline-flex; transform: scaleY(-1); }
+  .seg {
+    display: inline-flex; height: var(--h-row);
+    border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
   }
-  .seg button.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
-  .seg button:hover:not(.active) { color: var(--fg); }
+  .seg-btn {
+    width: var(--h-row); height: 100%; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--fg-muted); border: 0; cursor: pointer;
+  }
+  .seg-btn.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+  .seg-btn:hover:not(.active) { color: var(--fg); }
   .ck {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
-    color: var(--fg-muted); font-size: 11px; cursor: pointer;
+    margin-left: auto; display: inline-flex; align-items: center; gap: var(--sp-2);
+    color: var(--fg-muted); font-size: var(--fs-sm); cursor: pointer;
   }
 
   .files-body { flex: 1; overflow: auto; }
-  .expand-row { padding: 6px 14px; }
+  .expand-row { padding: var(--sp-4) var(--sp-8); }
   .link {
     background: transparent; border: 0; color: var(--accent);
-    cursor: pointer; padding: 0; font-size: 11px; text-decoration: underline;
+    cursor: pointer; padding: 0; font-size: var(--fs-sm); text-decoration: underline;
   }
 
   .flat, .tree { list-style: none; margin: 0; padding: 0; }
   .file-btn {
-    width: 100%; display: flex; align-items: center; gap: 8px;
+    width: 100%; height: var(--h-row); display: flex; align-items: center; gap: var(--sp-4);
     background: transparent; border: 0; color: var(--fg);
-    padding: 4px 14px; cursor: pointer; font-size: 12px;
+    padding: 0 var(--sp-8); cursor: pointer; font-size: var(--fs-sm);
     text-align: left; font: inherit;
   }
   .file-btn:hover { background: rgba(255,255,255,0.04); }
-  .f-ico { color: var(--modified); width: 12px; flex-shrink: 0; }
+  .f-ico { display: inline-flex; flex-shrink: 0; }
   .f-count {
     color: var(--fg-muted); font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 10px; min-width: 24px;
+    font-size: var(--fs-xs); min-width: 24px;
   }
   .f-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dir-toggle {
-    width: 100%; display: flex; align-items: center; gap: 6px;
+    width: 100%; height: var(--h-row); display: flex; align-items: center; gap: var(--sp-3);
     background: transparent; border: 0; color: var(--fg-muted);
-    padding: 4px 0; cursor: pointer; font-size: 12px;
+    padding: 0; cursor: pointer; font-size: var(--fs-sm);
     text-align: left;
   }
   .dir-toggle:hover { color: var(--fg); }
-  .caret { width: 10px; font-size: 9px; }
 
   .actions {
-    display: flex; gap: 6px; padding: 8px 12px;
+    display: flex; gap: var(--sp-3); padding: var(--sp-4) var(--sp-6);
     background: var(--bg-elev);
     border-top: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
   .actions button {
+    height: var(--h-row);
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); padding: 4px 10px;
-    border-radius: 3px; cursor: pointer; font-size: 11px;
+    border: 1px solid var(--border); padding: 0 var(--sp-5);
+    border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm);
   }
   .actions button:hover:not(.danger) { background: var(--border-strong); }
   .actions button.danger { color: var(--del); }

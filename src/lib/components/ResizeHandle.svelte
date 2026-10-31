@@ -48,36 +48,37 @@
 ></div>
 
 <style>
-  /* Always-on hairline using the strong-border color so it doubles as the
-     visual separator between panes. Hover/drag swaps to the accent. */
+  /* GitKraken-style handle (spec: docs/specs/ui-layout-2026-11.md, Region 3).
+     The hit area is 7 px wide, but the handle takes only 1 px of layout: the
+     negative margins pull its hit area over the panes on both sides. The
+     visible line is 1 px and appears only on hover or drag, in the accent. */
   .handle {
-    background: var(--border-strong);
+    background: transparent;
     flex-shrink: 0;
     z-index: 5;
-    transition: background 120ms;
+    position: relative;
   }
-  /* 2px visual hairline. Pseudo-element provides a 12px transparent hit
-     zone centered on the line so dragging is comfortable without making
-     the visible separator look chunky. */
   .handle.v {
-    width: 2px;
+    width: 7px;
+    margin: 0 -3px;
     cursor: col-resize;
     align-self: stretch;
-    position: relative;
   }
   .handle.h {
-    height: 2px;
+    height: 7px;
+    margin: -3px 0;
     cursor: row-resize;
     width: 100%;
-    position: relative;
   }
   .handle::before {
     content: "";
     position: absolute;
+    background: transparent;
+    transition: background 120ms;
   }
-  .handle.v::before { top: 0; bottom: 0; left: -5px; right: -5px; }
-  .handle.h::before { left: 0; right: 0; top: -5px; bottom: -5px; }
-  .handle:hover, .handle.dragging {
+  .handle.v::before { top: 0; bottom: 0; left: 3px; width: 1px; }
+  .handle.h::before { left: 0; right: 0; top: 3px; height: 1px; }
+  .handle:hover::before, .handle.dragging::before {
     background: var(--accent);
   }
 </style>

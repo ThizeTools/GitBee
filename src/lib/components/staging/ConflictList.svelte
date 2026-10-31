@@ -4,6 +4,7 @@
   import { takeLabel, type SideNames } from "$lib/conflict/labels";
   import { showConflict } from "$lib/stores/center";
   import { openMenu } from "$lib/stores/contextmenu";
+  import Icon from "$lib/icons/Icon.svelte";
   import { conflictContextMenu } from "./conflictContextMenu";
   import { sortByPath, type SortMode } from "./stagingHelpers";
 
@@ -28,7 +29,7 @@
     {#each sorted as f (f.path)}
       <li oncontextmenu={(e) => openMenu(e, conflictContextMenu(f.path, names))}>
         <button class="name" onclick={() => showConflict(f.path)} title={f.path}>
-          <span class="glyph">!</span>
+          <span class="glyph"><Icon name="conflict" size={16} /></span>
           <span class="path">{f.path}</span>
         </button>
         <div class="actions">
@@ -53,35 +54,42 @@
     background: color-mix(in srgb, var(--del) 6%, transparent);
   }
   .head {
-    display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+    display: flex; align-items: center; gap: var(--sp-4); padding: 0 var(--sp-6);
     background: var(--bg-elev); border-bottom: 1px solid var(--border);
     height: 28px; box-sizing: border-box; flex-shrink: 0;
   }
   .title {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.04em;
     font-weight: 700; color: var(--del);
   }
   .count {
     background: var(--bg); color: var(--del);
-    padding: 1px 8px; border-radius: 10px; font-size: 11px;
-    font-weight: 600; border: 1px solid var(--del);
+    padding: 0 var(--sp-4); border-radius: var(--radius-lg); font-size: var(--fs-xs);
+    font-weight: 600; border: 1px solid var(--del); line-height: 14px;
   }
   ul { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 0; }
-  li { border-bottom: 1px solid var(--border); padding: 4px 8px 6px; }
+  li { border-bottom: 1px solid var(--border); padding: var(--sp-2) var(--sp-4) var(--sp-3); }
   li:last-child { border-bottom: 0; }
   .name {
-    display: flex; gap: 8px; align-items: center; width: 100%;
-    background: transparent; border: 0; color: var(--fg); padding: 2px 4px;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
+    display: flex; gap: var(--sp-4); align-items: center; width: 100%;
+    background: transparent; border: 0; color: var(--fg);
+    padding: var(--sp-1) var(--sp-2);
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-sm);
     text-align: left; cursor: pointer; min-width: 0;
   }
   .name:hover .path { text-decoration: underline; }
-  .glyph { color: var(--del); font-weight: 700; flex-shrink: 0; }
+  .glyph { color: var(--del); display: inline-flex; flex-shrink: 0; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .actions { display: flex; gap: 6px; padding: 2px 4px 0 24px; flex-wrap: wrap; }
+  /* Left inset lines the buttons up under the file name, past the status icon. */
+  .actions {
+    display: flex; gap: var(--sp-3); flex-wrap: wrap;
+    padding: var(--sp-1) var(--sp-2) 0 calc(var(--sp-2) + var(--icon) + var(--sp-4));
+  }
   .actions button {
+    height: var(--h-row);
     background: var(--bg); color: var(--fg); border: 1px solid var(--border);
-    padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    padding: 0 var(--sp-4); border-radius: var(--radius); cursor: pointer;
+    font-size: var(--fs-sm);
   }
   .actions button:hover { border-color: var(--accent); color: var(--accent); }
   .actions button.resolve {

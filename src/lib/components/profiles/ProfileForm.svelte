@@ -71,24 +71,27 @@
 </form>
 
 <style>
-  .form { display: flex; flex-direction: column; gap: 12px; }
-  .field { display: flex; flex-direction: column; gap: 5px; }
+  .form { display: flex; flex-direction: column; gap: var(--sp-6); }
+  .field { display: flex; flex-direction: column; gap: var(--sp-3); }
   .lbl {
-    font-size: 11px; color: var(--fg-muted);
+    font-size: var(--fs-sm); color: var(--fg-muted);
     text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600;
   }
   .lbl em { text-transform: none; font-weight: 400; letter-spacing: 0; }
   .field input, .field select {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 7px 10px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-5); font-size: var(--fs-md);
   }
   .field input:focus, .field select:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
-  .err { font-size: 11px; color: var(--del); }
-  .check { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--fg); }
-  .foot { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+  .err { font-size: var(--fs-sm); color: var(--del); }
+  .check { display: flex; gap: var(--sp-4); align-items: center; font-size: var(--fs-md); color: var(--fg); }
+  .foot { display: flex; justify-content: flex-end; gap: var(--sp-4); padding-top: var(--sp-2); }
+  /* Footer buttons: 28 px high, right-aligned. */
   .foot button {
-    padding: 7px 14px; border-radius: 4px; font-size: 12px; cursor: pointer;
+    height: 28px;
+    display: inline-flex; align-items: center;
+    padding: 0 var(--sp-6); border-radius: var(--radius); font-size: var(--fs-md); cursor: pointer;
     border: 1px solid var(--border-strong); background: transparent; color: var(--fg);
   }
   .foot .primary {

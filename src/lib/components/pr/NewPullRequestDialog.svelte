@@ -11,6 +11,7 @@
   import { newPullError } from "$lib/github/pulls";
   import { signInIfScopeError } from "$lib/github/githubErrors";
   import type { NewPull, PullRow } from "$lib/github/pullTypes";
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Props {
     owner: string;
@@ -106,7 +107,7 @@
     onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
     <header>
       <span class="title">New pull request</span>
-      <button class="x" onclick={onClose} title="Close">×</button>
+      <button class="x" type="button" onclick={onClose} title="Close" aria-label="Close new pull request"><Icon name="close" size={14} /></button>
     </header>
 
     <div class="body">
@@ -152,43 +153,58 @@
 </div>
 
 <style>
+  /* Dialog layout: header 10 / 20 px with a bottom border, body 15 / 20 px,
+     footer buttons 28 px high, radius-lg (layout spec, Region 7). */
   .backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,0.55);
     display: flex; align-items: center; justify-content: center; z-index: 1500;
   }
   .modal {
     width: min(620px, 94vw); max-height: 88vh; background: var(--bg-elev);
-    border: 1px solid var(--border-strong); border-radius: 8px;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; color: var(--fg);
   }
-  header { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-strong); }
-  .title { font-weight: 700; font-size: 13px; flex: 1; }
-  .x { background: transparent; border: 0; color: var(--fg-muted); font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px; }
-  .x:hover { color: var(--fg); }
-  .body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
-  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+  header {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20); border-bottom: 1px solid var(--border-strong);
+  }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
+  .x {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+  }
+  .x:hover { color: var(--fg); background: var(--border); }
+  .body { padding: var(--sp-15) var(--sp-20); display: flex; flex-direction: column; gap: var(--sp-5); overflow-y: auto; }
+  .row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; font-size: var(--fs-md); }
   .row label { color: var(--fg-muted); }
   .row select, .row input, .title-input, textarea {
-    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px;
-    padding: 5px 8px; font-size: 12px; font-family: inherit;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-2) var(--sp-4); font-size: var(--fs-md); font-family: inherit;
   }
   .row input, .row select { min-width: 0; }
   .arrow { color: var(--fg-muted); }
   .title-input { width: 100%; box-sizing: border-box; }
   textarea { resize: vertical; min-height: 110px; width: 100%; box-sizing: border-box; }
-  .draft { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-muted); }
-  .hint { font-size: 11px; color: var(--fg-muted); }
-  .error { font-size: 11px; color: #f85149; }
+  .draft { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-md); color: var(--fg-muted); }
+  .hint { font-size: var(--fs-sm); color: var(--fg-muted); }
+  .error { font-size: var(--fs-sm); color: var(--del); }
   .notice {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    font-size: 12px; color: #d29922; background: rgba(210, 153, 34, 0.08);
-    border: 1px solid rgba(210, 153, 34, 0.4); border-radius: 3px; padding: 6px 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4);
+    font-size: var(--fs-md); color: var(--modified);
+    background: color-mix(in srgb, var(--modified) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--modified) 40%, transparent);
+    border-radius: var(--radius-sm); padding: var(--sp-3) var(--sp-4);
   }
-  footer { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border-strong); }
+  footer {
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: var(--sp-5) var(--sp-20); border-top: 1px solid var(--border-strong);
+  }
   .grow { flex: 1; }
   button {
-    background: transparent; border: 1px solid var(--border-strong); color: var(--fg);
-    padding: 5px 12px; border-radius: 3px; cursor: pointer; font-size: 12px;
+    height: 28px; background: transparent; border: 1px solid var(--border-strong); color: var(--fg);
+    padding: 0 var(--sp-6); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-md);
   }
   button:hover:not(:disabled) { background: var(--border); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }

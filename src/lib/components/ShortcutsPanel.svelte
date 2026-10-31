@@ -4,6 +4,7 @@
   // handler is added, changed or removed, its row changes here in the same PR.
   // WHY a data table instead of markup: the spec quotes the same table, and
   // one array keeps the two from drifting apart.
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Shortcut { keys: string; desc: string; }
   interface ShortcutGroup { title: string; items: Shortcut[]; }
@@ -97,7 +98,9 @@
   <div class="panel" role="dialog" aria-label="Shortcuts">
     <header class="head">
       <span class="title">Keyboard shortcuts</span>
-      <button class="close" onclick={onClose}>×</button>
+      <button class="close" onclick={onClose} title="Close" aria-label="Close">
+        <Icon name="close" size={16} />
+      </button>
     </header>
     <div class="body">
       {#each GROUPS as group (group.title)}
@@ -120,29 +123,42 @@
 <style>
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 800; }
   .panel {
-    position: fixed; right: 16px; bottom: 40px;
-    width: 460px; max-width: calc(100vw - 32px);
+    position: fixed; right: var(--sp-8); bottom: calc(var(--h-statusbar) + var(--sp-6));
+    width: 460px; max-width: calc(100vw - 2 * var(--sp-8));
     background: var(--bg-elev); border: 1px solid var(--border-strong);
-    border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+    border-radius: var(--radius-lg); box-shadow: 0 12px 32px rgba(0,0,0,0.55);
     z-index: 801; display: flex; flex-direction: column;
   }
-  .head { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); }
-  .title { font-weight: 600; flex: 1; }
-  .close { background: transparent; border: 0; color: var(--fg-muted); cursor: pointer; font-size: 20px; }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
+  .head {
+    display: flex; align-items: center;
+    padding: var(--sp-5) var(--sp-20);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
+  .close {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
+  }
   .close:hover { color: var(--fg); }
-  .body { padding: 4px 0 8px; max-height: 60vh; overflow: auto; }
-  section + section { border-top: 1px solid var(--border); margin-top: 4px; }
+  .body { padding: var(--sp-2) 0 var(--sp-4); max-height: 60vh; overflow: auto; }
+  section + section { border-top: 1px solid var(--border); margin-top: var(--sp-2); }
   h3 {
-    margin: 8px 14px 4px; font-size: 11px; font-weight: 600;
+    margin: var(--sp-4) var(--sp-20) var(--sp-2); font-size: var(--fs-sm); font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg-muted);
   }
   ul { list-style: none; margin: 0; padding: 0; }
-  li { display: grid; grid-template-columns: 170px 1fr; gap: 14px; padding: 5px 14px; align-items: center; }
+  li {
+    display: grid; grid-template-columns: 170px 1fr; gap: var(--sp-6);
+    padding: var(--sp-3) var(--sp-20); align-items: center;
+  }
   li:hover { background: var(--bg); }
-  li span { font-size: 12px; line-height: 1.4; }
+  li span { font-size: var(--fs-md); line-height: 1.4; }
   kbd {
     background: var(--bg); border: 1px solid var(--border);
-    padding: 2px 8px; border-radius: 3px; font-size: 11px;
+    padding: var(--sp-1) var(--sp-4); border-radius: var(--radius); font-size: var(--fs-sm);
     font-family: "Cascadia Code", Consolas, monospace;
     color: var(--fg); justify-self: start; white-space: nowrap;
   }

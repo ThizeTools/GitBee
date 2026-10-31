@@ -93,13 +93,14 @@
 
 <style>
   .block {
-    margin: 10px 14px; border: 1px solid var(--border-strong); border-radius: 4px;
+    margin: var(--sp-5) var(--sp-8); border: 1px solid var(--border-strong); border-radius: var(--radius);
     background: var(--bg-elev); overflow: hidden;
   }
   .block.active { border-color: var(--accent); }
+  /* Block header: 30 px, the section-header size in the layout spec. */
   .bhead {
-    display: flex; align-items: center; gap: 10px; padding: 6px 10px;
-    border-bottom: 1px solid var(--border); font-size: 11px;
+    display: flex; align-items: center; gap: var(--sp-5); height: var(--h-section); padding: 0 var(--sp-5);
+    border-bottom: 1px solid var(--border); font-size: var(--fs-sm);
   }
   .title { font-weight: 700; color: var(--fg); }
   .chosen { color: var(--add, var(--accent)); font-weight: 600; }
@@ -107,28 +108,29 @@
   .side { border-top: 1px solid var(--border); }
   .side:first-of-type { border-top: 0; }
   .sh {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
-    padding: 4px 10px; color: var(--fg-muted); font-weight: 700;
+    font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.5px;
+    padding: var(--sp-2) var(--sp-5); color: var(--fg-muted); font-weight: 700;
   }
   .side pre, details.side pre {
-    margin: 0; padding: 6px 10px; max-height: 260px; overflow: auto;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; line-height: 18px;
+    margin: 0; padding: var(--sp-3) var(--sp-5); max-height: 260px; overflow: auto;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-md); line-height: 18px;
     white-space: pre; color: var(--fg);
   }
   .side pre.empty { font-style: italic; color: var(--fg-muted); }
   .ours pre { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   .theirs pre { background: color-mix(in srgb, var(--add, var(--accent)) 14%, transparent); }
   details.base summary {
-    cursor: pointer; padding: 4px 10px; font-size: 10px; color: var(--fg-muted);
+    cursor: pointer; padding: var(--sp-2) var(--sp-5); font-size: var(--fs-xs); color: var(--fg-muted);
     text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;
   }
   .choose {
-    display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px;
+    display: flex; flex-wrap: wrap; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5);
     border-top: 1px solid var(--border); background: var(--bg);
   }
+  /* Choice buttons: 24 px high, the toolbar hit size. */
   .choose button {
-    background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
-    padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 11px;
+    height: var(--h-row); background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border);
+    padding: 0 var(--sp-5); border-radius: var(--radius); cursor: pointer; font-size: var(--fs-sm);
   }
   .choose button:hover { border-color: var(--accent); }
   .choose button.picked {
@@ -136,8 +138,8 @@
   }
   .custom { display: flex; flex-direction: column; border-top: 1px solid var(--border); }
   .custom textarea {
-    margin: 0 10px 10px; padding: 6px 8px; resize: vertical; min-height: 60px;
-    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 3px;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 12px;
+    margin: 0 var(--sp-5) var(--sp-5); padding: var(--sp-3) var(--sp-4); resize: vertical; min-height: 60px;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius);
+    font-family: "Cascadia Code", Consolas, monospace; font-size: var(--fs-md);
   }
 </style>

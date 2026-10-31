@@ -17,12 +17,12 @@ export interface HistoryActions {
  */
 export function historyMenu(entry: FileLogEntry, actions: HistoryActions): MenuItem[] {
   return [
-    { label: "Show in graph", icon: "◎", onClick: () => actions.showInGraph(entry.sha) },
+    { label: "Show in graph", icon: "eye",onClick: () => actions.showInGraph(entry.sha) },
     {
       label: "Blame at this commit",
-      icon: "≡",
+      icon: "logs",
       onClick: () => actions.blameAt(entry.path_at_commit, entry.sha),
     },
-    { label: "Copy sha", icon: "⧉", onClick: () => actions.copySha(entry.sha) },
+    { label: "Copy sha", icon: "copy",onClick: () => actions.copySha(entry.sha) },
   ];
 }

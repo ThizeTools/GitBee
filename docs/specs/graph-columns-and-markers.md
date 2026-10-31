@@ -22,8 +22,11 @@ the rows in view (see its own section).
 - `GraphCol = "refs" | "graph" | "msg" | "author" | "date" | "sha" | "changes"`.
 - Default visible order: refs, graph, msg, author, date. `sha` and `changes`
   are hidden.
-- The last VISIBLE column takes the `1fr` track. With the defaults that is
-  `date`, so the msg column keeps its stored width and date fills the rest.
+- The commit message column takes the flexible track
+  (`minmax(120px, 1fr)`) wherever it sits, like GitKraken; every other column
+  keeps its stored width. Before 2026-11 the last visible column flexed, so a
+  fixed-width message pushed author and date out of a narrow center pane.
+  Without a visible message column the last visible column flexes.
 - Cells:
   - `author`: `author_name`, one line, ellipsis.
   - `date`: `formatRelativeDate(timestamp, nowMs)` (`src/lib/graph/relativeDate.ts`).

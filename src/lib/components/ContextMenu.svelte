@@ -1,6 +1,10 @@
 <script lang="ts">
-  import { contextMenu, closeMenu, type MenuItem } from "$lib/stores/contextmenu";
+  import {
+    contextMenu, closeMenu, resolveMenuIcon, type MenuItem,
+  } from "$lib/stores/contextmenu";
   import { layout } from "$lib/stores/layout";
+  import Icon from "$lib/icons/Icon.svelte";
+  import type { IconName } from "$lib/icons/names";
   import { onMount, tick } from "svelte";
 
   let submenuOpen = $state<number | null>(null);
@@ -71,6 +75,14 @@
   }
 </script>
 
+<!-- The 16 px column is always reserved, so labels line up whether or not a
+     row has an icon. Top-level rows and submenu rows share this snippet. -->
+{#snippet iconColumn(name: IconName | null)}
+  <span class="ico">
+    {#if name}<Icon {name} size={14} />{/if}
+  </span>
+{/snippet}
+
 {#if $contextMenu.open}
   <div
     bind:this={menuEl}
@@ -95,9 +107,11 @@
             disabled={it.disabled}
             onclick={() => run(it)}
           >
-            {#if it.icon}<span class="ico">{it.icon}</span>{/if}
+            {@render iconColumn(resolveMenuIcon(it.icon))}
             <span class="lbl">{it.label}</span>
-            {#if it.submenu}<span class="caret">▸</span>{/if}
+            {#if it.submenu}
+              <span class="caret"><Icon name="chevron-right" size={14} /></span>
+            {/if}
           </button>
           {#if it.submenu && submenuOpen === i}
             <div class="sub">
@@ -113,7 +127,7 @@
                     disabled={sub.disabled}
                     onclick={(e) => { e.stopPropagation(); run(sub); }}
                   >
-                    {#if sub.icon}<span class="ico">{sub.icon}</span>{/if}
+                    {@render iconColumn(resolveMenuIcon(sub.icon))}
                     <span class="lbl">{sub.label}</span>
                   </button>
                 {/if}
@@ -131,12 +145,12 @@
     position: fixed;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-    padding: 4px;
+    padding: var(--sp-2);
     z-index: 1000;
     min-width: 200px;
-    font-size: 12px;
+    font-size: var(--fs-md);
   }
   /* Hide while we measure the natural size on the first paint. Render
      it off-viewport so layout engines still compute a real width/height
@@ -146,35 +160,46 @@
     pointer-events: none;
   }
   .row { position: relative; }
+  /* Spec: 26 px rows (no token; --h-row is 24 for sidebar rows). */
   .item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--sp-4);
     width: 100%;
+    height: 26px;
     background: transparent;
     color: var(--fg);
     border: 0;
     text-align: left;
-    padding: 6px 10px;
+    padding: 0 var(--sp-5);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius);
   }
   .item:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
   .item.danger { color: var(--del); }
   .item.disabled, .item:disabled { opacity: 0.4; cursor: not-allowed; }
-  .ico { width: 14px; text-align: center; color: var(--fg-muted); }
-  .lbl { flex: 1; }
-  .caret { font-size: 9px; color: var(--fg-muted); }
-  .sep { height: 1px; background: var(--border); margin: 4px 6px; }
+  .ico, .caret {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon);
+    height: var(--icon);
+    flex-shrink: 0;
+    color: var(--fg-muted);
+  }
+  .caret { margin-left: auto; }
+  .lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 5 px margin from the spec; no spacing token matches it. */
+  .sep { height: 1px; background: var(--border); margin: 5px; }
   .sub {
     position: absolute;
     left: 100%;
     top: 0;
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-    padding: 4px;
+    padding: var(--sp-2);
     min-width: 240px;
   }
 </style>

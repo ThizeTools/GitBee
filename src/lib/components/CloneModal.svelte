@@ -11,6 +11,7 @@
     gitProgress, pickProgressForRepo, progressFraction, progressLabel,
   } from "$lib/stores/gitProgress";
   import { checkCloneForm, DEFAULT_CLONE_DEPTH } from "$lib/clone/cloneOptions";
+  import Icon from "$lib/icons/Icon.svelte";
   import GitHubLoginPanel from "./GitHubLoginPanel.svelte";
   import GitHubRepoPicker from "./GitHubRepoPicker.svelte";
   import { onMount } from "svelte";
@@ -90,17 +91,19 @@
     onkeydown={(e) => e.stopPropagation()}>
     <header class="modal-head">
       <span class="title">Clone a Repository</span>
-      <button class="x" onclick={onClose} title="Close">×</button>
+      <button class="x" onclick={onClose} title="Close" aria-label="Close">
+        <Icon name="close" size={16} />
+      </button>
     </header>
 
     <div class="body">
       <nav class="sources">
         <button class="src" class:active={source === "url"} onclick={() => source = "url"}>
-          <span class="ico">⌘</span>
+          <span class="ico"><Icon name="download" size={16} /></span>
           <span>Clone with URL</span>
         </button>
         <button class="src" class:active={source === "github"} onclick={() => source = "github"}>
-          <span class="ico">⎈</span>
+          <span class="ico"><Icon name="cloud" size={16} /></span>
           <span>GitHub.com</span>
         </button>
       </nav>
@@ -200,23 +203,25 @@
     height: min(620px, 88vh);
     background: var(--bg-elev);
     border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 18px 50px rgba(0,0,0,0.6);
     display: flex; flex-direction: column;
     overflow: hidden;
     color: var(--fg);
   }
+  /* Dialog header: 10 px 20 px padding, bottom border, --fs-lg title. */
   .modal-head {
     display: flex; align-items: center;
-    padding: 14px 18px;
+    padding: var(--sp-5) var(--sp-20);
     border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
-  .title { font-weight: 700; font-size: 14px; flex: 1; }
+  .title { font-weight: 600; font-size: var(--fs-lg); flex: 1; }
   .x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 22px; line-height: 1; cursor: pointer;
-    padding: 0 6px; border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px;
+    background: transparent; border: 0; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
   .x:hover { color: var(--fg); }
 
@@ -224,17 +229,18 @@
   .sources {
     width: 220px; flex-shrink: 0;
     border-right: 1px solid var(--border-strong);
-    padding: 12px 6px;
-    display: flex; flex-direction: column; gap: 2px;
+    padding: var(--sp-6) var(--sp-3);
+    display: flex; flex-direction: column; gap: var(--sp-1);
   }
   .src {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 12px;
+    display: flex; align-items: center; gap: var(--sp-5);
+    height: 28px;
+    padding: 0 var(--sp-6);
     background: transparent; border: 0;
     color: var(--fg-muted);
     cursor: pointer;
-    font-size: 12px;
-    border-radius: 4px;
+    font-size: var(--fs-md);
+    border-radius: var(--radius);
     text-align: left;
     width: 100%;
   }
@@ -243,62 +249,67 @@
     color: var(--fg);
     background: color-mix(in srgb, var(--accent) 18%, transparent);
   }
-  .src .ico { font-size: 14px; color: var(--accent); width: 16px; text-align: center; }
+  .src .ico {
+    display: flex; align-items: center; justify-content: center;
+    width: var(--icon); color: var(--accent);
+  }
 
   .content {
     flex: 1; min-width: 0;
-    padding: 18px 22px;
+    padding: var(--sp-15) var(--sp-20);
     overflow-y: auto;
-    display: flex; flex-direction: column; gap: 14px;
+    display: flex; flex-direction: column; gap: var(--sp-6);
   }
   .content h2 {
-    margin: 0 0 6px; font-size: 14px; font-weight: 700;
+    margin: 0 0 var(--sp-3); font-size: var(--fs-lg); font-weight: 600;
     color: var(--fg);
   }
-  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field { display: flex; flex-direction: column; gap: var(--sp-3); }
   .field.gh-picker { flex: 1; min-height: 0; }
   .field label {
-    font-size: 11px; color: var(--fg-muted);
+    font-size: var(--fs-sm); color: var(--fg-muted);
     text-transform: uppercase; letter-spacing: 0.4px;
     font-weight: 600;
   }
   .field input {
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 7px 10px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-5); font-size: var(--fs-md);
     width: 100%;
   }
   .field input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
-  .row { display: flex; gap: 6px; }
+  .row { display: flex; gap: var(--sp-3); }
   .row input { flex: 1; }
   .ghost {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); border-radius: 4px;
-    padding: 6px 14px; cursor: pointer; font-size: 12px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 var(--sp-6); cursor: pointer; font-size: var(--fs-md);
   }
   .ghost:hover { border-color: var(--fg-muted); }
   .picked {
-    font-size: 11px; color: var(--fg-muted);
-    padding: 4px 0;
+    font-size: var(--fs-sm); color: var(--fg-muted);
+    padding: var(--sp-2) 0;
   }
   .picked code {
     font-family: "Cascadia Code", Consolas, monospace;
     color: var(--accent);
   }
   .field label.check {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: var(--fg); font-weight: 500;
+    display: flex; align-items: center; gap: var(--sp-4);
+    font-size: var(--fs-md); color: var(--fg); font-weight: 500;
     text-transform: none; letter-spacing: 0;
   }
-  .sub { display: flex; flex-direction: column; gap: 6px; padding-left: 24px; }
-  .option-error { font-size: 11px; color: var(--del); }
+  .sub { display: flex; flex-direction: column; gap: var(--sp-3); padding-left: var(--sp-8); }
+  .option-error { font-size: var(--fs-sm); color: var(--del); }
 
-  .progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
   .progress-text {
-    font-size: 11px; color: var(--fg-muted);
+    font-size: var(--fs-sm); color: var(--fg-muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .bar { height: 4px; background: var(--border); border-radius: var(--radius-sm); overflow: hidden; }
   .fill { height: 100%; background: var(--accent); transition: width 0.2s; }
   .fill.indeterminate { animation: slide 1.2s ease-in-out infinite; }
   @keyframes slide {
@@ -306,20 +317,22 @@
     to { transform: translateX(340%); }
   }
 
+  /* Footer: right-aligned, 28 px buttons. */
   .modal-foot {
-    display: flex; justify-content: flex-end; gap: 10px;
-    padding: 12px 18px;
+    display: flex; justify-content: flex-end; gap: var(--sp-5);
+    padding: var(--sp-5) var(--sp-20);
     border-top: 1px solid var(--border-strong);
     flex-shrink: 0;
   }
   .primary {
+    height: 28px;
+    display: inline-flex; align-items: center;
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
     border: 1px solid var(--accent);
-    border-radius: 4px;
-    padding: 7px 18px;
-    cursor: pointer;
-    font-weight: 700; font-size: 12px;
+    border-radius: var(--radius);
+    padding: 0 var(--sp-8); cursor: pointer;
+    font-weight: 600; font-size: var(--fs-md);
   }
   .primary:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
   .primary:disabled {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { appVersion } from "$lib/version";
   import { showingInfo } from "$lib/stores/info";
+  import Icon from "$lib/icons/Icon.svelte";
 
   type Status = "done" | "partial" | "planned";
   interface Feature { title: string; status: Status; note?: string; }
@@ -113,7 +114,7 @@
       items: [
         { title: "Subject + author + date + parents + refs", status: "done" },
         { title: "Cherry-pick / Revert / Reset (soft/mixed/hard)", status: "done" },
-        { title: "File list with +/- counts and status letters (A/M/D/R/C/T, bin) loads first; diffs load per expanded file (\"Show diffs\" = first 30, \"Load all N diffs\" for the rest)", status: "done" },
+        { title: "File list with +/- counts and status icons (added / modified / deleted / renamed / copied, bin) loads first; diffs load per expanded file (\"Show diffs\" = first 30, \"Load all N diffs\" for the rest)", status: "done" },
         { title: "Merge commits diff against their first parent", status: "done" },
         { title: "GitKraken-style header (avatar, modified count, view toggle)", status: "done" },
       ],
@@ -179,6 +180,8 @@
           note: "session only; push / fetch / pull are not undoable" },
         { title: "Shortcuts panel lists every shortcut, grouped", status: "done" },
         { title: "In-app confirm / input / choice dialogs (no native popups); reset mode picked from a list", status: "done" },
+        { title: "GitKraken-style layout: 34px tabs, 48px icon-over-label toolbar, 30px section headers, 24px rows, 26px status bar; SVG icons everywhere (no emoji glyphs)", status: "done" },
+        { title: "Commit message column flexes to fill the graph; author and date keep their width", status: "done" },
       ],
     },
     {
@@ -211,126 +214,167 @@
     },
   ];
 
-  function dot(s: Status): string {
-    return s === "done" ? "●" : s === "partial" ? "◐" : "○";
-  }
+  // Status marks. Done is a check icon. Partial has no Lucide icon that reads
+  // as "half", so it stays a CSS half-filled dot; planned is a CSS hollow circle.
 </script>
 
+{#snippet mark(s: Status)}
+  <span class="mark {s}" role="img" aria-label={s}>
+    {#if s === "done"}
+      <Icon name="check" size={14} />
+    {:else}
+      <span class="dot"></span>
+    {/if}
+  </span>
+{/snippet}
+
 <div class="info">
+  <!-- View header: one 30 px row, the title and a close icon, like the other center views. -->
   <header class="hd">
-    <div class="title-row">
-      <img class="logo" src="/bee-logo.png" alt="" />
-      <h1>GitBee</h1>
-      <span class="ver">v{appVersion}</span>
-      <span class="spacer"></span>
-      <button class="close-x" onclick={() => showingInfo.set(false)} title="Close (Esc)">×</button>
-    </div>
-    <p class="tag">Fast, lightweight Git client — Tauri + Svelte + Rust.</p>
+    <img class="logo" src="/bee-logo.png" alt="" />
+    <h1>GitBee</h1>
+    <span class="ver">v{appVersion}</span>
+    <span class="spacer"></span>
+    <button class="icon-btn" type="button" onclick={() => showingInfo.set(false)} title="Close (Esc)" aria-label="Close info page"><Icon name="close" size={14} /></button>
   </header>
 
-  <section class="legend">
-    <span class="lg done">●</span> Done&nbsp;&nbsp;
-    <span class="lg partial">◐</span> Partial&nbsp;&nbsp;
-    <span class="lg planned">○</span> Planned
-  </section>
+  <div class="scroll">
+    <p class="tag">Fast, lightweight Git client — Tauri + Svelte + Rust.</p>
 
-  {#each groups as g (g.title)}
-    <section class="group">
-      <h2>{g.title}</h2>
-      <ul>
-        {#each g.items as it (it.title)}
-          <li class={it.status}>
-            <span class="mark" aria-label={it.status}>{dot(it.status)}</span>
-            <div class="txt">
-              <span class="t">{it.title}</span>
-              {#if it.note}<span class="n">{it.note}</span>{/if}
-            </div>
-          </li>
-        {/each}
-      </ul>
+    <section class="legend">
+      <span class="lg">{@render mark("done")} Done</span>
+      <span class="lg">{@render mark("partial")} Partial</span>
+      <span class="lg">{@render mark("planned")} Planned</span>
     </section>
-  {/each}
+
+    {#each groups as g (g.title)}
+      <section class="group">
+        <h2>{g.title}</h2>
+        <ul>
+          {#each g.items as it (it.title)}
+            <li class={it.status}>
+              {@render mark(it.status)}
+              <div class="txt">
+                <span class="t">{it.title}</span>
+                {#if it.note}<span class="n">{it.note}</span>{/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/each}
+  </div>
 </div>
 
 <style>
   .info {
     flex: 1;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     background: var(--bg);
-    padding: 28px;
+    overflow: hidden;
   }
   .hd {
-    max-width: 920px;
-    margin: 0 auto 20px;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-4);
+    height: var(--h-section);
+    padding: 0 var(--sp-8);
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border-strong);
+    flex-shrink: 0;
   }
-  .title-row { display: flex; align-items: center; gap: 12px; }
-  .title-row .logo { width: 96px; height: 96px; object-fit: contain; flex-shrink: 0; }
+  .logo { width: var(--icon-lg); height: var(--icon-lg); object-fit: contain; flex-shrink: 0; }
   .hd h1 {
-    font-size: 56px;
+    font-size: var(--fs-lg);
     margin: 0;
     color: var(--accent);
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.3px;
     line-height: 1;
   }
   .ver {
     color: var(--fg-muted);
     font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 12px;
+    font-size: var(--fs-sm);
   }
   .spacer { flex: 1; }
-  .close-x {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 22px; cursor: pointer; padding: 0 8px; line-height: 1;
-    border-radius: 4px;
+  /* Icon-only action: 24 x 24, the toolbar hit size. */
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--h-row); height: var(--h-row); padding: 0;
+    background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+    color: var(--fg-muted); cursor: pointer;
   }
-  .close-x:hover { color: var(--fg); background: var(--bg-elev); }
-  .tag { color: var(--fg-muted); margin: 8px 0 0 108px; font-size: 14px; }
+  .icon-btn:hover { color: var(--fg); background: var(--border); }
+
+  .scroll { flex: 1; overflow: auto; padding: var(--sp-8); }
+  .tag {
+    max-width: 920px;
+    margin: 0 auto var(--sp-8);
+    color: var(--fg-muted);
+    font-size: var(--fs-md);
+  }
 
   .legend {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-8);
     max-width: 920px;
-    margin: 0 auto 18px;
+    margin: 0 auto var(--sp-6);
     color: var(--fg-muted);
-    font-size: 13px;
+    font-size: var(--fs-sm);
   }
-  .lg { font-weight: 700; margin-right: 4px; font-size: 16px; }
-  .lg.done    { color: var(--accent); }
-  .lg.partial { color: var(--tag); }
-  .lg.planned { color: var(--fg-muted); }
+  .lg { display: inline-flex; align-items: center; gap: var(--sp-3); }
 
   .group {
     max-width: 920px;
-    margin: 0 auto 22px;
+    margin: 0 auto var(--sp-8);
     background: var(--bg-elev);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px 18px;
+    border-radius: var(--radius-lg);
+    padding: var(--sp-4) var(--sp-6);
   }
   .group h2 {
-    margin: 0 0 10px;
-    font-size: 13px;
+    margin: 0 0 var(--sp-3);
+    font-size: var(--fs-sm);
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--fg);
     font-weight: 600;
   }
   .group ul { list-style: none; margin: 0; padding: 0; }
+  /* One feature per row, 24 px at least (more when the note wraps). */
   .group li {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 9px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-    font-size: 13px;
+    gap: var(--sp-6);
+    min-height: var(--h-row);
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--fg) 4%, transparent);
+    font-size: var(--fs-md);
     line-height: 1.4;
   }
   .group li:last-child { border-bottom: 0; }
-  .mark { width: 20px; flex-shrink: 0; text-align: center; font-weight: 700; font-size: 16px; }
-  li.done    .mark { color: var(--accent); }
-  li.partial .mark { color: var(--tag); }
-  li.planned .mark { color: var(--fg-muted); }
+
+  .mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--icon); height: var(--icon); flex-shrink: 0;
+  }
+  .mark.done { color: var(--accent); }
+  .mark.partial { color: var(--tag); }
+  .mark.planned { color: var(--fg-muted); }
+  /* CSS dots for the states with no matching icon. */
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid currentColor; box-sizing: border-box;
+  }
+  .mark.partial .dot {
+    background: linear-gradient(90deg, currentColor 50%, transparent 50%);
+  }
   .txt { display: flex; flex-direction: column; gap: 1px; }
   .t { color: var(--fg); }
   li.planned .t { color: var(--fg-muted); }
-  .n { color: var(--fg-muted); font-size: 11px; }
+  .n { color: var(--fg-muted); font-size: var(--fs-sm); }
 </style>

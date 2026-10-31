@@ -178,22 +178,28 @@ export function buildWipBreakdown(status: readonly StatusEntry[]): WipBreakdown 
   return { edits, news, dels, conflicts };
 }
 
-// last column always absorbs remainder
-function columnTrack(col: GraphCol, isLast: boolean, widthPx: (c: GraphCol) => number): string {
-  if (isLast) return "1fr";
-  return `${widthPx(col)}px`;
+// Narrowest the flexible message column may get before the row scrolls.
+export const MSG_FLEX_MIN_PX = 120;
+
+// The commit message column absorbs the remaining width (GitKraken layout):
+// with the last column flexing instead, a fixed 360 px message pushed author
+// and date out of a narrow center pane. Without a visible message column the
+// last column flexes, as before.
+function columnTrack(col: GraphCol, flexes: boolean, widthPx: (c: GraphCol) => number): string {
+  if (!flexes) return `${widthPx(col)}px`;
+  return col === "msg" ? `minmax(${MSG_FLEX_MIN_PX}px, 1fr)` : "1fr";
 }
 
-// grid template like "200px 6px 140px 6px 1fr"
+// grid template like "200px 6px 180px 6px minmax(120px, 1fr) 6px 140px"
 export function buildGridTemplate(
   order: readonly GraphCol[],
   widthPx: (col: GraphCol) => number,
 ): string {
+  const flexCol = order.includes("msg") ? "msg" : order[order.length - 1];
   const parts: string[] = [];
   for (let i = 0; i < order.length; i++) {
-    const isLast = i === order.length - 1;
-    parts.push(columnTrack(order[i], isLast, widthPx));
-    if (!isLast) parts.push(`${GUTTER_PX}px`);
+    parts.push(columnTrack(order[i], order[i] === flexCol, widthPx));
+    if (i < order.length - 1) parts.push(`${GUTTER_PX}px`);
   }
   return parts.join(" ");
 }

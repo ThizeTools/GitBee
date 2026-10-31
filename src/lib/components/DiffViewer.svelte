@@ -18,6 +18,7 @@
   import LfsPointerCard from "./diff/LfsPointerCard.svelte";
   import { pointerPairOf } from "$lib/lfs/pointer";
   import type { DiffMode, HunkView } from "./diff/hunkView";
+  import Icon from "$lib/icons/Icon.svelte";
 
   interface Props {
     diffs: FileDiff[];
@@ -94,7 +95,13 @@
       {@const pointer = pointerPairOf(f)}
       <div class="dv-file">
         <button class="dv-file-head" onclick={() => toggle(path)}>
-          <span class="dv-caret">{collapsed[path] ? "▶" : "▼"}</span>
+          <span class="dv-caret">
+            {#if collapsed[path]}
+              <Icon name="chevron-right" size={14} />
+            {:else}
+              <Icon name="chevron-down" size={14} />
+            {/if}
+          </span>
           <span class="dv-path">{pathLabel(f)}</span>
           <span class="dv-stats">+{countKind(f, "add")} -{countKind(f, "del")}</span>
         </button>

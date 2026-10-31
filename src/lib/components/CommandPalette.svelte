@@ -10,6 +10,7 @@
   import { nextRedoLabel, nextUndoLabel } from "$lib/stores/history";
   import ShortcutsPanel from "$lib/components/ShortcutsPanel.svelte";
   import PaletteRow from "$lib/components/palette/PaletteRow.svelte";
+  import Icon from "$lib/icons/Icon.svelte";
   import { applyTypedInput, MODE_LABEL } from "$lib/palette/query";
   import { buildSources } from "$lib/palette/sources";
   import { searchPalette } from "$lib/palette/search";
@@ -152,6 +153,7 @@
       onkeydown={onKey}
     >
       <div class="search">
+        <span class="search-ico"><Icon name="search" size={16} /></span>
         {#if mode !== "all"}
           <span class="chip" title="Backspace on an empty box clears the mode">{MODE_LABEL[mode]}</span>
         {/if}
@@ -203,7 +205,7 @@
     max-height: 60vh;
     background: var(--bg-elev);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
     display: flex;
     flex-direction: column;
@@ -212,10 +214,14 @@
   .search {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--sp-4);
     background: var(--bg);
     border-bottom: 1px solid var(--border);
-    padding-left: 14px;
+    padding-left: var(--sp-6);
+  }
+  .search-ico {
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; color: var(--fg-muted);
   }
   input {
     flex: 1;
@@ -223,27 +229,27 @@
     background: transparent;
     color: var(--fg);
     border: 0;
-    padding: 12px 14px 12px 0;
-    font-size: 14px;
+    padding: var(--sp-6) var(--sp-8) var(--sp-6) 0;
+    font-size: var(--fs-lg);
   }
   input:focus { outline: none; }
   .chip {
     background: color-mix(in srgb, var(--accent) 25%, transparent);
     color: var(--accent);
-    border-radius: 3px;
-    padding: 2px 8px;
-    font-size: 12px;
+    border-radius: var(--radius);
+    padding: var(--sp-1) var(--sp-4);
+    font-size: var(--fs-md);
     white-space: nowrap;
   }
-  ul { list-style: none; margin: 0; padding: 4px; overflow-y: auto; }
-  li.muted { color: var(--fg-muted); padding: 12px; font-style: italic; }
+  ul { list-style: none; margin: 0; padding: var(--sp-2); overflow-y: auto; }
+  li.muted { color: var(--fg-muted); padding: var(--sp-6); font-style: italic; }
   .hints {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--sp-6);
     color: var(--fg-muted);
-    font-size: 11px;
-    padding: 6px 12px;
+    font-size: var(--fs-sm);
+    padding: var(--sp-3) var(--sp-6);
     border-top: 1px solid var(--border);
   }
 </style>

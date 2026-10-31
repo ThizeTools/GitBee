@@ -53,11 +53,11 @@ export async function editStashMessage(
 export function stashMenuItems(args: StashMenuArgs): MenuItem[] {
   const { getRepo, idx, message, onHide } = args;
   return [
-    { label: "Apply Stash", icon: "↻", onClick: () => applyStash(getRepo, idx) },
-    { label: "Pop Stash", icon: "⤴", onClick: () => popStash(getRepo, idx) },
-    { label: "Delete Stash", icon: "🗑", danger: true, onClick: () => dropStash(getRepo, idx) },
+    { label: "Apply Stash", icon: "fetch", onClick: () => applyStash(getRepo, idx) },
+    { label: "Pop Stash", icon: "pop", onClick: () => popStash(getRepo, idx) },
+    { label: "Delete Stash", icon: "trash", danger: true, onClick: () => dropStash(getRepo, idx) },
     { separator: true, label: "" },
-    { label: "Edit stash message", icon: "✎", onClick: () => editStashMessage(getRepo, idx, message) },
-    { label: "Hide", icon: "○", onClick: onHide },
+    { label: "Edit stash message", icon: "file-modified", onClick: () => editStashMessage(getRepo, idx, message) },
+    { label: "Hide", icon: "eye-off", onClick: onHide },
   ];
 }
