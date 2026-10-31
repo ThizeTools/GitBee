@@ -10,7 +10,8 @@
   import { WIP_SHA } from "$lib/stores/repo";
   import { laneColor } from "$lib/graph/renderer";
   import { laneX, AVATAR_SIZE } from "$lib/graph/layout";
-  import { displaySubjectFor, type WipBreakdown } from "./graphDerive";
+  import { displaySubjectFor, isRowDimmed, type WipBreakdown } from "./graphDerive";
+  import { formatRelativeDate, formatAbsoluteDate } from "$lib/graph/relativeDate";
 
   interface Props {
     row: number;
@@ -34,13 +35,21 @@
     onSelect: (e: MouseEvent) => void;
     onCheckout: () => void;
     onContextMenu: (e: MouseEvent) => void;
+    // Current time for the date cell; GraphCanvas ticks it once a minute.
+    nowMs: number;
+    // Merge dimming on/off, and the ref-hover highlight (null when inactive).
+    dimMerges: boolean;
+    highlightSet: ReadonlySet<string> | null;
   }
   let {
     row, node, top, isWip, order, gridTemplate, stashIndex,
     selectedSha, headRowSha, matchSet, currentMatchSha, isHovered,
     hasAvatar, wipChangeCount, wipBreakdown,
     refsFor, containingRefsFor, onSelect, onCheckout, onContextMenu,
+    nowMs, dimMerges, highlightSet,
   }: Props = $props();
+  // Dimmed rows: text and avatars fade; the canvas dims the lane itself.
+  const dimmed = $derived(node !== null && isRowDimmed(node, dimMerges, highlightSet));
 </script>
 
 <button
@@ -49,6 +58,7 @@
   class:selected={isWip ? selectedSha === WIP_SHA : node!.sha === selectedSha}
   class:head={!isWip && node!.sha === headRowSha}
   class:wip={isWip}
+  class:dimmed={dimmed}
   class:search-match={!isWip && matchSet.has(node!.sha)}
   class:search-current={!isWip && currentMatchSha === node!.sha}
   style:top="{top}px"
@@ -95,7 +105,7 @@
           </div>
         {/if}
       </div>
-    {:else}
+    {:else if col === "msg"}
       <div class="cell-msg">
         <span class="msg-text">{isWip ? "// WIP" : displaySubjectFor(node!.subject, stashIndex)}</span>
         {#if isWip && wipChangeCount > 0}
@@ -114,6 +124,18 @@
             {/if}
           </span>
         {/if}
+      </div>
+    {:else if col === "author"}
+      <div class="cell-author" title={isWip ? "" : node!.author_name}>
+        <span class="cell-text">{isWip ? "" : node!.author_name}</span>
+      </div>
+    {:else if col === "date"}
+      <div class="cell-date" title={isWip ? "" : formatAbsoluteDate(node!.timestamp)}>
+        <span class="cell-text">{isWip ? "" : formatRelativeDate(node!.timestamp, nowMs)}</span>
+      </div>
+    {:else}
+      <div class="cell-sha" title={isWip ? "" : node!.sha}>
+        <span class="cell-text">{isWip ? "" : node!.sha.slice(0, 7)}</span>
       </div>
     {/if}
     {#if i < order.length - 1}
@@ -251,6 +273,22 @@
      full width. */
   .row.wip .cell-msg .msg-text { flex: 0 0 auto; }
   .wip-stats { margin-left: 4px; }
+  /* Author / date / sha cells: one line each, ellipsis on overflow. */
+  .cell-author, .cell-date, .cell-sha {
+    display: flex; align-items: center;
+    overflow: hidden; min-width: 0;
+    padding: 0 10px; height: 100%;
+    font-size: 12px; color: var(--fg-muted);
+  }
+  .cell-text {
+    display: block; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; min-width: 0;
+  }
+  .cell-sha { font-family: "Cascadia Code", Consolas, monospace; font-size: 11px; }
+  /* Dimmed rows: merge commits (dimMerges) and rows outside a hovered ref's history. */
+  .row.dimmed .cell-msg, .row.dimmed .cell-refs,
+  .row.dimmed .cell-author, .row.dimmed .cell-date, .row.dimmed .cell-sha { opacity: 0.4; }
+  .row.dimmed .lane-avatar { opacity: 0.25; }
   /* gutter cells fall in the resize-handle slots — empty 6px column */
   .cell-gutter { height: 100%; }
 

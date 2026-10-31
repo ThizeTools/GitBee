@@ -64,6 +64,8 @@ export interface FileDiff {
   // Lines past the backend cap (MAX_FILE_DIFF_LINES), not sent to the viewer.
   omitted_lines: number;
 }
+/** Image bytes for the diff viewer: base64 payload plus the MIME type the backend chose. */
+export interface FileBytes { base64: string; mime: string; }
 
 export interface StashEntry { index: number; message: string; sha: string; }
 export interface Remote { name: string; url: string; }
@@ -117,11 +119,15 @@ export const ipc = {
   discardAllChanges: (path: string) => invoke("discard_all_changes", { path }),
 
   // diff
-  diffCommit: (path: string, sha: string, file?: string) =>
-    invoke<FileDiff[]>("diff_commit", { path, sha, file }),
-  diffStash: (path: string, index: number) => invoke<FileDiff[]>("diff_stash", { path, index }),
-  diffWorkdir: (path: string, file?: string) => invoke<FileDiff[]>("diff_workdir", { path, file }),
-  diffIndex: (path: string, file?: string) => invoke<FileDiff[]>("diff_index", { path, file }),
+  // ignoreWs maps to `git -w`; hunk staging must not pass it (diff-viewer spec).
+  diffCommit: (path: string, sha: string, file?: string, ignoreWs?: boolean) =>
+    invoke<FileDiff[]>("diff_commit", { path, sha, file, ignoreWs }),
+  diffStash: (path: string, index: number, ignoreWs?: boolean) =>
+    invoke<FileDiff[]>("diff_stash", { path, index, ignoreWs }),
+  diffWorkdir: (path: string, file?: string, ignoreWs?: boolean) =>
+    invoke<FileDiff[]>("diff_workdir", { path, file, ignoreWs }),
+  diffIndex: (path: string, file?: string, ignoreWs?: boolean) =>
+    invoke<FileDiff[]>("diff_index", { path, file, ignoreWs }),
 
   // commits
   commitCreate: (path: string, message: string, amend = false, sign = false) =>
@@ -166,6 +172,10 @@ export const ipc = {
   remotePull: (path: string, rebase = false) => invoke("remote_pull", { path, rebase }),
   remotePush: (path: string, remote: string, branch?: string, force = false) =>
     invoke("remote_push", { path, remote, branch, force }),
+  // For branches other than HEAD only. "Pull" on a non-HEAD branch used to pull
+  // HEAD instead (bug found 2026-10).
+  branchFastForward: (path: string, remote: string, branch: string) =>
+    invoke("branch_fast_forward", { path, remote, branch }),
 
   // ops
   opState: (path: string) => invoke<OperationState>("op_state", { path }),
@@ -182,9 +192,21 @@ export const ipc = {
   // system
   openTerminal: (path: string) => invoke("open_terminal", { path }),
   undoLastCommit: (path: string) => invoke("undo_last_commit", { path }),
+  // undo backups (docs/specs/undo-history.md)
+  backupFile: (path: string, file: string) => invoke<string | null>("backup_file", { path, file }),
+  restoreFile: (path: string, file: string, blob: string | null) =>
+    invoke("restore_file", { path, file, blob }),
+  discardAllWithBackup: (path: string) =>
+    invoke<string | null>("discard_all_with_backup", { path }),
+  applyBackup: (path: string, sha: string) => invoke("apply_backup", { path, sha }),
+  stashStore: (path: string, sha: string, message: string) =>
+    invoke("stash_store", { path, sha, message }),
   fileRead: (path: string, file: string) => invoke<string>("file_read", { path, file }),
   fileReadAt: (path: string, sha: string, file: string) =>
     invoke<string>("file_read_at", { path, sha, file }),
+  /** rev null = working tree; "INDEX" = staged blob; otherwise a git rev. */
+  fileBytesBase64: (path: string, rev: string | null, file: string) =>
+    invoke<FileBytes>("file_bytes_base64", { path, rev, file }),
   fileDelete: (path: string, file: string) => invoke("file_delete", { path, file }),
   fileShowInFolder: (path: string, file: string) =>
     invoke("file_show_in_folder", { path, file }),

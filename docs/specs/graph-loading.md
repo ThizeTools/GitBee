@@ -34,8 +34,11 @@ Output `GraphPage`: `nodes`, `refs`, `head_sha`, `head_branch`, plus
 - `has_more: bool`: `git log` returned `limit` commits, so older
   commits may exist.
 
-Errors: unchanged from before (git failures in log/refs still fall back
-to an empty graph; see the QoL backlog).
+Errors: a failing `git log` is returned as an error once HEAD resolves, so
+the UI error bar shows git's stderr. WHY: an empty graph hid broken repos.
+An empty repo (no HEAD) still returns an empty graph, because its `git log`
+is expected to fail. Failing ref reads (`for-each-ref`, `stash list`) still
+fall back to an empty graph; see the QoL backlog.
 
 ### Paging (frontend, `src/lib/stores/repoRefresh.ts`)
 - First load of a tab asks for `GRAPH_PAGE` (2000) commits.

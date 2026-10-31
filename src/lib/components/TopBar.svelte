@@ -1,11 +1,15 @@
 <script lang="ts">
   import {
-    currentRepo, graph, stashes, status, remotes, withBusy,
+    currentRepo, graph, stashes, status, remotes,
     refreshActive, busy, errorMessage,
   } from "$lib/stores/repo";
   import CreateRepoModal from "./CreateRepoModal.svelte";
   import { themePickerOpen, paletteOpen } from "$lib/stores/ui";
-  import { undoStack, redoStack, moveToRedo, moveFromRedo } from "$lib/stores/history";
+  import {
+    canUndo, canRedo, nextUndoLabel, nextRedoLabel, undoLast, redoLast, pushUndo,
+  } from "$lib/stores/history";
+  import { branchCreateUndo, checkoutUndo } from "$lib/stores/undoEntries";
+  import { checkoutTargetOf } from "$lib/stores/refLookup";
   import { ipc } from "$lib/ipc";
   import { logAppend, logAction } from "$lib/stores/logs";
   import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
@@ -25,45 +29,6 @@
       return r;
     } finally {
       busy.set(false);
-    }
-  }
-
-  // Undo: soft-reset to HEAD@{1}, push current HEAD info onto redoStack.
-  // Redo: re-create a commit using the saved message and the (still staged) tree.
-  async function undo() {
-    if (!$currentRepo) return;
-    const head = $graph?.head_sha ?? null;
-    if (!head) return;
-    const ok = await confirmDialog({
-      title: "Undo last commit?",
-      message: "(soft reset to HEAD@{1} — keeps your changes staged.)",
-      confirmLabel: "Undo",
-    });
-    if (!ok) return;
-    const node = $graph?.nodes.find((n) => n.sha === head);
-    const msg = node?.subject ?? "previous commit";
-    const r = await runAction(`Undo last commit ${head.slice(0, 7)}`,
-      () => ipc.undoLastCommit($currentRepo!));
-    if (r.ok) {
-      moveToRedo();
-      redoStack.update((s) => [...s, { kind: "commit", sha: head, message: msg }]);
-      notifySuccess("Undid last commit", msg);
-    } else {
-      notifyError("Undo failed", r.error);
-    }
-  }
-
-  async function redo() {
-    if (!$currentRepo) return;
-    const top = moveFromRedo();
-    if (!top) return;
-    const r = await runAction(`Redo commit "${top.message}"`,
-      () => ipc.commitCreate($currentRepo!, top.message, false, false));
-    if (r.ok) {
-      notifySuccess("Redid commit", top.message);
-    } else {
-      redoStack.update((s) => [...s, top]);
-      notifyError("Redo failed", r.error);
     }
   }
 
@@ -90,11 +55,19 @@
     else notifySuccess("Pushed Successfully", branch ? `${branch} → origin` : undefined);
   }
   async function newBranch() {
-    if (!$currentRepo) return;
+    const repo = $currentRepo;
+    if (!repo) return;
     const name = await promptDialog({ title: "New branch name:", validate: requireName });
     if (!name) return;
-    await withBusy(() => ipc.branchCreate($currentRepo!, name));
-    await withBusy(() => ipc.branchCheckout($currentRepo!, name));
+    const sha = $graph?.head_sha ?? undefined;
+    const previous = checkoutTargetOf($graph?.head_branch ?? null, $graph?.head_sha ?? null);
+    const created = await runAction(`Create branch ${name}`, () => ipc.branchCreate(repo, name));
+    if (!created.ok) return;
+    pushUndo(branchCreateUndo(repo, name, sha));
+    const checkedOut = await runAction(`Checkout ${name}`, () => ipc.branchCheckout(repo, name));
+    if (checkedOut.ok && previous) {
+      pushUndo(checkoutUndo(repo, previous, name, () => ipc.branchCheckout(repo, name)));
+    }
   }
   async function stash() {
     if (!$currentRepo) return;
@@ -124,8 +97,6 @@
     catch (e) { logAppend("error", `terminal: ${e}`); }
   }
 
-  const undoEnabled = $derived(!!$currentRepo && !!$graph?.head_sha);
-  const redoEnabled = $derived(!!$currentRepo && $redoStack.length > 0);
   const stashHasItems = $derived($stashes.length > 0);
   const hasChanges = $derived($status.length > 0);
   // No `origin` remote → Push will fail with the cryptic
@@ -156,10 +127,10 @@
   </div>
 
   <div class="actions">
-    <button class="icon-btn" title="Undo last commit" onclick={undo} disabled={!undoEnabled}>
+    <button class="icon-btn" title={$nextUndoLabel ? `Undo: ${$nextUndoLabel}` : "Undo"} onclick={undoLast} disabled={!$canUndo}>
       <span class="ico">↶</span><span class="lbl">Undo</span>
     </button>
-    <button class="icon-btn" title="Redo (recommit last undone)" onclick={redo} disabled={!redoEnabled}>
+    <button class="icon-btn" title={$nextRedoLabel ? `Redo: ${$nextRedoLabel}` : "Redo"} onclick={redoLast} disabled={!$canRedo}>
       <span class="ico">↷</span><span class="lbl">Redo</span>
     </button>
     <span class="vsep"></span>

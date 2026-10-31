@@ -6,6 +6,8 @@
   import type { FileDiff } from "$lib/ipc";
   import { logAppend } from "$lib/stores/logs";
   import { confirmDialog } from "$lib/stores/dialog";
+  import { diffPrefs } from "$lib/stores/diffPrefs";
+  import { commitRevs, stagedRevs, unstagedRevs } from "$lib/diff/revs";
 
   interface Props {
     file: string;
@@ -18,6 +20,10 @@
   let { file, staged, commitSha }: Props = $props();
 
   const isCommitMode = $derived(commitSha != null);
+  // Which revisions the image preview reads for each diff mode (diff-viewer spec).
+  const imageRevs = $derived(
+    commitSha != null ? commitRevs(commitSha) : staged ? stagedRevs() : unstagedRevs(),
+  );
 
   let diffs = $state<FileDiff[]>([]);
   let fileText = $state<string>("");
@@ -29,7 +35,7 @@
   // identical status entry, so a status-only dependency would miss it (spec
   // repo-refresh.md).
   $effect(() => {
-    void file; void staged; void commitSha; void toolTab;
+    void file; void staged; void commitSha; void toolTab; void $diffPrefs.ignoreWs;
     if (!commitSha) void $worktreeTick;
     if ($currentRepo) load();
   });
@@ -42,11 +48,11 @@
         if (commitSha) {
           // Backend limits the commit diff to this path (git show -- <file>),
           // so one file no longer pays for the whole commit.
-          diffs = await ipc.diffCommit($currentRepo, commitSha, file);
+          diffs = await ipc.diffCommit($currentRepo, commitSha, file, $diffPrefs.ignoreWs);
         } else {
           diffs = staged
-            ? await ipc.diffIndex($currentRepo, file)
-            : await ipc.diffWorkdir($currentRepo, file);
+            ? await ipc.diffIndex($currentRepo, file, $diffPrefs.ignoreWs)
+            : await ipc.diffWorkdir($currentRepo, file, $diffPrefs.ignoreWs);
         }
       } else {
         fileText = commitSha
@@ -129,14 +135,16 @@
   </nav>
 
   <div class="dp-body">
-    {#if loading}
-      <div class="empty">Loading…</div>
-    {:else if toolTab === "file"}
-      <pre class="file-view">{fileText}</pre>
-    {:else if diffs.length === 0}
-      <div class="empty">No changes for this file.</div>
+    {#if toolTab === "file"}
+      {#if loading}
+        <div class="empty">Loading…</div>
+      {:else}
+        <pre class="file-view">{fileText}</pre>
+      {/if}
     {:else}
-      <DiffViewer diffs={diffs} />
+      <!-- DiffViewer owns the empty state so its toolbar stays reachable: turning
+           on whitespace-hiding can empty a diff that the toggle must still undo. -->
+      <DiffViewer {diffs} {loading} revs={imageRevs} />
     {/if}
   </div>
 </div>

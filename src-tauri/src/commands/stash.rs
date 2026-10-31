@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::git::checked_ref;
 use crate::state::AppState;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -48,6 +49,15 @@ fn parse_stash_index(selector: &str, fallback: usize) -> usize {
         .unwrap_or(fallback)
 }
 
+// Builds the "stash@{N}" selector every apply/pop/drop positional uses. The
+// selector is generated from a number, so `checked_ref` cannot fail on it today;
+// it stays so every positional goes through the same rule.
+fn stash_ref(index: usize) -> String {
+    format!("stash@{{{index}}}")
+}
+
+// `-m <msg>` is an option argument, so a message starting with '-' is safe and
+// is not validated.
 #[tauri::command]
 pub async fn stash_create(
     path: String,
@@ -68,8 +78,8 @@ pub async fn stash_apply(
     index: usize,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let r = format!("stash@{{{index}}}");
-    state.git.run(&cwd(&path), ["stash", "apply", &r]).await?;
+    let r = stash_ref(index);
+    state.git.run(&cwd(&path), ["stash", "apply", checked_ref(&r)?]).await?;
     Ok(())
 }
 
@@ -79,8 +89,8 @@ pub async fn stash_pop(
     index: usize,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let r = format!("stash@{{{index}}}");
-    state.git.run(&cwd(&path), ["stash", "pop", &r]).await?;
+    let r = stash_ref(index);
+    state.git.run(&cwd(&path), ["stash", "pop", checked_ref(&r)?]).await?;
     Ok(())
 }
 
@@ -90,7 +100,17 @@ pub async fn stash_drop(
     index: usize,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let r = format!("stash@{{{index}}}");
-    state.git.run(&cwd(&path), ["stash", "drop", &r]).await?;
+    let r = stash_ref(index);
+    state.git.run(&cwd(&path), ["stash", "drop", checked_ref(&r)?]).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stash_ref_builds_the_selector_git_expects() {
+        assert_eq!(stash_ref(3), "stash@{3}");
+    }
 }

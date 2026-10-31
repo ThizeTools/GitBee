@@ -1,6 +1,9 @@
 <script lang="ts">
   import { paletteOpen, activeThemeId, resolveTheme, customThemes } from "$lib/stores/ui";
-  import { currentRepo, refreshAll, withBusy, recent, openRepo } from "$lib/stores/repo";
+  import { currentRepo, refreshAll, withBusy, recent, openRepo, graph } from "$lib/stores/repo";
+  import { runAction } from "$lib/menus/menuActions";
+  import { pushUndo } from "$lib/stores/history";
+  import { branchCreateUndo } from "$lib/stores/undoEntries";
   import { ipc } from "$lib/ipc";
   import { promptDialog, requireName } from "$lib/stores/dialog";
   import { get } from "svelte/store";
@@ -38,14 +41,19 @@
           run: () => withBusy(() => ipc.remotePull($currentRepo!, true)) },
         { id: "stash-create", label: "Stash all changes",
           run: async () => {
-            const m = (await promptDialog({ title: "Stash message:", confirmLabel: "Stash" })) || undefined;
-            await withBusy(() => ipc.stashCreate($currentRepo!, m, true));
+            const m = await promptDialog({ title: "Stash message:", confirmLabel: "Stash" });
+            // Cancelling (null) aborts the stash. An empty message means no message.
+            if (m === null) return;
+            await withBusy(() => ipc.stashCreate($currentRepo!, m || undefined, true));
           } },
         { id: "branch-create", label: "Create branch from HEAD",
           run: async () => {
+            const repo = $currentRepo;
             const n = await promptDialog({ title: "Branch name:", validate: requireName });
-            if (!n) return;
-            await withBusy(() => ipc.branchCreate($currentRepo!, n));
+            if (!n || !repo) return;
+            const sha = get(graph)?.head_sha ?? undefined;
+            const res = await runAction(`Create branch ${n}`, () => ipc.branchCreate(repo, n));
+            if (res.ok) pushUndo(branchCreateUndo(repo, n, sha));
           } },
       );
     }

@@ -21,6 +21,14 @@ import {
   choiceDialog, confirmDialog, promptDialog, requireName,
 } from "$lib/stores/dialog";
 import { get } from "svelte/store";
+import { pushUndo } from "$lib/stores/history";
+import {
+  branchCreateUndo,
+  tagCreateUndo,
+  resetUndo,
+  hardResetUndo,
+  resetHardKeepingChanges,
+} from "$lib/stores/undoEntries";
 import { openModal } from "$lib/stores/modals";
 import { commitWebUrl } from "$lib/github/url";
 import {
@@ -130,7 +138,8 @@ export async function createBranchAt(sha: string): Promise<void> {
   if (!r) return;
   const name = await promptDialog({ title: "New branch name:", validate: requireName });
   if (!name) return;
-  await withBusy(() => ipc.branchCreate(r, name, sha));
+  const res = await runAction(`Create branch ${name}`, () => ipc.branchCreate(r, name, sha));
+  if (res.ok) pushUndo(branchCreateUndo(r, name, sha));
   scrollGraphTo(sha);
 }
 
@@ -139,12 +148,16 @@ export async function createTag(sha: string, annotated: boolean): Promise<void> 
   if (!r) return;
   const name = await promptDialog({ title: "Tag name:", validate: requireName });
   if (!name) return;
-  // Kept from the native prompt: cancelling the annotation message still
-  // creates the tag, as a lightweight one. Changing that is a behavior change.
-  const message = annotated
-    ? (await promptDialog({ title: "Annotation message:" })) || undefined
-    : undefined;
-  await withBusy(() => ipc.tagCreate(r, name, sha, message));
+  // Cancelling the annotation prompt (null) aborts. An empty message keeps
+  // the old meaning: a lightweight tag.
+  let message: string | undefined;
+  if (annotated) {
+    const typed = await promptDialog({ title: "Annotation message:" });
+    if (typed === null) return;
+    message = typed || undefined;
+  }
+  const res = await runAction(`Create tag ${name}`, () => ipc.tagCreate(r, name, sha, message));
+  if (res.ok) pushUndo(tagCreateUndo(r, name, sha, message));
 }
 
 export type ResetMode = "soft" | "mixed" | "hard";
@@ -179,7 +192,26 @@ export async function resetMenu(sha: string): Promise<void> {
   const mode = await pickResetMode(sha);
   if (mode === null) return;
   if (mode === "hard" && !(await confirmHardReset(sha))) return;
-  await withBusy(() => ipc.reset(r, sha, mode));
+  if (mode === "hard") return resetHardRecorded(r, sha);
+  return resetRecorded(r, sha, mode);
+}
+
+// Soft and mixed resets are undone by moving HEAD back to the old commit.
+async function resetRecorded(repo: string, target: string, mode: ResetMode): Promise<void> {
+  const before = headSha();
+  const res = await runAction(`Reset ${mode} to ${target.slice(0, 7)}`, () =>
+    ipc.reset(repo, target, mode),
+  );
+  if (res.ok && before) pushUndo(resetUndo(repo, mode, before, target));
+}
+
+// A hard reset keeps the working-tree changes in a backup commit, so Undo can bring them back.
+async function resetHardRecorded(repo: string, target: string): Promise<void> {
+  const before = headSha();
+  const res = await runAction(`Reset --hard to ${target.slice(0, 7)}`, () =>
+    resetHardKeepingChanges(repo, target),
+  );
+  if (res.ok && before) pushUndo(hardResetUndo(repo, before, target, res.value));
 }
 
 // Resolve a remote URL by name from the loaded remotes list. Defaults to

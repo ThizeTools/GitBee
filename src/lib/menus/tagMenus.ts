@@ -3,7 +3,11 @@
 
 import type { MenuItem } from "$lib/stores/contextmenu";
 import { ipc } from "$lib/ipc";
-import { withBusy } from "$lib/stores/repo";
+import { graph } from "$lib/stores/repo";
+import { get } from "svelte/store";
+import { pushUndo } from "$lib/stores/history";
+import { tagDeleteUndo } from "$lib/stores/undoEntries";
+import { findRefSha } from "$lib/stores/refLookup";
 import { logAppend } from "$lib/stores/logs";
 import { notifySuccess, notifyError } from "$lib/stores/notifications";
 import { confirmDialog, promptDialog } from "$lib/stores/dialog";
@@ -57,6 +61,13 @@ async function annotateTag(tagName: string): Promise<void> {
   );
   if (res.ok) notifySuccess("Tag annotated", tagName);
   else notifyError("Annotate failed", res.error);
+}
+
+// Deleting records the tag's commit, so Undo can recreate the tag there.
+async function deleteTag(repo: string, name: string): Promise<void> {
+  const sha = findRefSha(get(graph)?.refs ?? [], "tag", name);
+  const res = await runAction(`Delete tag ${name}`, () => ipc.tagDelete(repo, name));
+  if (res.ok && sha) pushUndo(tagDeleteUndo(repo, name, sha));
 }
 
 // --- Tag ---
@@ -144,7 +155,7 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
           confirmLabel: "Delete",
           danger: true,
         });
-        if (ok) withBusy(() => ipc.tagDelete(r, tagName));
+        if (ok) await deleteTag(r, tagName);
       },
     },
     { separator: true, label: "" },

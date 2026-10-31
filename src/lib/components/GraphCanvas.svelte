@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount } from "svelte";
   import {
     graph, selectedSha, refsByCommit, containingByCommit,
     status, currentRepo, stashes, WIP_SHA, visibleGraphNodes,
@@ -12,6 +12,11 @@
   import type { CommitRef } from "$lib/ipc";
   import { showCommit, showStash, showChanges, clearSelection } from "$lib/stores/rightpanel";
   import { layout, setSize, type GraphCol } from "$lib/stores/layout";
+  import { visibleCols, toggleHidden, COL_WIDTH_KEY, COL_MIN_WIDTH } from "$lib/graph/columns";
+  import { hoveredRefSha, clearRefHover } from "$lib/stores/refHover";
+  import { highlightFor } from "$lib/graph/reach";
+  import ScrollMarkers from "./graph/ScrollMarkers.svelte";
+  import { measureBadgeEnds } from "./graph/badgeEnds";
   // ClientX/Y and getBoundingClientRect return viewport coords post-zoom.
   // Scroll metrics and our row math are in CSS (logical) px. Divide deltas
   // by uiScale to bridge the two.
@@ -19,7 +24,7 @@
   import { openMenu } from "$lib/stores/contextmenu";
   import { commitMenu } from "$lib/menus/refMenus";
   import { render } from "$lib/graph/renderer";
-  import { ROW_HEIGHT, TOP_PADDING, rowFromY, measure } from "$lib/graph/layout";
+  import { ROW_HEIGHT, TOP_PADDING, rowFromY } from "$lib/graph/layout";
   import { buildRowSegments } from "$lib/graph/edges";
   import type { GraphNode } from "$lib/ipc";
   import GraphHeader from "./graph/GraphHeader.svelte";
@@ -42,7 +47,6 @@
   // shared `visibleGraphNodes` derived so keyboard-nav and search agree with
   // what's painted here. (audit 2026-05)
   const nodes = $derived($visibleGraphNodes);
-  void measure; // metrics no longer used for sizing (#4) but renderer may need it later
   const shaToRow = $derived(buildShaToRow(nodes));
   // Pure derivations live in ./graph/graphDerive.ts (see there for why each
   // row set is built the way it is).
@@ -54,22 +58,16 @@
   // list or stash set changes, not on scroll. See docs/specs/graph-visual-2026-10.md.
   const rowSegments = $derived(buildRowSegments(nodes, stashRows));
 
-  const refsW = $derived($layout.graphRefsWidth);
-  // Hard min — never auto-grow beyond this. The canvas is clipped by the
-  // column width.
-  const graphMinW = 80;
-  const graphW = $derived(Math.max(graphMinW, $layout.graphWidth));
-  const msgW = $derived($layout.graphMsgWidth);
+  // Hard min for the graph track: the canvas is clipped by the column width and
+  // lanes must never be narrower than one node.
+  const graphW = $derived(Math.max(COL_MIN_WIDTH.graph, $layout.graphWidth));
 
+  // Widths and mins come from graph/columns.ts so a new column needs no edit here.
   function widthFor(col: GraphCol): number {
-    if (col === "refs") return refsW;
-    if (col === "graph") return graphW;
-    return msgW;
+    return $layout[COL_WIDTH_KEY[col]];
   }
   function setWidthFor(col: GraphCol, v: number) {
-    if (col === "refs") setSize("graphRefsWidth", v);
-    else if (col === "graph") setSize("graphWidth", Math.max(graphMinW, v));
-    else setSize("graphMsgWidth", v);
+    setSize(COL_WIDTH_KEY[col], Math.max(COL_MIN_WIDTH[col], v));
   }
 
   // WIP belongs to HEAD, so under solo (which hides everything except the
@@ -84,15 +82,20 @@
   const wipBreakdown = $derived(buildWipBreakdown($status));
 
   // ------- column layout (reorder + resize) -------
+  // `order` is the full layout order (hidden columns included); `visibleOrder`
+  // is what is painted. The last VISIBLE column takes the 1fr track.
   const order = $derived($layout.graphColOrder);
-  const gridTemplate = $derived(buildGridTemplate(order, widthFor));
+  const hiddenCols = $derived($layout.hiddenCols);
+  const dimMerges = $derived($layout.dimMergeCommits);
+  const visibleOrder = $derived(visibleCols(order, hiddenCols));
+  const gridTemplate = $derived(buildGridTemplate(visibleOrder, widthFor));
   // One spec per visible column, read by GraphHeader for its titles and
   // ResizeHandles. Stays a list so new columns need no change here.
   const columnSpecs = $derived(
-    order.map((id): GraphColumnSpec => ({
+    visibleOrder.map((id): GraphColumnSpec => ({
       id,
       width: widthFor(id),
-      minWidth: id === "graph" ? graphMinW : 80,
+      minWidth: COL_MIN_WIDTH[id],
     })),
   );
 
@@ -103,6 +106,15 @@
   const rangeStart = $derived(Math.max(0, Math.floor((scrollTop - TOP_PADDING) / ROW_HEIGHT)));
   const rangeEnd = $derived(Math.min(totalRows, Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT)));
   const visibleRange = $derived({ start: rangeStart, end: rangeEnd });
+
+  // Date cell clock: "3 h ago" must not go stale, so a 60 s tick repaints the
+  // visible rows. It is not read by drawCanvas, so the canvas is not redrawn.
+  let nowMs = $state(Date.now());
+
+  // Commits in the hovered ref's history, or null when no ref is hovered or the
+  // ref is not loaded. $derived memoizes it by (hovered sha, nodes), so scroll
+  // never recomputes it.
+  const highlightSet = $derived($hoveredRefSha ? highlightFor($hoveredRefSha, nodes) : null);
 
   const visibleRows = $derived.by(() => {
     const list: { row: number; node: GraphNode | null; top: number; isWip: boolean }[] = [];
@@ -137,8 +149,10 @@
       scheduleDraw();
     });
     if (scrollEl) ro.observe(scrollEl);
+    const clock = setInterval(() => { nowMs = Date.now(); }, 60_000);
     return () => {
       ro.disconnect();
+      clearInterval(clock);
       cancelAnimationFrame(drawRaf);
     };
   });
@@ -147,7 +161,7 @@
   // this effect. Every reactive value it reads must therefore be listed here,
   // or the canvas silently goes stale when that value changes.
   $effect(() => {
-    void nodes; void shaToRow; void rowSegments; void scrollTop; void viewHeight;
+    void highlightSet; void nodes; void shaToRow; void rowSegments; void scrollTop; void viewHeight;
     void $selectedSha; void hoverRow; void wipVisible; void headRowSha; void rowsWithRefs;
     void avatarRows; void stashRows; void badgeEndsByRow; void wipChangeCount;
     void canvas; void scrollEl; void graphW; void stubBleed;
@@ -187,42 +201,18 @@
   // column's left edge back to the parent container's left edge — so
   // the stub line can travel across the gutter and through the entire
   // refs cell.
-  const stubBleed = $derived(graphLeftOffset(order, widthFor));
+  const stubBleed = $derived(graphLeftOffset(visibleOrder, widthFor));
 
   // Per-row badge end (in canvas-x coords). Stub line stops exactly there
   // so the line visually plugs into the badge instead of overshooting to
   // the panel edge. Re-measured whenever rows or layout change.
   let badgeEndsByRow = $state<Map<number, number>>(new Map());
-  function measureBadges() {
-    if (!scrollEl) return;
-    const parentRect = scrollEl.getBoundingClientRect();
-    const scale = $layout.uiScale || 1;
-    const next = new Map<number, number>();
-    const cells = scrollEl.querySelectorAll<HTMLElement>(".cell-refs[data-row]");
-    for (const cell of cells) {
-      // visibleRows iterates 0=WIP (when wipVisible) then nodes[0]…
-      // The renderer keys on the node index, so subtract the WIP shift so
-      // a stub for nodes[r] looks up `badgeEndsByRow.get(r)`.
-      const visibleRow = Number(cell.dataset.row ?? -1);
-      const wipShiftRow = wipVisible ? 1 : 0;
-      if (wipVisible && visibleRow === 0) continue; // skip WIP row — drawn separately
-      if (visibleRow < 0) continue;
-      const nodeRow = visibleRow - wipShiftRow;
-      const badge = cell.querySelector<HTMLElement>(".badges, .wip-inline");
-      if (!badge) continue;
-      const r = badge.getBoundingClientRect();
-      if (r.width === 0) continue;
-      // getBoundingClientRect is in viewport (post-zoom) px; the canvas
-      // sits inside the same zoomed container so we want CSS px relative
-      // to the parent's left edge. Divide deltas by uiScale.
-      const xCanvas = (r.right - parentRect.left) / scale;
-      next.set(nodeRow, xCanvas);
-    }
-    badgeEndsByRow = next;
+  function remeasureBadges(): void {
+    if (scrollEl) badgeEndsByRow = measureBadgeEnds(scrollEl, wipVisible, $layout.uiScale || 1);
   }
   $effect(() => {
     void visibleRows; void $refsByCommit; void hoverRow; void stubBleed; void $selectedSha;
-    queueMicrotask(measureBadges);
+    queueMicrotask(remeasureBadges);
   });
 
   function drawCanvas() {
@@ -250,6 +240,7 @@
     const wipShiftRow = wipVisible ? 1 : 0;
     render({
       ctx, nodes, shaToRow, segments: rowSegments,
+      highlightSet,
       scrollTop: scrollTop - wipShiftPx,
       viewHeight, width,
       selectedSha: $selectedSha === WIP_SHA ? null : $selectedSha,
@@ -268,6 +259,7 @@
   // Same threshold as GitKraken's lazy-load offset; spec graph-loading.md.
   const LOAD_MORE_OFFSET_PX = 1400;
   function onScroll() {
+    clearRefHover();
     if (!scrollEl) return;
     scrollTop = scrollEl.scrollTop;
     // loadMoreCommits de-duplicates itself, so firing on every scroll event
@@ -340,6 +332,18 @@
     return stashIndexMap.get(sha) ?? null;
   }
 
+  // Marker-strip click: row 0 is the WIP row when it is shown (scroll to top);
+  // any other row reuses the graph's scroll-to-sha path, which centers the row.
+  function jumpToRow(row: number): void {
+    const wipShift = wipVisible ? 1 : 0;
+    if (wipShift && row === 0) {
+      if (scrollEl) scrollEl.scrollTop = 0;
+      return;
+    }
+    const node = nodes[row - wipShift];
+    if (node) graphScrollTarget.set(node.sha);
+  }
+
   // ------- stash context menu (#3 stash menu in graph) -------
   let hiddenStashes = $state<Set<number>>(new Set());
   function hideStash(idx: number) { hiddenStashes.add(idx); hiddenStashes = new Set(hiddenStashes); }
@@ -363,13 +367,6 @@
     openMenu(e, commitMenu(sha));
   }
 
-  // ------- column body slot indices (for grid placement) -------
-  function colIndex(col: GraphCol): number {
-    // returns css grid-column index (1-based; gutters take their own slots)
-    const i = order.indexOf(col);
-    return i * 2 + 1;
-  }
-  void tick;
 </script>
 
 <div class="wrapper">
@@ -380,10 +377,16 @@
   <GraphHeader
     columns={columnSpecs}
     {gridTemplate}
+    allCols={order}
+    hidden={hiddenCols}
+    {dimMerges}
     onReorder={(next) => setSize("graphColOrder", next)}
     onResize={setWidthFor}
+    onToggleHidden={(col) => setSize("hiddenCols", toggleHidden(hiddenCols, col))}
+    onToggleDim={() => setSize("dimMergeCommits", !dimMerges)}
   />
 
+  <div class="scroll-wrap">
   <div
     class="scroll"
     role="grid"
@@ -399,7 +402,7 @@
     <canvas
       class="lanes"
       bind:this={canvas}
-      style="left: {graphLeftOffset(order, widthFor) - stubBleed}px; transform: translateY({scrollTop}px)"
+      style="left: {graphLeftOffset(visibleOrder, widthFor) - stubBleed}px; transform: translateY({scrollTop}px)"
     ></canvas>
 
     <div class="rows">
@@ -410,11 +413,14 @@
             {node}
             {top}
             {isWip}
-            {order}
+            order={visibleOrder}
             {gridTemplate}
             stashIndex={isWip ? null : stashIndexBySha(node!.sha)}
             selectedSha={$selectedSha}
             {headRowSha}
+            {nowMs}
+            {dimMerges}
+            {highlightSet}
             matchSet={$matchSet}
             currentMatchSha={$matchShas[$currentMatchIdx]}
             isHovered={hoverRow === row}
@@ -430,6 +436,21 @@
         {/if}
       {/each}
     </div>
+  </div>
+    <ScrollMarkers
+      nodes={nodes}
+      shaToRow={shaToRow}
+      refsByCommit={$refsByCommit}
+      wipVisible={wipVisible}
+      wipSha={WIP_SHA}
+      headSha={headRowSha}
+      selectedSha={$selectedSha}
+      stashRows={stashRows}
+      matchShas={$matchShas}
+      {scrollEl}
+      height={viewHeight}
+      onJump={jumpToRow}
+    />
   </div>
 </div>
 
@@ -454,4 +475,6 @@
   .spacer { width: 1px; grid-column: 1 / -1; }
   .lanes { position: absolute; pointer-events: none; z-index: 1; top: 0; }
   .rows { position: absolute; inset: 0; z-index: 2; grid-column: 1 / -1; }
+  .scroll-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  .scroll-wrap > .scroll { flex: 1; min-height: 0; }
 </style>

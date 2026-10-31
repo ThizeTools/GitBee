@@ -60,7 +60,7 @@ pub async fn graph_load(
         return Ok(unchanged_page(head_sha, head_branch, fingerprint));
     }
     let log_args = build_log_args(limit, all_branches, &refs_state.stash_shas);
-    let log_bytes = state.git.run(&cwd, log_args).await.unwrap_or_default();
+    let log_bytes = run_log(&state.git, &cwd, log_args, &refs_state.head_sha).await?;
     let commits = parse_log_z(&log_bytes).unwrap_or_default();
     let has_more = commits.len() >= limit;
     let nodes = assign_lanes(commits, head_sha.as_deref());
@@ -121,6 +121,29 @@ async fn load_ref_state(git: &GitRunner, cwd: &Path) -> RefState {
         head_branch: head_branch_res.unwrap_or_default().trim().to_string(),
         stash_shas,
     }
+}
+
+/// Runs `git log`. A failure is returned once the repo has commits, so git's
+/// stderr reaches the UI error bar. Returning an empty graph here hid broken
+/// repos behind a blank canvas. See `log_failure_is_fatal` for the empty case.
+async fn run_log(
+    git: &GitRunner,
+    cwd: &Path,
+    log_args: Vec<String>,
+    head_sha: &str,
+) -> AppResult<Vec<u8>> {
+    match git.run(cwd, log_args).await {
+        Ok(bytes) => Ok(bytes),
+        Err(e) if log_failure_is_fatal(head_sha) => Err(e),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+/// `git log` fails on an empty repo ("ambiguous argument 'HEAD'"), so an empty
+/// repo keeps the empty graph. Once HEAD resolves, a failing log means the repo
+/// is broken or unreadable, and that must be shown rather than swallowed.
+fn log_failure_is_fatal(head_sha: &str) -> bool {
+    !head_sha.is_empty()
 }
 
 fn build_log_args(limit: usize, all_branches: bool, stash_shas: &[String]) -> Vec<String> {
@@ -247,5 +270,17 @@ mod tests {
         assert_eq!(head_branch_name("HEAD"), None);
         assert_eq!(head_branch_name(""), None);
         assert_eq!(head_branch_name("main"), Some("main".to_string()));
+    }
+
+    // Regression: a failing `git log` on a repo with commits used to become an
+    // empty graph, hiding git's stderr from the user.
+    #[test]
+    fn failing_log_is_fatal_once_head_resolves() {
+        assert!(log_failure_is_fatal("abc123"));
+    }
+
+    #[test]
+    fn failing_log_is_tolerated_on_an_empty_repo() {
+        assert!(!log_failure_is_fatal(""));
     }
 }

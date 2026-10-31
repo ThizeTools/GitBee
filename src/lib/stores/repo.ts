@@ -3,6 +3,7 @@ import { ipc } from "$lib/ipc";
 import { showingNewTab } from "$lib/stores/newtab";
 import { showingInfo } from "$lib/stores/info";
 import { busy } from "$lib/stores/busy";
+import { setFilterRepo } from "$lib/stores/graphFilter";
 import {
   tabs, activeTabId, recent, errorMessage, tabName, samePath, normTabPath,
   type RepoTab,
@@ -55,6 +56,7 @@ export async function openRepo(path: string) {
     };
     tabs.update((arr) => [...arr, newTab]);
     activeTabId.set(id);
+    setFilterRepo(opened.path);
     await attachWatcher(opened.path);
     await refreshActive();
     recent.set(await ipc.repoRecent(15));
@@ -76,6 +78,8 @@ export async function activateTab(id: string) {
   const t = get(tabs).find((x) => x.id === id);
   if (!t) return;
   activeTabId.set(id);
+  // Hide/solo/pin are per repo; the newtab page has no repo, so none.
+  setFilterRepo(t.path || null);
   if (t.kind === "newtab" || !t.path) {
     await stopWatcher();
     return;
@@ -138,6 +142,7 @@ export async function closeTab(id: string) {
   tabs.set(remaining);
   if (remaining.length === 0) {
     activeTabId.set(null);
+    setFilterRepo(null);
     showingNewTab.set(true);
     showingInfo.set(false);
     await stopWatcher();

@@ -7,7 +7,7 @@
   import { showingNewTab } from "$lib/stores/newtab";
   import { showingInfo } from "$lib/stores/info";
   import InfoPage from "$lib/components/InfoPage.svelte";
-  import { paletteOpen } from "$lib/stores/ui";
+  import { paletteOpen, themePickerOpen } from "$lib/stores/ui";
   import { showGraph, centerMode, showCommitFile } from "$lib/stores/center";
   import { showChanges } from "$lib/stores/rightpanel";
   import { layout, setSize, zoomIn, zoomOut, setZoom } from "$lib/stores/layout";
@@ -40,6 +40,33 @@
     commitFiles as navCommitFiles,
     setFocus as navSetFocus,
   } from "$lib/stores/graphNav";
+  import { runGraphKeyAction } from "$lib/stores/graphKeyActions";
+  import { graphKeyAction, undoKeyAction, isEditableTarget } from "$lib/stores/graphKeys";
+  import { undoLast, redoLast } from "$lib/stores/history";
+
+  // Graph jumps (h, Shift+H, Home/End, PageUp/PageDown) and undo/redo.
+  // Returns true when the key was consumed. Graph keys share the arrow-key
+  // guards (no Ctrl/Alt, not in a text field, graph focus mode). Undo also
+  // skips text fields so native text undo keeps working there.
+  function handleGraphOrUndoKey(e: KeyboardEvent, ctrl: boolean): boolean {
+    if (e.altKey) return false;
+    const editing = isEditableTarget(e.target as HTMLElement | null);
+    if (ctrl) {
+      const undo = editing ? null : undoKeyAction(e.key, e.shiftKey);
+      if (undo === null) return false;
+      e.preventDefault();
+      if (undo === "undo") undoLast(); else redoLast();
+      return true;
+    }
+    // A palette, theme picker or modal on top must not move the graph behind it.
+    const overlayOpen = get(paletteOpen) || get(themePickerOpen) || get(activeModal) !== null;
+    if (editing || overlayOpen || !$currentRepo || get(navFocusMode) !== "graph") return false;
+    const action = graphKeyAction(e.key, e.shiftKey);
+    if (!action) return false;
+    e.preventDefault();
+    runGraphKeyAction(action);
+    return true;
+  }
 
   // Move the selected commit by `dir` (+1 = older/below, -1 = newer/above)
   // in the loaded slice. WIP slot above row 0 is reachable with ArrowUp on
@@ -210,6 +237,7 @@
           }
         }
       }
+      if (handleGraphOrUndoKey(e, ctrl)) return;
       // Zoom #7
       if (ctrl && (e.key === "+" || e.key === "=")) {
         e.preventDefault(); zoomIn(); return;

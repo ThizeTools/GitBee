@@ -1,4 +1,10 @@
 import { writable, get } from "svelte/store";
+import type { GraphCol } from "$lib/graph/columns";
+import {
+  DEFAULT_COL_ORDER, DEFAULT_HIDDEN_COLS, migrateColOrder, normalizeHidden,
+} from "$lib/graph/columns";
+
+export type { GraphCol };
 
 // Persisted UI sizes / zoom. Keys are namespaced under gkp.layout.v1.
 const KEY = "gkp.layout.v1";
@@ -13,15 +19,19 @@ export function displayPercent(scale: number): number {
   return Math.round((scale / ZOOM_BASE) * 100);
 }
 
-export type GraphCol = "refs" | "graph" | "msg";
-
 export interface LayoutState {
   sidebarWidth: number;
   rightPanelWidth: number;
   graphRefsWidth: number;
   graphWidth: number;
   graphMsgWidth: number;
+  graphAuthorWidth: number;
+  graphDateWidth: number;
+  graphShaWidth: number;
+  // Full column order, hidden ones included, so a re-shown column returns to its slot.
   graphColOrder: GraphCol[];
+  hiddenCols: GraphCol[];
+  dimMergeCommits: boolean;
   terminalHeight: number;
   terminalOpen: boolean;
   commitAreaHeight: number;
@@ -39,7 +49,12 @@ const DEFAULTS: LayoutState = {
   graphRefsWidth: 200,
   graphWidth: 180,
   graphMsgWidth: 360,
-  graphColOrder: ["refs", "graph", "msg"],
+  graphAuthorWidth: 140,
+  graphDateWidth: 110,
+  graphShaWidth: 80,
+  graphColOrder: [...DEFAULT_COL_ORDER],
+  hiddenCols: [...DEFAULT_HIDDEN_COLS],
+  dimMergeCommits: false,
   terminalHeight: 240,
   terminalOpen: false,
   commitAreaHeight: 290,
@@ -57,6 +72,10 @@ function load(): LayoutState {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULTS;
     const merged = { ...DEFAULTS, ...JSON.parse(raw) };
+    // Stored graph columns predate author/date/sha: append the missing ones
+    // and drop hidden entries that no longer make sense (see graph/columns.ts).
+    merged.graphColOrder = migrateColOrder(merged.graphColOrder);
+    merged.hiddenCols = normalizeHidden(merged.hiddenCols);
     // One-time migration: anyone whose stored scale matches the previous
     // default (1.0) gets bumped to the new default (1.2). Users who'd
     // explicitly picked 1.0 lose that, which is acceptable — the old 1.0

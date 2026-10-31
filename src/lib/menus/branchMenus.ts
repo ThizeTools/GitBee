@@ -9,6 +9,9 @@ import { checkoutAndJump, checkoutRemoteAndJump } from "$lib/stores/graphscroll"
 import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
 import { get } from "svelte/store";
 import { openModal } from "$lib/stores/modals";
+import { pushUndo } from "$lib/stores/history";
+import { branchDeleteUndo } from "$lib/stores/undoEntries";
+import { findRefSha, pickRemoteForBranch, fastForwardFailureMessage } from "$lib/stores/refLookup";
 import { pullRequestCompareUrl, branchWebUrl } from "$lib/github/url";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -97,7 +100,10 @@ async function deleteBranch(name: string) {
     danger: true,
   });
   if (!ok) return;
-  await withBusy(() => ipc.branchDelete(r, name, false));
+  // The tip is read before the delete, so Undo can recreate the branch there.
+  const sha = findRefSha(get(graph)?.refs ?? [], "localbranch", name);
+  const res = await runAction(`Delete branch ${name}`, () => ipc.branchDelete(r, name, false));
+  if (res.ok && sha) pushUndo(branchDeleteUndo(r, name, sha));
 }
 
 async function deleteRemoteBranch(remote: string, branch: string) {
@@ -132,25 +138,7 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     {
       label: "Pull (fast-forward if possible)",
       icon: "↓",
-      onClick: async () => {
-        const r = repo();
-        if (!r) return;
-        const before = get(graph)?.head_sha;
-        const res = await runAction(`Pull ${branch}`, () =>
-          ipc.remotePull(r, false),
-        );
-        if (!res.ok) {
-          notifyError("Pull failed", res.error);
-          return;
-        }
-        const after = get(graph)?.head_sha;
-        if (before === after)
-          notifyInfo(
-            "Already Up-to-Date",
-            `No merge necessary. Branch origin/${branch} was not moved.`,
-          );
-        else notifySuccess("Pulled Successfully");
-      },
+      onClick: () => pullBranch(branch),
     },
     {
       label: "Push",
@@ -217,6 +205,56 @@ export function localBranchMenu(branch: string, sha: string): MenuItem[] {
     // Group 9
     ...createTagHereItems(sha),
   ];
+}
+
+// Pulls `branch`. HEAD pulls as before. Any other local branch is
+// fast-forwarded from its remote-tracking ref without a checkout.
+async function pullBranch(branch: string): Promise<void> {
+  const r = repo();
+  if (!r) return;
+  if (branch === get(graph)?.head_branch) return pullHead(r, branch);
+  return fastForwardBranch(r, branch);
+}
+
+async function pullHead(r: string, branch: string): Promise<void> {
+  const before = get(graph)?.head_sha;
+  const res = await runAction(`Pull ${branch}`, () => ipc.remotePull(r, false));
+  if (!res.ok) {
+    notifyError("Pull failed", res.error);
+    return;
+  }
+  const after = get(graph)?.head_sha;
+  if (before === after)
+    notifyInfo(
+      "Already Up-to-Date",
+      `No merge necessary. Branch origin/${branch} was not moved.`,
+    );
+  else notifySuccess("Pulled Successfully");
+}
+
+async function fastForwardBranch(r: string, branch: string): Promise<void> {
+  const refs = get(graph)?.refs ?? [];
+  const remote = pickRemoteForBranch(
+    get(remotes).map((x) => x.name),
+    refs,
+    branch,
+  );
+  if (!remote) {
+    notifyInfo("Pull skipped", `No remote branch for ${branch}`);
+    return;
+  }
+  const before = findRefSha(refs, "localbranch", branch);
+  const res = await runAction(`Fast-forward ${branch}`, () =>
+    ipc.branchFastForward(r, remote, branch),
+  );
+  if (!res.ok) {
+    notifyError("Fast-forward failed", fastForwardFailureMessage(branch, res.error));
+    return;
+  }
+  const after = findRefSha(get(graph)?.refs ?? [], "localbranch", branch);
+  if (before === after)
+    notifyInfo("Already Up-to-Date", `${branch} was not moved; it already matches ${remote}/${branch}.`);
+  else notifySuccess("Fast-forwarded", branch);
 }
 
 // --- Branch (remote) ---

@@ -11,10 +11,13 @@ import {
   buildWipBreakdown,
   displaySubjectFor,
   graphLeftOffset,
+  isMergeNode,
+  isRowDimmed,
   nonStashRefs,
   stripStashSubject,
   withSyntheticHead,
 } from "./graphDerive";
+import type { GraphCol } from "$lib/graph/columns";
 
 function node(
   sha: string,
@@ -212,8 +215,8 @@ describe("buildWipBreakdown", () => {
 });
 
 describe("buildGridTemplate", () => {
-  const widths = { refs: 200, graph: 140, msg: 300 } as const;
-  const widthPx = (c: "refs" | "graph" | "msg") => widths[c];
+  const widths: Partial<Record<GraphCol, number>> = { refs: 200, graph: 140, msg: 300 };
+  const widthPx = (c: GraphCol): number => widths[c] ?? 0;
 
   test("interleaves 6px gutters and makes the last track 1fr", () => {
     expect(buildGridTemplate(["refs", "graph", "msg"], widthPx))
@@ -226,8 +229,8 @@ describe("buildGridTemplate", () => {
 });
 
 describe("graphLeftOffset", () => {
-  const widths = { refs: 200, graph: 140, msg: 300 } as const;
-  const widthPx = (c: "refs" | "graph" | "msg") => widths[c];
+  const widths: Partial<Record<GraphCol, number>> = { refs: 200, graph: 140, msg: 300 };
+  const widthPx = (c: GraphCol): number => widths[c] ?? 0;
 
   test("sums the widths and gutters before the graph column", () => {
     expect(graphLeftOffset(["refs", "graph", "msg"], widthPx)).toBe(206);
@@ -235,5 +238,29 @@ describe("graphLeftOffset", () => {
 
   test("graph first gives zero", () => {
     expect(graphLeftOffset(["graph", "refs", "msg"], widthPx)).toBe(0);
+  });
+});
+
+describe("isMergeNode / isRowDimmed", () => {
+  test("a commit with two parents is a merge; one or zero parents is not", () => {
+    expect(isMergeNode(node("m", { parents: ["a", "b"] }))).toBe(true);
+    expect(isMergeNode(node("c", { parents: ["a"] }))).toBe(false);
+    expect(isMergeNode(node("root"))).toBe(false);
+  });
+
+  test("merge dimming dims merges only when enabled", () => {
+    const m = node("m", { parents: ["a", "b"] });
+    expect(isRowDimmed(m, true, null)).toBe(true);
+    expect(isRowDimmed(m, false, null)).toBe(false);
+  });
+
+  test("a highlight dims rows outside the set and keeps rows inside it", () => {
+    const set = new Set(["keep"]);
+    expect(isRowDimmed(node("keep"), false, set)).toBe(false);
+    expect(isRowDimmed(node("other"), false, set)).toBe(true);
+  });
+
+  test("no highlight and no merge dimming dims nothing", () => {
+    expect(isRowDimmed(node("x", { parents: ["a", "b"] }), false, null)).toBe(false);
   });
 });

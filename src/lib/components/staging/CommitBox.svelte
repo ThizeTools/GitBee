@@ -3,6 +3,9 @@
   import { showGraph } from "$lib/stores/center";
   import { ipc } from "$lib/ipc";
   import { logAppend } from "$lib/stores/logs";
+  import { notifySuccess } from "$lib/stores/notifications";
+  import { pushUndo } from "$lib/stores/history";
+  import { commitUndo } from "$lib/stores/undoEntries";
   import { tick } from "svelte";
   import {
     SUMMARY_LIMIT, amendFields, composeMessage, isStaged,
@@ -33,28 +36,35 @@
   const stagedCount = $derived($status.filter(isStaged).length);
 
   async function commit() {
-    if (!$currentRepo || !summary.trim()) return;
+    const repo = $currentRepo;
+    if (!repo || !summary.trim()) return;
     if (stagedCount === 0 && !amend) return;
     const msg = composeMessage(summary, description);
+    const before = $graph?.head_sha ?? null;
     // Tauri serializes Rust `()` returns as JSON null, so the previous
     // `ok !== null` gate falsely treated success as failure and the input
     // was never cleared. Use a local success flag instead.
     let ok = false;
     await withBusy(async () => {
-      await ipc.commitCreate($currentRepo!, msg, amend, false);
+      await ipc.commitCreate(repo, msg, amend, false);
       ok = true;
     });
-    if (ok) {
-      summary = ""; description = ""; amend = false;
-      savedSummary = ""; savedDescription = "";
-      onCommitted?.();
-      logAppend("info", `committed: ${msg.split("\n")[0]}`);
-      // Drop user back on the graph after a successful commit so the new
-      // commit is visible immediately. If they were viewing a diff, the
-      // diff target is gone (file is now committed) — landing on the
-      // graph is the unambiguous next step.
-      showGraph();
-    }
+    if (!ok) return;
+    const subject = msg.split("\n")[0];
+    // withBusy has refreshed the graph, so HEAD is the new commit here.
+    const created = $graph?.head_sha ?? "";
+    // Undo needs the HEAD this commit sat on. A first commit has none.
+    if (before) pushUndo(commitUndo(repo, before, subject, msg, amend));
+    notifySuccess("Committed", `${created.slice(0, 7)}: ${subject}`);
+    summary = ""; description = ""; amend = false;
+    savedSummary = ""; savedDescription = "";
+    onCommitted?.();
+    logAppend("info", `committed: ${subject}`);
+    // Drop user back on the graph after a successful commit so the new
+    // commit is visible immediately. If they were viewing a diff, the
+    // diff target is gone (file is now committed) — landing on the
+    // graph is the unambiguous next step.
+    showGraph();
   }
 
   // Ctrl+Enter (Cmd+Enter on macOS) anywhere in the summary or description

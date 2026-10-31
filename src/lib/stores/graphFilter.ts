@@ -1,71 +1,106 @@
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
+import {
+  emptyRepoFilters, getRepoFilters, parseFilterMap, parseStringArray, repoFilterKey,
+  seedRepoFilters, serializeFilterMap, setRepoFilters,
+  type FilterMap, type RepoFilters,
+} from "$lib/stores/graphFilterMap";
 
 // Per-repo viewing filters that mask refs (and the commits reachable only
 // through them) from the graph. State is keyed by ref name (the qualified
 // `CommitRef.name`: "main", "origin/main", "v1.0", …) so a remote branch
 // can be hidden without affecting its local counterpart.
 //
-// Persistence is intentionally global (not per-repo) — the same .git
-// usually has the same noisy refs (gh-pages, dependabot/*, etc.) so a
-// single shared list is more useful than per-repo bookkeeping. Fits in a
-// single localStorage key.
-const STORAGE_HIDDEN = "gkp.graph.hiddenRefs.v1";
-// v2 — solo is now multi-valued (a Set of refs). Old single-string v1
-// values are migrated lazily on first read.
-const STORAGE_SOLO = "gkp.graph.soloRefs.v2";
-const STORAGE_SOLO_LEGACY = "gkp.graph.soloRef.v1";
-// v2 — pin is now single-valued (one branch pinned at a time). Old v1
-// arrays in localStorage are silently dropped on first read.
-const STORAGE_PINNED = "gkp.graph.pinnedRef.v2";
+// Each repo keeps its own hide / solo / pin set. WHY: with one global list, a
+// branch hidden in repo A also vanished from repo B (user complaint). The three
+// stores below always hold the ACTIVE repo's filters; setFilterRepo() swaps
+// them when the active tab changes. Storage is one JSON map keyed by the
+// normalized repo path (see graphFilterMap.ts).
+const STORAGE_MAP = "gkp.graph.filters.v1";
+// Legacy global keys from before per-repo filters. Read-only: a repo seen for
+// the first time is seeded from them once. They are never written or deleted,
+// so a repo opened later still starts from the same values.
+const LEGACY_HIDDEN = "gkp.graph.hiddenRefs.v1";
+const LEGACY_SOLO = "gkp.graph.soloRefs.v2";
+const LEGACY_SOLO_V1 = "gkp.graph.soloRef.v1";
+const LEGACY_PINNED = "gkp.graph.pinnedRef.v2";
 
-function loadSet(key: string): Set<string> {
-  if (typeof localStorage === "undefined") return new Set();
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as unknown;
-    return Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === "string")) : new Set();
-  } catch { return new Set(); }
-}
-
-function loadString(key: string): string | null {
+function readStorage(key: string): string | null {
   if (typeof localStorage === "undefined") return null;
-  return localStorage.getItem(key) || null;
+  try { return localStorage.getItem(key); } catch { return null; }
 }
 
-// Read solo set, migrating from the v1 single-string key on first run.
-function loadSoloSet(): Set<string> {
-  if (typeof localStorage === "undefined") return new Set();
-  const v2 = loadSet(STORAGE_SOLO);
-  if (v2.size > 0) return v2;
-  const legacy = localStorage.getItem(STORAGE_SOLO_LEGACY);
-  if (legacy) {
-    localStorage.removeItem(STORAGE_SOLO_LEGACY);
-    const s = new Set([legacy]);
-    localStorage.setItem(STORAGE_SOLO, JSON.stringify([...s]));
-    return s;
+// A failed write (quota, privacy mode) keeps the in-memory filters working
+// for this session; they just do not survive a restart.
+function writeStorage(key: string, value: string): void {
+  if (typeof localStorage === "undefined") return;
+  try { localStorage.setItem(key, value); } catch { /* in-memory state still applies */ }
+}
+
+// Legacy global values as one RepoFilters. A v1 single-string solo value
+// predates the v2 set and still counts as one soloed ref.
+function readLegacyFilters(): RepoFilters {
+  const solo = parseStringArray(readStorage(LEGACY_SOLO));
+  const soloV1 = readStorage(LEGACY_SOLO_V1);
+  return {
+    hidden: parseStringArray(readStorage(LEGACY_HIDDEN)),
+    solo: solo.length === 0 && soloV1 ? [soloV1] : solo,
+    pinned: readStorage(LEGACY_PINNED) || null,
+  };
+}
+
+// Live stores: always the active repo's filters. Empty until a repo is active.
+export const hiddenRefs = writable<Set<string>>(new Set());
+export const soloRefs = writable<Set<string>>(new Set());
+export const pinnedRef = writable<string | null>(null);
+
+let activeKey: string | null = null;
+let filterMap: FilterMap = parseFilterMap(readStorage(STORAGE_MAP));
+// True while setFilterRepo swaps the stores, so half-swapped states are never written.
+let swapping = false;
+
+function currentFilters(): RepoFilters {
+  return { hidden: [...get(hiddenRefs)], solo: [...get(soloRefs)], pinned: get(pinnedRef) };
+}
+
+// Subscribing (rather than wrapping each mutator) catches every writer,
+// including direct .set() calls from other modules.
+function persistActive(): void {
+  if (swapping || activeKey === null) return;
+  filterMap = setRepoFilters(filterMap, activeKey, currentFilters());
+  writeStorage(STORAGE_MAP, serializeFilterMap(filterMap));
+}
+hiddenRefs.subscribe(persistActive);
+soloRefs.subscribe(persistActive);
+pinnedRef.subscribe(persistActive);
+
+// Stored filters for `key`. A repo with no entry is seeded from the legacy
+// globals and the map is saved right away, so the seed survives a restart even
+// if the user never changes a filter.
+function loadFilters(key: string): RepoFilters {
+  if (getRepoFilters(filterMap, key) === null) {
+    filterMap = seedRepoFilters(filterMap, key, readLegacyFilters());
+    writeStorage(STORAGE_MAP, serializeFilterMap(filterMap));
   }
-  return new Set();
+  return getRepoFilters(filterMap, key) ?? emptyRepoFilters();
 }
 
-export const hiddenRefs = writable<Set<string>>(loadSet(STORAGE_HIDDEN));
-export const soloRefs = writable<Set<string>>(loadSoloSet());
-export const pinnedRef = writable<string | null>(loadString(STORAGE_PINNED));
-
-hiddenRefs.subscribe((s) => {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(STORAGE_HIDDEN, JSON.stringify([...s]));
-});
-soloRefs.subscribe((s) => {
-  if (typeof localStorage === "undefined") return;
-  if (s.size > 0) localStorage.setItem(STORAGE_SOLO, JSON.stringify([...s]));
-  else localStorage.removeItem(STORAGE_SOLO);
-});
-pinnedRef.subscribe((s) => {
-  if (typeof localStorage === "undefined") return;
-  if (s) localStorage.setItem(STORAGE_PINNED, s);
-  else localStorage.removeItem(STORAGE_PINNED);
-});
+/** Points the live filter stores at one repo, or at none (null). Called from
+ * repo.ts whenever the active tab changes. Activating the same repo again is a
+ * no-op. Example: setFilterRepo("C:\\Code\\App") */
+export function setFilterRepo(path: string | null): void {
+  const key = path ? repoFilterKey(path) : null;
+  if (key === activeKey) return;
+  activeKey = key;
+  const next = key === null ? emptyRepoFilters() : loadFilters(key);
+  swapping = true;
+  try {
+    hiddenRefs.set(new Set(next.hidden));
+    soloRefs.set(new Set(next.solo));
+    pinnedRef.set(next.pinned);
+  } finally {
+    swapping = false;
+  }
+}
 
 export function hideRef(name: string): void {
   hiddenRefs.update((s) => { const n = new Set(s); n.add(name); return n; });

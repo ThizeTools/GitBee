@@ -3,6 +3,10 @@ import { ipc } from "$lib/ipc";
 import { currentRepo, withBusy } from "$lib/stores/repo";
 import { logAppend } from "$lib/stores/logs";
 import { alertDialog, confirmDialog, promptDialog } from "$lib/stores/dialog";
+import { pushUndo } from "$lib/stores/history";
+import { notifyError } from "$lib/stores/notifications";
+import { discardAllUndo, discardFileUndo } from "$lib/stores/undoEntries";
+import { runAction } from "$lib/menus/menuActions";
 
 // Repo-bound file actions for the staging lists and their context menu.
 // Each reads the open repo at call time, so a menu item clicked after a tab
@@ -22,13 +26,22 @@ export async function unstageFile(path: string): Promise<void> {
   await withBusy(() => ipc.unstageFile(repo, path));
 }
 
-/** Discard worktree changes for one file, after a confirm dialog. */
+/** Discard worktree changes for one file, after a confirm dialog. The file's
+ * bytes are backed up first, so Undo can restore them. */
 export async function discardFile(path: string): Promise<void> {
   const repo = get(currentRepo);
   if (!repo) return;
   const ok = await confirmDialog({ title: `Discard changes in ${path}?`, confirmLabel: "Discard", danger: true });
   if (!ok) return;
-  await withBusy(() => ipc.discardFile(repo, path));
+  let blob: string | null;
+  try {
+    blob = await ipc.backupFile(repo, path);
+  } catch (e) {
+    notifyError("Discard aborted", `could not back up ${path}: ${e}`);
+    return;
+  }
+  const res = await runAction(`Discard ${path}`, () => ipc.discardFile(repo, path));
+  if (res.ok) pushUndo(discardFileUndo(repo, path, blob));
 }
 
 /** Stage every change in the open repo. */
@@ -59,12 +72,15 @@ export async function unstageFiles(paths: string[]): Promise<void> {
   await withBusy(() => ipc.unstageFiles(repo, paths));
 }
 
-/** Discard every change, including untracked files. The caller confirms first. */
+/** Discard every change, including untracked files. The caller confirms first.
+ * The changes go to a backup commit, so Undo can restore them. */
 export async function discardAllChanges(): Promise<void> {
   const repo = get(currentRepo);
   if (!repo) return;
-  await withBusy(() => ipc.discardAllChanges(repo));
-  logAppend("info", "discarded all changes (reset --hard + clean -fd)");
+  const backup = await withBusy(() => ipc.discardAllWithBackup(repo));
+  if (backup === null) return;
+  pushUndo(discardAllUndo(repo, backup));
+  logAppend("info", "discarded all changes (kept in a backup for Undo)");
 }
 
 /** Append a path to the repo's .gitignore. */
@@ -79,8 +95,10 @@ export async function addIgnore(p: string): Promise<void> {
 export async function stashOneFile(f: string): Promise<void> {
   const repo = get(currentRepo);
   if (!repo) return;
-  const m = (await promptDialog({ title: "Stash message (optional):", initial: `wip: ${f}`, confirmLabel: "Stash" })) || undefined;
-  await withBusy(() => ipc.stashFile(repo, f, m));
+  const typed = await promptDialog({ title: "Stash message (optional):", initial: `wip: ${f}`, confirmLabel: "Stash" });
+  // Cancelling (null) aborts. An empty message keeps the default: no message.
+  if (typed === null) return;
+  await withBusy(() => ipc.stashFile(repo, f, typed || undefined));
 }
 
 /** Show the last 50 commits touching a file in an alert dialog. */

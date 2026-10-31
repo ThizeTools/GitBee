@@ -13,5 +13,6 @@ pub mod stash;
 pub mod system;
 pub mod tags;
 pub mod terminal;
+pub mod undo;
 pub mod watcher_cmd;
 pub mod worktrees;

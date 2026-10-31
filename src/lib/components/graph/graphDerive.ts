@@ -197,6 +197,24 @@ export function buildGridTemplate(
   return parts.join(" ");
 }
 
+// A commit with two or more parents. Shared by the merge dimming and the
+// avatar rule above, so "merge" means the same thing everywhere.
+export function isMergeNode(node: GraphNode): boolean {
+  return node.parents.length >= 2;
+}
+
+// Text-dimming rule for one HTML row. A row dims when merge dimming is on and
+// it is a merge, or when a ref highlight is active and the row is outside the
+// hovered ref's history. Both can apply; either one is enough.
+export function isRowDimmed(
+  node: GraphNode,
+  dimMerges: boolean,
+  highlightSet: ReadonlySet<string> | null,
+): boolean {
+  if (dimMerges && isMergeNode(node)) return true;
+  return highlightSet !== null && !highlightSet.has(node.sha);
+}
+
 // Px offset of the "graph" column's left edge given the current column order.
 export function graphLeftOffset(
   order: readonly GraphCol[],

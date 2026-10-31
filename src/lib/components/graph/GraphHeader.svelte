@@ -2,6 +2,8 @@
   import ResizeHandle from "../ResizeHandle.svelte";
   import type { GraphCol } from "$lib/stores/layout";
   import type { GraphColumnSpec } from "./graphDerive";
+  import { openMenu } from "$lib/stores/contextmenu";
+  import { columnMenuItems } from "./graphHeaderMenu";
 
   // Column titles keyed by column id. A new column (author, date, sha) gets
   // one entry here and one entry in the column list the parent passes in.
@@ -9,15 +11,36 @@
     refs: "BRANCH / TAG",
     graph: "GRAPH",
     msg: "COMMIT MESSAGE",
+    author: "AUTHOR",
+    date: "DATE",
+    sha: "SHA",
   };
 
   interface Props {
+    // Visible columns only, in layout order; each one gets a ResizeHandle after it.
     columns: readonly GraphColumnSpec[];
     gridTemplate: string;
+    // Full layout order, hidden columns included. Drag-reorder works on this list
+    // so a hidden column keeps its slot.
+    allCols: readonly GraphCol[];
+    hidden: readonly GraphCol[];
+    dimMerges: boolean;
     onReorder: (next: GraphCol[]) => void;
     onResize: (col: GraphCol, value: number) => void;
+    onToggleHidden: (col: GraphCol) => void;
+    onToggleDim: () => void;
   }
-  let { columns, gridTemplate, onReorder, onResize }: Props = $props();
+  let {
+    columns, gridTemplate, allCols, hidden, dimMerges,
+    onReorder, onResize, onToggleHidden, onToggleDim,
+  }: Props = $props();
+
+  // Right-click anywhere on the header opens the column visibility menu.
+  function onHeaderContext(e: MouseEvent): void {
+    openMenu(e, columnMenuItems({
+      order: allCols, hidden, dimMerges, onToggleHidden, onToggleDim,
+    }));
+  }
 
   // ------- column drag/reorder -------
   let dragCol: GraphCol | null = $state(null);
@@ -38,7 +61,9 @@
   function onColDrop(e: DragEvent, col: GraphCol) {
     e.preventDefault();
     if (!dragCol || dragCol === col) { dragCol = null; dragOver = null; return; }
-    const next = columns.map((c) => c.id);
+    // Reorder the full list, not the visible one: writing back only visible
+    // columns would drop the hidden ones from the stored order.
+    const next = [...allCols];
     const from = next.indexOf(dragCol);
     const to = next.indexOf(col);
     if (from < 0 || to < 0) { dragCol = null; dragOver = null; return; }
@@ -51,7 +76,7 @@
 </script>
 
 <!-- header row: drag-to-reorder column titles -->
-<div class="header" style:grid-template-columns={gridTemplate}>
+<div class="header" style:grid-template-columns={gridTemplate} oncontextmenu={onHeaderContext} role="presentation">
   {#each columns as column, i (column.id)}
     <div
       class="col-head"

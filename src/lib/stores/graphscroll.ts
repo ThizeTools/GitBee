@@ -3,6 +3,9 @@ import { graph, busy, currentRepo, localBranches, refreshActive } from "$lib/sto
 import { ipc } from "$lib/ipc";
 import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
 import { confirmDialog } from "$lib/stores/dialog";
+import { pushUndo } from "$lib/stores/history";
+import { checkoutUndo } from "$lib/stores/undoEntries";
+import { checkoutTargetOf, type CheckoutTarget } from "$lib/stores/refLookup";
 
 // When set to a SHA, GraphCanvas scrolls that row into view and clears it.
 export const graphScrollTarget = writable<string | null>(null);
@@ -88,11 +91,31 @@ export async function checkoutWithAutoStash(
 }
 
 function checkoutBranchAutoStash(repo: string, branch: string) {
-  return checkoutWithAutoStash(repo, branch, () => ipc.branchCheckout(repo, branch));
+  const target: CheckoutTarget = { ref: branch, isBranch: true };
+  return checkoutRecorded(repo, target, branch, () => ipc.branchCheckout(repo, branch));
 }
 
 export function checkoutShaAutoStash(repo: string, sha: string) {
-  return checkoutWithAutoStash(repo, sha.slice(0, 7), () => ipc.checkoutSha(repo, sha));
+  const target: CheckoutTarget = { ref: sha, isBranch: false };
+  return checkoutRecorded(repo, target, sha.slice(0, 7), () => ipc.checkoutSha(repo, sha));
+}
+
+// Records a successful checkout so Undo can return to the HEAD it replaced.
+// A checkout that changes nothing (already on that branch or commit) is not recorded.
+async function checkoutRecorded(
+  repo: string,
+  target: CheckoutTarget,
+  label: string,
+  doCheckout: () => Promise<unknown>,
+): Promise<true | string> {
+  const g = get(graph);
+  const previous = checkoutTargetOf(g?.head_branch ?? null, g?.head_sha ?? null);
+  const result = await checkoutWithAutoStash(repo, label, doCheckout);
+  const moved = previous !== null && (previous.ref !== target.ref || previous.isBranch !== target.isBranch);
+  if (result === true && previous && moved) {
+    pushUndo(checkoutUndo(repo, previous, label, doCheckout));
+  }
+  return result;
 }
 
 export async function checkoutAndJump(branch: string) {

@@ -22,6 +22,8 @@ const LANE_COLORS = [
 ];
 
 const LINE_WIDTH = 2;
+// Paint alpha for rows outside a hovered ref's history (graph-columns-and-markers spec).
+const DIM_ALPHA = 0.25;
 const SELECT_RING = "#ffffff";
 const SELECT_GLOW = "rgba(255, 255, 255, 0.35)";
 // Stash + WIP glyphs match the avatar node size since they share its
@@ -66,6 +68,9 @@ export interface RenderArgs {
    *  Connectors end here; rows missing from the map run to the canvas
    *  left edge. */
   badgeEndsByRow?: Map<number, number>;
+  /** Shas of the commits in a hovered ref's history. Rows outside it paint at
+   *  DIM_ALPHA. Null or absent means no highlight. */
+  highlightSet?: ReadonlySet<string> | null;
 }
 
 /** Paints the visible slice of the graph: line segments, then nodes on top.
@@ -84,11 +89,23 @@ export function render(args: RenderArgs): void {
   const startRow = Math.max(0, Math.floor((scrollTop - TOP_PADDING) / ROW_HEIGHT) - 1);
   const endRow = Math.min(nodes.length, Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT) + 1);
   for (let r = startRow; r < endRow; r++) {
+    ctx.globalAlpha = rowAlpha(args, r);
     drawRowSegments(ctx, args.segments[r] ?? [], nodes[r].lane, rowY(r) - scrollTop);
   }
+  ctx.globalAlpha = 1;
   drawHover(ctx, args);
-  for (let r = startRow; r < endRow; r++) drawNode(ctx, args, r, bg);
+  for (let r = startRow; r < endRow; r++) {
+    ctx.globalAlpha = rowAlpha(args, r);
+    drawNode(ctx, args, r, bg);
+  }
   ctx.restore();
+}
+
+// 1 inside the highlight (or with no highlight), DIM_ALPHA outside it.
+function rowAlpha(args: RenderArgs, r: number): number {
+  const set = args.highlightSet;
+  if (!set) return 1;
+  return set.has(args.nodes[r].sha) ? 1 : DIM_ALPHA;
 }
 
 // WIP ghost: dashed ring one row above the top, joined to HEAD's node by a
@@ -102,6 +119,7 @@ function drawWip(ctx: CanvasRenderingContext2D, args: RenderArgs, bg: string): v
   const x = laneX(lane);
   const wipY = TOP_PADDING + ROW_HEIGHT / 2 - scrollTop - ROW_HEIGHT;
   ctx.save();
+  ctx.globalAlpha = rowAlpha(args, headRow);
   ctx.strokeStyle = laneColor(lane);
   ctx.lineWidth = LINE_WIDTH;
   ctx.setLineDash([5, 4]);
@@ -202,7 +220,8 @@ function drawRefConnector(
   const badgeEnd = args.badgeEndsByRow?.get(r);
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.globalAlpha = isHead ? 1 : 0.5;
+  // Multiply: the caller already set the row's dim alpha.
+  ctx.globalAlpha *= isHead ? 1 : 0.5;
   ctx.lineWidth = isHead ? 2 : 1.5;
   ctx.beginPath();
   ctx.moveTo(x, y);

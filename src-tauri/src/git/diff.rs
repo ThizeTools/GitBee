@@ -80,19 +80,24 @@ pub fn parse_unified(text: &str) -> Vec<FileDiff> {
         // whatever parse_diff_paths guessed once we see the real headers.
         // `rename from`/`rename to` cover pure renames, which emit no `---`.
         // (audit 2026-05)
-        if let Some(rest) = bare.strip_prefix("--- ") {
+        // Only between hunks are these headers. Inside an open hunk the same
+        // text is a body line: a removed "-- SQL" is "--- SQL" and an added
+        // "++ x" is "+++ x". Treating those as headers dropped the line and
+        // overwrote the file path. Regression tests: `keeps_dash_and_plus_body_lines_in_a_hunk`.
+        let between_hunks = current_hunk.is_none();
+        if let (true, Some(rest)) = (between_hunks, bare.strip_prefix("--- ")) {
             if let Some(f) = current.as_mut() { f.old_path = strip_diff_path(rest); }
             continue;
         }
-        if let Some(rest) = bare.strip_prefix("+++ ") {
+        if let (true, Some(rest)) = (between_hunks, bare.strip_prefix("+++ ")) {
             if let Some(f) = current.as_mut() { f.new_path = strip_diff_path(rest); }
             continue;
         }
-        if let Some(rest) = bare.strip_prefix("rename from ") {
+        if let (true, Some(rest)) = (between_hunks, bare.strip_prefix("rename from ")) {
             if let Some(f) = current.as_mut() { f.old_path = rest.trim().to_string(); }
             continue;
         }
-        if let Some(rest) = bare.strip_prefix("rename to ") {
+        if let (true, Some(rest)) = (between_hunks, bare.strip_prefix("rename to ")) {
             if let Some(f) = current.as_mut() { f.new_path = rest.trim().to_string(); }
             continue;
         }
@@ -307,5 +312,31 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].old_path, "");
         assert_eq!(files[0].new_path, "new.txt");
+    }
+
+    // Regression: inside an open hunk a removed "-- SQL" line is "--- SQL" and an
+    // added "++ y" line is "+++ y". Both must stay body lines, and the paths
+    // must keep the values from the real `---`/`+++` headers.
+    #[test]
+    fn keeps_dash_and_plus_body_lines_in_a_hunk() {
+        let input = concat!(
+            "diff --git a/q.sql b/q.sql\n",
+            "--- a/q.sql\n",
+            "+++ b/q.sql\n",
+            "@@ -1,2 +1,3 @@\n",
+            "--- SQL comment\n",
+            "+++ y\n",
+            "+++x\n",
+            " keep\n",
+        );
+        let files = parse_unified(input);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].old_path, "q.sql");
+        assert_eq!(files[0].new_path, "q.sql");
+        let lines = &files[0].hunks[0].lines;
+        assert_eq!(lines.len(), 4);
+        assert_eq!((lines[0].kind, lines[0].content.as_str()), (LineKind::Del, "-- SQL comment"));
+        assert_eq!((lines[1].kind, lines[1].content.as_str()), (LineKind::Add, "++ y"));
+        assert_eq!((lines[2].kind, lines[2].content.as_str()), (LineKind::Add, "++x"));
     }
 }

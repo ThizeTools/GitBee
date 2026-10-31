@@ -11,9 +11,12 @@
   import { graph, currentRepo, stashes, withBusy } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
+  import { diffPrefs } from "$lib/stores/diffPrefs";
+  import { stashRevs } from "$lib/diff/revs";
   import Avatar from "./Avatar.svelte";
   import { showCommitFile } from "$lib/stores/center";
-  import { confirmDialog, promptDialog } from "$lib/stores/dialog";
+  import { promptDialog } from "$lib/stores/dialog";
+  import { dropStashAt } from "$lib/menus/stashActions";
   import type { FileDiff, GraphNode } from "$lib/ipc";
 
   interface Props { index: number; onClose: () => void; }
@@ -47,7 +50,7 @@
   }
 
   $effect(() => {
-    void index;
+    void index; void $diffPrefs.ignoreWs;
     if ($currentRepo && entry) load();
   });
 
@@ -57,7 +60,7 @@
     // `git show <stash-sha>` returns a combined diff (stash is a 3-parent
     // merge of HEAD + index + untracked) which is almost always empty.
     // `git stash show -p stash@{N}` is the right one.
-    try { diffs = await ipc.diffStash($currentRepo, index); }
+    try { diffs = await ipc.diffStash($currentRepo, index, $diffPrefs.ignoreWs); }
     catch { diffs = []; }
     finally { loading = false; }
   }
@@ -74,10 +77,7 @@
   }
   async function drop() {
     if (!$currentRepo) return;
-    const ok = await confirmDialog({ title: `Drop stash@{${index}}?`, confirmLabel: "Drop", danger: true });
-    if (!ok) return;
-    await withBusy(() => ipc.stashDrop($currentRepo!, index));
-    onClose();
+    if (await dropStashAt($currentRepo, index)) onClose();
   }
   async function editMsg() {
     if (!$currentRepo || !entry) return;
@@ -225,10 +225,11 @@
     <div class="files-body">
       {#if loading}
         <div class="empty">Loading…</div>
-      {:else if diffs.length === 0}
+      {:else if diffs.length === 0 && !$diffPrefs.ignoreWs}
         <div class="empty">No changes in stash.</div>
-      {:else if showDiffs}
-        <DiffViewer diffs={diffs} />
+      {:else if showDiffs || diffs.length === 0}
+        <!-- Empty with whitespace hidden: DiffViewer shows the toolbar that undoes it. -->
+        <DiffViewer {diffs} revs={stashRevs(index)} />
       {:else}
         <div class="expand-row">
           <button class="link" onclick={expandAll}>{allExpanded ? "Collapse All" : "Expand All"}</button>

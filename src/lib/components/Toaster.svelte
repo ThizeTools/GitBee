@@ -1,10 +1,16 @@
 <script lang="ts">
-  import { notices, dismiss, type Notice } from "$lib/stores/notifications";
+  import {
+    notices, dismiss, pauseNotice, resumeNotice, type Notice,
+  } from "$lib/stores/notifications";
 
   // The progress bar drains with a CSS animation lasting the toast's TTL. A
   // rAF loop used to re-render this component every frame forever, even with
   // no toasts. Each toast mounts once (keyed by id), so an animation started
   // at mount matches its TTL without any per-frame work.
+  //
+  // Hover pauses both clocks: the store stops the dismiss timer, and the
+  // `paused` class sets animation-play-state so the bar stops where it is.
+  // Leaving resumes both from the same point, so they never drift apart.
 
   function icon(k: Notice["kind"]): string {
     switch (k) {
@@ -18,7 +24,13 @@
 
 <div class="toaster" aria-live="polite" aria-atomic="false">
   {#each $notices as n (n.id)}
-    <div class="toast {n.kind}" role="status">
+    <div
+      class="toast {n.kind}"
+      class:paused={n.runningSince === null}
+      role="status"
+      onmouseenter={() => pauseNotice(n.id)}
+      onmouseleave={() => resumeNotice(n.id)}
+    >
       <button class="close" onclick={() => dismiss(n.id)} title="Dismiss">×</button>
       <div class="row">
         <span class="ico">{icon(n.kind)}</span>
@@ -121,4 +133,6 @@
   .toast.success .bar-fill { background: var(--accent); }
   .toast.warn    .bar-fill { background: var(--modified); }
   .toast.error   .bar-fill { background: var(--del); }
+  /* Mirrors pauseNotice(): the bar holds its place while the toast is hovered. */
+  .toast.paused .bar-fill { animation-play-state: paused; }
 </style>

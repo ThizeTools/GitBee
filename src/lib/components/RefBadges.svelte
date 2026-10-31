@@ -6,6 +6,8 @@
   import { openMenu } from "$lib/stores/contextmenu";
   import { localBranchMenu, remoteBranchMenu, tagMenu } from "$lib/menus/refMenus";
   import { pinnedRef } from "$lib/stores/graphFilter";
+  import { onDestroy } from "svelte";
+  import { scheduleRefHover, releaseRefHover } from "$lib/stores/refHover";
 
   interface Props {
     refs: CommitRef[];
@@ -118,6 +120,9 @@
   // Round 6 #1: it MUST visually replace the badge (not float beside it),
   // and pointer events go to it, not to underlying graph rows.
   function onEnter(e: MouseEvent) {
+    // Ghost badges preview containing branches on a row with no refs of its own;
+    // they must not dim the graph (graph-columns-and-markers spec).
+    if (!ghost && primary.target_sha) scheduleRefHover(primary.target_sha);
     // #2 round 10: ghost (containing-branches preview on hovered commit row)
     // never opens a popover — only real refs at the row do.
     if (ghost) return;
@@ -139,6 +144,15 @@
   function cancelClose() {
     if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
   }
+  // Leaving the badge ends the dwell and drops any highlight this badge set.
+  function onLeave(): void {
+    if (primary.target_sha) releaseRefHover(primary.target_sha);
+    scheduleClose();
+  }
+  // Row unmounted while hovered (scroll or data refresh): drop only our own highlight.
+  onDestroy(() => {
+    if (primary.target_sha) releaseRefHover(primary.target_sha);
+  });
 
   function onContext(e: MouseEvent, it: DisplayItem) {
     e.preventDefault();
@@ -179,7 +193,7 @@
     class="badges"
     class:ghost
     onmouseenter={onEnter}
-    onmouseleave={scheduleClose}
+    onmouseleave={onLeave}
     role="presentation"
   >
     <span

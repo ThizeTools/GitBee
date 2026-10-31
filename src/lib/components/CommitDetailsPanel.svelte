@@ -2,9 +2,14 @@
   import { graph, currentRepo, refsByCommit, withBusy } from "$lib/stores/repo";
   import { checkoutShaAutoStash } from "$lib/stores/graphscroll";
   import { notifyError } from "$lib/stores/notifications";
+  import { pushUndo } from "$lib/stores/history";
+  import { tagCreateUndo } from "$lib/stores/undoEntries";
+  import { runAction } from "$lib/menus/menuActions";
   import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
+  import { diffPrefs } from "$lib/stores/diffPrefs";
+  import { commitRevs } from "$lib/diff/revs";
   import Avatar from "./Avatar.svelte";
   import { showCommitFile } from "$lib/stores/center";
   import type { FileDiff, GraphNode } from "$lib/ipc";
@@ -48,7 +53,7 @@
   });
 
   $effect(() => {
-    void sha;
+    void sha; void $diffPrefs.ignoreWs;
     if ($currentRepo) load();
     // New commit selected → reset nav state so ArrowRight starts on the
     // first file again. Keeps focus state consistent as user steps
@@ -101,7 +106,7 @@
     loading = true;
     try {
       const [d, full] = await Promise.all([
-        ipc.diffCommit($currentRepo, sha),
+        ipc.diffCommit($currentRepo, sha, undefined, $diffPrefs.ignoreWs),
         ipc.commitShow($currentRepo, sha).catch(() => ""),
       ]);
       diffs = d;
@@ -159,8 +164,12 @@
     if (!repo) return;
     const name = await promptDialog({ title: "Tag name:", validate: requireName });
     if (!name) return;
-    const message = (await promptDialog({ title: "Message (empty for lightweight):" })) || undefined;
-    await withBusy(() => ipc.tagCreate(repo, name, sha, message));
+    const typed = await promptDialog({ title: "Message (empty for lightweight):" });
+    // Cancelling (null) aborts. An empty message keeps the lightweight tag.
+    if (typed === null) return;
+    const message = typed || undefined;
+    const res = await runAction(`Create tag ${name}`, () => ipc.tagCreate(repo, name, sha, message));
+    if (res.ok) pushUndo(tagCreateUndo(repo, name, sha, message));
   }
 
   function fmtDate(ts: number): string {
@@ -321,10 +330,11 @@
     <div class="files-body">
       {#if loading}
         <div class="empty">Loading…</div>
-      {:else if diffs.length === 0}
+      {:else if diffs.length === 0 && !$diffPrefs.ignoreWs}
         <div class="empty">No changes (or empty commit).</div>
-      {:else if showDiffs}
-        <DiffViewer diffs={diffs} />
+      {:else if showDiffs || diffs.length === 0}
+        <!-- Empty with whitespace hidden: DiffViewer shows the toolbar that undoes it. -->
+        <DiffViewer {diffs} revs={commitRevs(sha)} />
       {:else}
         <div class="expand-row">
           <button class="link" onclick={expandAll}>{allExpanded ? "Collapse All" : "Expand All"}</button>

@@ -95,11 +95,46 @@ On 200, persists the token. On 401, returns `Unauthorized`.
 
 ### Token storage
 
-Use the `keyring` crate (Windows Credential Manager / macOS Keychain /
-libsecret). Service name `gitbee`, account name `github-token`. If the
-keyring is unavailable (rare on Linux without secret service), fall back
-to an obfuscated row in the existing SQLite cache database with a clear
-log warning. Never plaintext.
+The token lives in the OS credential store, through the `keyring` crate
+(Windows Credential Manager / macOS Keychain / libsecret). Service
+`GitBee`, account `github-token`. The keyring call sits behind the
+project trait `SecretStore` (`src-tauri/src/github/secret_store.rs`); the
+rules below live in `src-tauri/src/github/storage.rs`. The service name
+was `gitbee` in an earlier draft; nothing was ever stored under either
+name, because the keyring was not wired up before this change.
+
+Why: the previous storage was XOR with a fixed key compiled into the
+binary, then base64, in the SQLite `settings` table. That stops a casual
+look at `cache.db` and nothing more. Anyone with the app can recover the
+key and therefore the token. XOR is obfuscation, not protection. The OS
+store is encrypted per user and unlocks with the user's login session.
+
+Rules:
+- **Read.** The OS store first. If it holds nothing and the legacy SQLite
+  row exists, the row is decoded, written to the OS store, and the row is
+  deleted. A failed OS write keeps the row, so the next read retries.
+- **Unavailable store** (read, write or delete error, such as no Secret
+  Service on Linux). Reads use the SQLite row so login keeps working, and
+  every failure is logged as a structured warning (`store="os-keyring"`).
+  This fallback is weaker than the OS store. The warning is the only
+  signal that it is in use.
+- **Write.** The OS store is written and the SQLite row is deleted. If the
+  OS write fails, any older copy in the OS store is removed, so it cannot
+  win over the new value, and the token goes to the SQLite row.
+- **Logout.** The SQLite row is deleted and its error is returned. The OS
+  store entry is deleted and an error there is logged, not returned. When
+  the store is unavailable, the SQLite row is the only copy, so logout
+  must still succeed.
+- Never plaintext.
+
+Rejected alternatives:
+- **Keep XOR and document it.** The key ships in the binary, so the
+  token is recoverable by anyone who has the app.
+- **Encrypt the SQLite blob with a key stored beside it** (in the same
+  database or in an app-data file). Same problem: the key sits next to
+  the ciphertext, so anyone who can read the app's files can decrypt it.
+- **Derive the key from machine or user identifiers.** Those are readable
+  by the same user, so the key is not a secret.
 
 ## Repo picker (clone tab)
 
@@ -230,13 +265,14 @@ Disk cache at `<app_data>/gitbee/avatars/<sha1(email)>.png`.
 ## Files added
 
 ```
-src-tauri/Cargo.toml                  (+reqwest, keyring, sha1, sha2, base64, urlencoding, tiny_http)
+src-tauri/Cargo.toml                  (+reqwest, keyring, sha1, base64, tiny_http)
 src-tauri/src/github/mod.rs
 src-tauri/src/github/oauth.rs         (loopback flow + PKCE)
 src-tauri/src/github/api.rs           (GraphQL + REST helpers)
 src-tauri/src/github/avatars.rs       (email→URL + disk cache)
 src-tauri/src/github/types.rs
-src-tauri/src/github/storage.rs       (keyring + sqlite fallback)
+src-tauri/src/github/storage.rs       (token policy: migration, fallback)
+src-tauri/src/github/secret_store.rs  (SecretStore trait + keyring backend)
 src-tauri/src/commands/github.rs
 src/lib/ipc/github.ts
 src/lib/stores/github.ts              (auth state + repo cache)

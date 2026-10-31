@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
-use crate::git::checked_ref;
+use crate::git::{checked_ref, GitRunner};
 use crate::state::AppState;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
@@ -53,6 +54,91 @@ pub async fn file_read_at(
     checked_ref(&sha)?;
     let spec = format!("{sha}:{file}");
     state.git.run_text_lossy(&cwd(&path), ["show", &spec]).await
+}
+
+/// Largest image sent to the webview as base64. A bigger blob would stall the
+/// diff view, so the frontend shows the error text in place of the image.
+pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+#[derive(Debug, Serialize)]
+pub struct FileBytes { pub base64: String, pub mime: String }
+
+/// MIME type for the image extensions the diff viewer previews, or `None`
+/// for anything else so non-images never reach the base64 path.
+/// Keep the list in sync with IMAGE_EXTENSIONS in src/lib/diff/image.ts.
+pub fn image_mime(file: &str) -> Option<&'static str> {
+    let ext = Path::new(file).extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "svg" => "image/svg+xml",
+        _ => return None,
+    })
+}
+
+/// Object name for one side of an image diff: `INDEX` is the staged blob
+/// (`:<file>`), any other value is a git revision (`<rev>:<file>`).
+/// The rev is guarded so a leading `-` cannot become a git option.
+fn blob_spec(rev: &str, file: &str) -> AppResult<String> {
+    if rev == "INDEX" {
+        return Ok(format!(":{file}"));
+    }
+    Ok(format!("{}:{file}", checked_ref(rev)?))
+}
+
+fn check_size(bytes: u64, file: &str) -> AppResult<()> {
+    if bytes <= MAX_IMAGE_BYTES {
+        return Ok(());
+    }
+    let mib = 1024.0 * 1024.0;
+    Err(AppError::Other(format!(
+        "{file} is {:.1} MB; the diff viewer previews images up to {:.0} MB",
+        bytes as f64 / mib,
+        MAX_IMAGE_BYTES as f64 / mib,
+    )))
+}
+
+async fn worktree_bytes(repo: &Path, file: &str) -> AppResult<Vec<u8>> {
+    let full = safe_join(repo, file)?;
+    check_size(fs::metadata(&full).await?.len(), file)?;
+    Ok(fs::read(&full).await?)
+}
+
+/// Size is checked with `cat-file -s` before the blob is loaded, so an
+/// oversized image never gets pulled into memory.
+async fn rev_bytes(git: &GitRunner, repo: &Path, rev: &str, file: &str) -> AppResult<Vec<u8>> {
+    let spec = blob_spec(rev, file)?;
+    let size_text = git.run_text(repo, ["cat-file", "-s", &spec]).await?;
+    let size: u64 = size_text
+        .trim()
+        .parse()
+        .map_err(|e| AppError::Parse(format!("bad blob size for {spec}: {e}")))?;
+    check_size(size, file)?;
+    git.run(repo, ["cat-file", "blob", &spec]).await
+}
+
+/// Bytes of an image at a revision (`rev` = `INDEX` or a sha/ref) or in the
+/// working tree (`rev` = None). `cat-file blob` returns the raw stored bytes;
+/// `git show` could apply textconv filters and change them.
+#[tauri::command]
+pub async fn file_bytes_base64(
+    path: String,
+    rev: Option<String>,
+    file: String,
+    state: State<'_, AppState>,
+) -> AppResult<FileBytes> {
+    let mime = image_mime(&file)
+        .ok_or_else(|| AppError::Other(format!("not an image file: {file}")))?;
+    let repo = PathBuf::from(&path);
+    let bytes = match rev.as_deref() {
+        None => worktree_bytes(&repo, &file).await?,
+        Some(r) => rev_bytes(&state.git, &repo, r, &file).await?,
+    };
+    Ok(FileBytes { base64: STANDARD.encode(&bytes), mime: mime.into() })
 }
 
 #[tauri::command]
@@ -231,4 +317,43 @@ pub async fn stash_edit_message(
     let shifted = format!("stash@{{{}}}", index + 1);
     state.git.run(&cwd(&path), ["stash", "drop", &shifted]).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_mime_maps_preview_extensions_case_insensitively() {
+        assert_eq!(image_mime("logo.PNG"), Some("image/png"));
+        assert_eq!(image_mime("photo.jpeg"), Some("image/jpeg"));
+        assert_eq!(image_mime("dir.d/icon.svg"), Some("image/svg+xml"));
+        assert_eq!(image_mime("favicon.ico"), Some("image/x-icon"));
+    }
+
+    #[test]
+    fn image_mime_rejects_non_images_and_extensionless_paths() {
+        assert_eq!(image_mime("main.rs"), None);
+        assert_eq!(image_mime("Makefile"), None);
+        assert_eq!(image_mime("archive.png.zip"), None);
+    }
+
+    #[test]
+    fn blob_spec_uses_index_colon_form_for_staged_blobs() {
+        assert_eq!(blob_spec("INDEX", "a/b.png").unwrap(), ":a/b.png");
+        assert_eq!(blob_spec("HEAD", "a.png").unwrap(), "HEAD:a.png");
+        assert_eq!(blob_spec("abc123^", "a.png").unwrap(), "abc123^:a.png");
+    }
+
+    #[test]
+    fn blob_spec_refuses_revs_that_look_like_options() {
+        assert!(blob_spec("--output=x", "a.png").is_err());
+    }
+
+    #[test]
+    fn check_size_accepts_the_limit_and_names_the_size_above_it() {
+        assert!(check_size(MAX_IMAGE_BYTES, "a.png").is_ok());
+        let err = check_size(21 * 1024 * 1024, "big.png").unwrap_err().to_string();
+        assert!(err.contains("big.png is 21.0 MB"), "unexpected message: {err}");
+    }
 }
