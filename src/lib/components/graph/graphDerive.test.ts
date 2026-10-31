@@ -1,0 +1,239 @@
+import { describe, test, expect } from "bun:test";
+import type { CommitRef, GraphNode, StashEntry, StatusEntry } from "$lib/ipc";
+import {
+  buildAvatarRows,
+  buildBranchKindByName,
+  buildContainingRefs,
+  buildGridTemplate,
+  buildRowsWithRefs,
+  buildShaToRow,
+  buildStashRows,
+  buildWipBreakdown,
+  displaySubjectFor,
+  graphLeftOffset,
+  nonStashRefs,
+  stripStashSubject,
+  withSyntheticHead,
+} from "./graphDerive";
+
+function node(
+  sha: string,
+  opts: { parents?: string[]; email?: string; lane?: number } = {},
+): GraphNode {
+  return {
+    sha,
+    parents: opts.parents ?? [],
+    parent_lanes: [],
+    lane: opts.lane ?? 0,
+    row: 0,
+    author_name: "",
+    author_email: opts.email ?? "",
+    timestamp: 0,
+    subject: sha,
+  };
+}
+
+function ref(name: string, kind: CommitRef["kind"], sha: string): CommitRef {
+  return { name, kind, target_sha: sha };
+}
+
+function status(
+  index: StatusEntry["index"],
+  worktree: StatusEntry["worktree"],
+  conflicted = false,
+): StatusEntry {
+  return { path: "f", orig_path: null, index, worktree, conflicted };
+}
+
+function stash(sha: string, index: number): StashEntry {
+  return { sha, index, message: "" };
+}
+
+describe("buildShaToRow", () => {
+  test("maps each sha to its displayed row index", () => {
+    const m = buildShaToRow([node("a"), node("b"), node("c")]);
+    expect(m.get("a")).toBe(0);
+    expect(m.get("c")).toBe(2);
+    expect(m.size).toBe(3);
+  });
+
+  test("empty list gives an empty map", () => {
+    expect(buildShaToRow([]).size).toBe(0);
+  });
+});
+
+describe("nonStashRefs", () => {
+  test("drops stash refs and keeps the rest", () => {
+    const refs = [ref("main", "localbranch", "a"), ref("refs/stash", "stash", "a")];
+    expect(nonStashRefs(refs).map((r) => r.name)).toEqual(["main"]);
+  });
+
+  test("undefined gives an empty list", () => {
+    expect(nonStashRefs(undefined)).toEqual([]);
+  });
+});
+
+describe("buildRowsWithRefs", () => {
+  test("marks rows whose commit has a non-stash ref", () => {
+    const nodes = [node("a"), node("b"), node("c")];
+    const refs = new Map<string, CommitRef[]>([
+      ["a", [ref("main", "localbranch", "a")]],
+      ["b", [ref("refs/stash", "stash", "b")]],
+    ]);
+    expect([...buildRowsWithRefs(nodes, refs)]).toEqual([0]);
+  });
+});
+
+describe("buildAvatarRows", () => {
+  test("includes single-parent commits with an email, skips merges and emailless", () => {
+    const nodes = [
+      node("a", { email: "a@x" }),
+      node("m", { email: "m@x", parents: ["a", "b"] }),
+      node("n"),
+    ];
+    expect([...buildAvatarRows(nodes)]).toEqual([0]);
+  });
+});
+
+describe("buildStashRows", () => {
+  test("marks rows whose sha is a stash", () => {
+    const nodes = [node("a"), node("s"), node("c")];
+    expect([...buildStashRows(nodes, [stash("s", 0)])]).toEqual([1]);
+  });
+});
+
+describe("stripStashSubject", () => {
+  test("strips the WIP-on-branch prefix and sha", () => {
+    expect(stripStashSubject("WIP on master: 53deb12 Merge pull request #137"))
+      .toBe("53deb12 Merge pull request #137");
+  });
+
+  test("strips the index-on prefix", () => {
+    expect(stripStashSubject("index on main: abc123 tidy")).toBe("abc123 tidy");
+  });
+
+  test("strips the untracked-files prefix", () => {
+    expect(stripStashSubject("untracked files on dev: fix")).toBe("fix");
+  });
+
+  test("strips the plain On-branch prefix case-insensitively", () => {
+    expect(stripStashSubject("On feature: user message")).toBe("user message");
+  });
+
+  test("leaves a subject without a stash prefix untouched", () => {
+    expect(stripStashSubject("plain commit message")).toBe("plain commit message");
+  });
+});
+
+describe("displaySubjectFor", () => {
+  test("returns the subject unchanged for a non-stash row", () => {
+    expect(displaySubjectFor("WIP on master: x y", null)).toBe("WIP on master: x y");
+  });
+
+  test("strips the boilerplate for a stash row", () => {
+    expect(displaySubjectFor("WIP on master: 53deb12 Fix it", 0)).toBe("53deb12 Fix it");
+  });
+});
+
+describe("buildBranchKindByName", () => {
+  test("keeps branch kinds only and the first ref per name", () => {
+    const m = buildBranchKindByName([
+      ref("main", "localbranch", "a"),
+      ref("main", "remotebranch", "b"),
+      ref("v1", "tag", "c"),
+      ref("origin/dev", "remotebranch", "d"),
+    ]);
+    expect(m.get("main")).toBe("localbranch");
+    expect(m.get("origin/dev")).toBe("remotebranch");
+    expect(m.has("v1")).toBe(false);
+  });
+});
+
+describe("buildContainingRefs", () => {
+  const kinds = new Map([
+    ["main", "localbranch" as const],
+    ["origin/main", "remotebranch" as const],
+  ]);
+
+  test("builds ghost refs for names that have a branch ref", () => {
+    const out = buildContainingRefs("abc", new Set(["main", "origin/main"]), kinds);
+    expect(out).toEqual([
+      { name: "main", kind: "localbranch", target_sha: "abc" },
+      { name: "origin/main", kind: "remotebranch", target_sha: "abc" },
+    ]);
+  });
+
+  test("skips names with no branch ref", () => {
+    const out = buildContainingRefs("abc", new Set(["gone"]), kinds);
+    expect(out).toEqual([]);
+  });
+
+  test("undefined or empty name set gives an empty list", () => {
+    expect(buildContainingRefs("abc", undefined, kinds)).toEqual([]);
+    expect(buildContainingRefs("abc", new Set(), kinds)).toEqual([]);
+  });
+});
+
+describe("withSyntheticHead", () => {
+  const direct = [ref("feat", "localbranch", "a")];
+
+  test("prepends a HEAD pill when detached on this commit", () => {
+    const out = withSyntheticHead("a", direct, "a", null);
+    expect(out.map((r) => r.name)).toEqual(["HEAD", "feat"]);
+    expect(out[0].kind).toBe("head");
+  });
+
+  test("returns the direct refs when HEAD is on a branch", () => {
+    expect(withSyntheticHead("a", direct, "a", "feat")).toBe(direct);
+  });
+
+  test("returns the direct refs when HEAD is elsewhere", () => {
+    expect(withSyntheticHead("a", direct, "b", null)).toBe(direct);
+  });
+});
+
+describe("buildWipBreakdown", () => {
+  test("groups status entries by semantic kind", () => {
+    const b = buildWipBreakdown([
+      status("modified", "unmodified"),
+      status("renamed", "unmodified"),
+      status("unmodified", "untracked"),
+      status("unmodified", "deleted"),
+      status("unmodified", "modified"),
+      status("added", "unmodified"),
+      status("modified", "modified", true),
+    ]);
+    expect(b).toEqual({ edits: 3, news: 2, dels: 1, conflicts: 1 });
+  });
+
+  test("empty status gives all zeros", () => {
+    expect(buildWipBreakdown([])).toEqual({ edits: 0, news: 0, dels: 0, conflicts: 0 });
+  });
+});
+
+describe("buildGridTemplate", () => {
+  const widths = { refs: 200, graph: 140, msg: 300 } as const;
+  const widthPx = (c: "refs" | "graph" | "msg") => widths[c];
+
+  test("interleaves 6px gutters and makes the last track 1fr", () => {
+    expect(buildGridTemplate(["refs", "graph", "msg"], widthPx))
+      .toBe("200px 6px 140px 6px 1fr");
+  });
+
+  test("a single column is just 1fr", () => {
+    expect(buildGridTemplate(["msg"], widthPx)).toBe("1fr");
+  });
+});
+
+describe("graphLeftOffset", () => {
+  const widths = { refs: 200, graph: 140, msg: 300 } as const;
+  const widthPx = (c: "refs" | "graph" | "msg") => widths[c];
+
+  test("sums the widths and gutters before the graph column", () => {
+    expect(graphLeftOffset(["refs", "graph", "msg"], widthPx)).toBe(206);
+  });
+
+  test("graph first gives zero", () => {
+    expect(graphLeftOffset(["graph", "refs", "msg"], widthPx)).toBe(0);
+  });
+});

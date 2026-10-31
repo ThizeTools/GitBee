@@ -72,7 +72,7 @@ transfer never ended, so a background fetch hung and kept the auto-fetch
 their own `-c http.lowSpeed*` (initial push of a new repo) override
 these, because later `-c` values win.
 
-### Frontend: `refreshActive(opts)` (`src/lib/stores/repo.ts`)
+### Frontend: `refreshActive(opts)` (`src/lib/stores/repoRefresh.ts`)
 - At most one refresh runs at a time. Calls during a run coalesce into
   one follow-up run, which starts after the current one. The follow-up
   is silent only if every coalesced caller asked for silent.

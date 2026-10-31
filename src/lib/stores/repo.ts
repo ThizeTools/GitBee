@@ -1,430 +1,25 @@
-import { writable, derived, get } from "svelte/store";
-import type {
-  GraphPage, CommitRef, StatusEntry, StashEntry,
-  Remote, RecentRepoDto, OperationState, Worktree,
-} from "$lib/ipc";
+import { get } from "svelte/store";
 import { ipc } from "$lib/ipc";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { hiddenRefs, soloRefs } from "$lib/stores/graphFilter";
 import { showingNewTab } from "$lib/stores/newtab";
 import { showingInfo } from "$lib/stores/info";
-import { mergeScope, parseScope, type RefreshScope } from "$lib/stores/refreshScope";
+import { busy } from "$lib/stores/busy";
+import {
+  tabs, activeTabId, recent, errorMessage, tabName, samePath, normTabPath,
+  type RepoTab,
+} from "$lib/stores/repoState";
+import {
+  refreshActive, attachWatcher, stopWatcher, forgetGraphLimit,
+} from "$lib/stores/repoRefresh";
 
-export interface RepoTab {
-  id: string;
-  path: string; // empty string for the synthetic "new tab"
-  name: string;
-  kind?: "repo" | "newtab";
-  graph: GraphPage | null;
-  status: StatusEntry[];
-  stashes: StashEntry[];
-  remotes: Remote[];
-  worktrees: Worktree[];
-  opState: OperationState | null;
-  selectedSha: string | null;
-}
+// Repo actions (open, close, activate, persist) over the state in repoState,
+// busy and repoRefresh. The three layers are re-exported here so every
+// existing `$lib/stores/repo` import keeps working.
+export * from "$lib/stores/repoState";
+export * from "$lib/stores/busy";
+export * from "$lib/stores/repoRefresh";
 
-export const NEW_TAB_ID = "__newtab__";
-
-export function newTabStub(): RepoTab {
-  return {
-    id: NEW_TAB_ID, path: "", name: "New Tab", kind: "newtab",
-    graph: null, status: [], stashes: [], remotes: [], worktrees: [],
-    opState: null, selectedSha: null,
-  };
-}
-
-export const WIP_SHA = "__WIP__";
 const STORAGE_TABS = "gkp.tabs.v1";
 const STORAGE_ACTIVE = "gkp.tabs.active.v1";
-
-export const tabs = writable<RepoTab[]>([]);
-export const activeTabId = writable<string | null>(null);
-export const recent = writable<RecentRepoDto[]>([]);
-export const errorMessage = writable<string | null>(null);
-export const busy = writable<boolean>(false);
-
-// Bumped after every completed refresh, even when the status list is identical.
-// An already-modified file edited again keeps the same status entry, so the
-// working-tree diff panel keys on this instead of `status`. See docs/specs/repo-refresh.md.
-export const worktreeTick = writable<number>(0);
-
-// Commits per graph page; each "load more" grows a tab's limit by this much.
-// See docs/specs/graph-loading.md.
-export const GRAPH_PAGE = 2000;
-// Tab id -> commit limit. Tabs without an entry use GRAPH_PAGE.
-const graphLimits = new Map<string, number>();
-
-function graphLimitFor(tabId: string): number {
-  return graphLimits.get(tabId) ?? GRAPH_PAGE;
-}
-
-// Debounced/smoothed view of `busy` for UI overlays. Rising edges are
-// delayed by BUSY_SHOW_DELAY so fast operations never flash the veil over
-// the sidebar; falling edges by BUSY_HIDE_DELAY so a quick succession of
-// git operations doesn't flicker it on/off between them. Use this in
-// components, not raw `busy`. See docs/specs/repo-refresh.md.
-export const busyVisible = writable<boolean>(false);
-const BUSY_SHOW_DELAY = 250;
-const BUSY_HIDE_DELAY = 350;
-let busyShowTimer: ReturnType<typeof setTimeout> | null = null;
-let busyHideTimer: ReturnType<typeof setTimeout> | null = null;
-busy.subscribe((b) => {
-  if (b) {
-    if (busyHideTimer) { clearTimeout(busyHideTimer); busyHideTimer = null; }
-    if (get(busyVisible) || busyShowTimer) return;
-    busyShowTimer = setTimeout(() => { busyVisible.set(true); busyShowTimer = null; }, BUSY_SHOW_DELAY);
-    return;
-  }
-  if (busyShowTimer) { clearTimeout(busyShowTimer); busyShowTimer = null; }
-  if (busyHideTimer) clearTimeout(busyHideTimer);
-  busyHideTimer = setTimeout(() => { busyVisible.set(false); busyHideTimer = null; }, BUSY_HIDE_DELAY);
-});
-
-let unlistenChange: UnlistenFn | null = null;
-
-export const activeTab = derived(
-  [tabs, activeTabId],
-  ([$tabs, $id]) => $tabs.find((t) => t.id === $id) ?? null,
-);
-
-export const currentRepo = derived(activeTab, ($t) => $t?.path ?? null);
-export const graph = derived(activeTab, ($t) => $t?.graph ?? null);
-export const status = derived(activeTab, ($t) => $t?.status ?? []);
-export const stashes = derived(activeTab, ($t) => $t?.stashes ?? []);
-export const remotes = derived(activeTab, ($t) => $t?.remotes ?? []);
-export const worktrees = derived(activeTab, ($t) => $t?.worktrees ?? []);
-export const opState = derived(activeTab, ($t) => $t?.opState ?? null);
-
-export const selectedSha = {
-  subscribe: derived(activeTab, ($t) => $t?.selectedSha ?? null).subscribe,
-  set: (sha: string | null) => updateActive((t) => ({ ...t, selectedSha: sha })),
-};
-
-// Refs after applying the user's hide/solo filter.
-// - Hide drops a single ref (badges + commits reachable only through it).
-// - Solo (multi) collapses the view to a chosen SET of refs: only those
-//   refs' badges are shown and only their combined history is reachable.
-//   HEAD/stash are NOT auto-kept under solo — the user explicitly asked
-//   for "just these branches."
-// - Without solo, HEAD/stash bypass hide so the "you are here" anchor
-//   and the stash drawer never disappear unintentionally.
-export const visibleRefs = derived(
-  [graph, hiddenRefs, soloRefs],
-  ([$graph, $hidden, $solo]) => {
-    if (!$graph) return [];
-    if ($solo.size > 0) return $graph.refs.filter((r) => $solo.has(r.name));
-    return $graph.refs.filter((r) => {
-      if (r.kind === "head" || r.kind === "stash") return true;
-      return !$hidden.has(r.name);
-    });
-  },
-);
-
-export const refsByCommit = derived(visibleRefs, ($refs) => {
-  const map = new Map<string, CommitRef[]>();
-  for (const r of $refs) {
-    const arr = map.get(r.target_sha) ?? [];
-    arr.push(r);
-    map.set(r.target_sha, arr);
-  }
-  return map;
-});
-
-// SHAs reachable from any visible ref. Used by GraphCanvas to drop rows
-// that would otherwise dangle when their only ref is filtered out (e.g.
-// a remote-only branch like `origin/gh-pages` whose tip and history
-// aren't on any other branch). When no filter is active, this returns
-// `null` and consumers fall back to showing every node — saves the BFS
-// in the common case.
-export const reachableShas = derived(
-  [graph, visibleRefs, hiddenRefs, soloRefs],
-  ([$graph, $refs, $hidden, $solo]) => {
-    if (!$graph) return null;
-    if ($hidden.size === 0 && $solo.size === 0) return null; // no filter
-    const parentsBy = new Map<string, string[]>();
-    for (const n of $graph.nodes) parentsBy.set(n.sha, n.parents);
-    const reachable = new Set<string>();
-    const stack: string[] = [];
-    // Under solo, HEAD does NOT seed the walk — the user wants only the
-    // soloed branches' history visible. Without solo, HEAD always seeds
-    // so the "you are here" anchor never vanishes when the user has
-    // only hidden a few unrelated branches.
-    if ($solo.size === 0 && $graph.head_sha) stack.push($graph.head_sha);
-    for (const r of $refs) stack.push(r.target_sha);
-    while (stack.length) {
-      const sha = stack.pop()!;
-      if (reachable.has(sha)) continue;
-      reachable.add(sha);
-      const ps = parentsBy.get(sha);
-      if (ps) for (const p of ps) if (!reachable.has(p)) stack.push(p);
-    }
-    return reachable;
-  },
-);
-
-// `git stash` produces helper commits ("index on <branch>: …" / "untracked
-// files on <branch>: …") as extra parents of the real stash commit. They
-// clutter the graph and GitKraken hides them, so we do too.
-function isStashHelper(subject: string): boolean {
-  return /^(?:index|untracked files)\s+on\s+\S/i.test(subject);
-}
-
-// The graph nodes ACTUALLY rendered: stash-helper commits dropped and, when a
-// hide/solo filter is active, commits unreachable from any visible ref removed.
-// Single source of truth shared by GraphCanvas (paint), keyboard navigation
-// (+page moveGraphSelection) and commit search (graphSearch). Before this they
-// each walked the raw `graph.nodes`, so arrow-nav and search could target rows
-// that aren't drawn (stash helpers, filtered-out commits), then silently fail
-// to scroll. (audit 2026-05)
-export const visibleGraphNodes = derived(
-  [graph, reachableShas],
-  ([$graph, $reachable]) => {
-    const all = ($graph?.nodes ?? []).filter((n) => !isStashHelper(n.subject));
-    if (!$reachable) return all;
-    return all.filter((n) => n.sha === WIP_SHA || $reachable.has(n.sha));
-  },
-);
-
-// For each commit SHA, the branch ref(s) the commit "belongs to" — i.e.
-// branches whose FIRST-PARENT chain from tip reaches the commit. This
-// matches the user's mental model of "which branch was this commit made
-// on" much more closely than `git branch --contains`, which lists every
-// branch that has the commit anywhere in its ancestry (so a commit on
-// `main` shows up on every feature branch forked off later).
-//
-// First-parent walk: when traversing a merge commit, keep going through
-// `parents[0]` only (the side the merge was made INTO). The other parent
-// is the merged branch's history, which we credit to its own tip's walk.
-export const containingByCommit = derived(graph, ($graph) => {
-  const map = new Map<string, Set<string>>();
-  if (!$graph) return map;
-  const parentsBy = new Map<string, string[]>();
-  for (const n of $graph.nodes) parentsBy.set(n.sha, n.parents);
-  const branchTips = $graph.refs.filter(
-    (r) => r.kind === "localbranch" || r.kind === "remotebranch",
-  );
-  for (const tip of branchTips) {
-    let cur: string | undefined = tip.target_sha;
-    const seen = new Set<string>();
-    while (cur && !seen.has(cur)) {
-      seen.add(cur);
-      const set = map.get(cur) ?? new Set<string>();
-      set.add(tip.name);
-      map.set(cur, set);
-      const ps = parentsBy.get(cur);
-      cur = ps && ps.length > 0 ? ps[0] : undefined;
-    }
-  }
-  return map;
-});
-
-export const localBranches = derived(graph, ($g) =>
-  $g ? $g.refs.filter((r) => r.kind === "localbranch") : []
-);
-export const remoteBranches = derived(graph, ($g) =>
-  $g ? $g.refs.filter((r) => r.kind === "remotebranch") : []
-);
-export const tagsList = derived(graph, ($g) =>
-  $g ? $g.refs.filter((r) => r.kind === "tag") : []
-);
-
-function updateActive(fn: (t: RepoTab) => RepoTab) {
-  const id = get(activeTabId);
-  if (!id) return;
-  tabs.update((arr) => arr.map((t) => (t.id === id ? fn(t) : t)));
-}
-
-function updateTab(id: string, fn: (t: RepoTab) => RepoTab) {
-  tabs.update((arr) => arr.map((t) => (t.id === id ? fn(t) : t)));
-}
-
-function tabName(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-}
-
-// `silent`: skip toggling the global `busy` flag so the loading veil
-// doesn't flash. Used for watcher-driven refreshes — those happen
-// continuously in the background and the user didn't ask for them, so
-// covering the UI with a spinner every time a file mtime changes is
-// jarring. Foreground actions (pull, push, checkout, …) still pass
-// silent=false so the user gets the usual feedback.
-// At most one load runs at a time; calls made during a run coalesce into
-// ONE follow-up run that starts after it (silent only if every coalesced
-// caller asked for silent), so a caller awaiting this after an action
-// always sees data loaded after its call. Overlapping watcher / focus /
-// action refreshes used to run 10 git processes each, in parallel.
-// `scope` decides how much is reloaded: "status" only `git status`, "full"
-// everything. Coalesced callers merge to the widest scope any of them asked for.
-let refreshRunning: Promise<void> | null = null;
-let refreshFollowUp: Promise<void> | null = null;
-let followUpSilent = true;
-let followUpScope: RefreshScope = "status";
-
-export function refreshActive(opts: { silent?: boolean; scope?: RefreshScope } = {}): Promise<void> {
-  const silent = opts.silent === true;
-  const scope = opts.scope ?? "full";
-  if (!refreshRunning) return startRefresh(silent, scope);
-  followUpSilent = followUpSilent && silent;
-  followUpScope = mergeScope(followUpScope, scope);
-  if (!refreshFollowUp) {
-    refreshFollowUp = refreshRunning.then(() => {
-      const s = followUpSilent;
-      const sc = followUpScope;
-      refreshFollowUp = null;
-      followUpSilent = true;
-      followUpScope = "status";
-      return startRefresh(s, sc);
-    });
-  }
-  return refreshFollowUp;
-}
-
-function startRefresh(silent: boolean, scope: RefreshScope): Promise<void> {
-  const run: Promise<void> = loadActiveTab(silent, scope).finally(() => {
-    if (refreshRunning === run) refreshRunning = null;
-  });
-  refreshRunning = run;
-  return run;
-}
-
-type TabSnapshot = Pick<RepoTab, "graph" | "status" | "stashes" | "remotes" | "worktrees" | "opState">;
-
-/** Whether one snapshot field differs from the stored value. The graph is
- * compared by fingerprint: the fingerprint decides the graph, and stringifying
- * 2000+ nodes on every refresh was the main idle cost. Other keys keep the
- * JSON compare. */
-function fieldChanged(key: keyof TabSnapshot, a: unknown, b: unknown): boolean {
-  if (key === "graph") return graphChanged(a as GraphPage | null, b as GraphPage | null);
-  return JSON.stringify(a) !== JSON.stringify(b);
-}
-
-function graphChanged(a: GraphPage | null, b: GraphPage | null): boolean {
-  if ((a === null) !== (b === null)) return true;
-  return a?.fingerprint !== b?.fingerprint;
-}
-
-/** Returns `cur` itself when nothing changed, else a copy with only the
- * changed fields replaced, so an idle refresh doesn't touch the stores.
- * Example: `const next = withChangedFields(tab, fresh); if (next !== tab) ...` */
-function withChangedFields(cur: RepoTab, next: TabSnapshot): RepoTab {
-  const changed: Partial<TabSnapshot> = {};
-  for (const key of Object.keys(next) as (keyof TabSnapshot)[]) {
-    if (fieldChanged(key, cur[key], next[key])) changed[key] = next[key] as never;
-  }
-  return Object.keys(changed).length ? { ...cur, ...changed } : cur;
-}
-
-/** Loads everything a full refresh shows for `t`. When the graph fingerprint
- * is unchanged the backend skipped `git log`, so the caller keeps `t.graph`. */
-async function fetchFullSnapshot(t: RepoTab): Promise<TabSnapshot> {
-  const [g, st, sl, rl, wt, op] = await Promise.all([
-    ipc.graphLoad(t.path, graphLimitFor(t.id), t.graph?.fingerprint ?? null),
-    ipc.statusLoad(t.path).catch(() => []),
-    ipc.stashList(t.path).catch(() => []),
-    ipc.remoteList(t.path).catch(() => []),
-    ipc.worktreeList(t.path).catch(() => []),
-    ipc.opState(t.path).catch(() => null),
-  ]);
-  return {
-    graph: g.unchanged ? t.graph : g,
-    status: st, stashes: sl, remotes: rl, worktrees: wt, opState: op,
-  };
-}
-
-/** Reloads only `git status` for `t`. Returns false when that call fails,
- * leaving the tab untouched. */
-async function loadStatusOnly(t: RepoTab): Promise<boolean> {
-  const st = await ipc.statusLoad(t.path).catch(() => null);
-  if (st === null) return false;
-  const cur = get(tabs).find((x) => x.id === t.id);
-  if (cur && fieldChanged("status", cur.status, st)) {
-    updateTab(t.id, (x) => ({ ...x, status: st }));
-  }
-  return true;
-}
-
-async function loadFullTab(t: RepoTab): Promise<void> {
-  const snapshot = await fetchFullSnapshot(t);
-  const cur = get(tabs).find((x) => x.id === t.id);
-  if (!cur) return;
-  const next = withChangedFields(cur, snapshot);
-  if (next !== cur) updateTab(t.id, () => next);
-}
-
-async function loadActiveTab(silent: boolean, scope: RefreshScope): Promise<void> {
-  const t = get(activeTab);
-  if (!t || t.kind === "newtab" || !t.path) return;
-  if (scope === "status") {
-    if (await loadStatusOnly(t)) worktreeTick.update((n) => n + 1);
-    return;
-  }
-  if (!silent) busy.set(true);
-  try {
-    await loadFullTab(t);
-    errorMessage.set(null);
-    worktreeTick.update((n) => n + 1);
-  } catch (e) {
-    errorMessage.set(String(e));
-  } finally {
-    if (!silent) busy.set(false);
-  }
-}
-
-// Set while a load-more is pending, so repeated scroll events don't stack limits.
-let loadMorePending = false;
-
-/** Grows the active tab's commit limit by one page and refreshes silently.
- * No-op while a previous load is pending or the graph has no older commits.
- * Example: `onScroll → if near bottom: void loadMoreCommits()` */
-export async function loadMoreCommits(): Promise<void> {
-  const t = get(activeTab);
-  if (loadMorePending || t?.kind === "newtab" || !t?.graph?.has_more) return;
-  loadMorePending = true;
-  try {
-    graphLimits.set(t.id, graphLimitFor(t.id) + GRAPH_PAGE);
-    await refreshActive({ silent: true });
-  } finally {
-    loadMorePending = false;
-  }
-}
-
-// Set while the window is unfocused and the backend watcher is stopped.
-let watcherPaused = false;
-
-async function attachWatcher(path: string) {
-  watcherPaused = false;
-  if (unlistenChange) { unlistenChange(); unlistenChange = null; }
-  await ipc.watcherStart(path);
-  // The backend says whether git status alone is enough; a "full" burst
-  // (refs, HEAD, stashes changed) needs the graph too.
-  unlistenChange = await listen("repo-changed", (e) => {
-    refreshActive({ silent: true, scope: parseScope(e.payload) });
-  });
-}
-
-/** Stops the backend watcher but keeps the event listener, releasing the
- * OS directory handle on the repo while the window is in the background
- * (Windows reports it as "file in use by GitBee").
- * Example: `window.addEventListener("blur", () => void pauseWatcher())` */
-export async function pauseWatcher(): Promise<void> {
-  const t = get(activeTab);
-  if (!t || t.kind === "newtab" || !t.path) return;
-  watcherPaused = true;
-  await ipc.watcherStop().catch(() => {});
-}
-
-/** Restarts the watcher after `pauseWatcher` and catches up with one
- * silent refresh. No-op when not paused.
- * Example: `window.addEventListener("focus", () => void resumeWatcher())` */
-export async function resumeWatcher(): Promise<void> {
-  if (!watcherPaused) return;
-  watcherPaused = false;
-  const t = get(activeTab);
-  if (!t || t.kind === "newtab" || !t.path) return;
-  await ipc.watcherStart(t.path).catch(() => {});
-  await refreshActive({ silent: true });
-}
 
 /// Stale recents auto-prune: when the backend rejects a path with
 /// "invalid repository path" (folder deleted, USB unplugged, project
@@ -435,13 +30,6 @@ function isStalePathError(e: unknown): boolean {
   return msg.includes("invalid repository path")
       || msg.includes("InvalidRepoPath")
       || msg.includes("is not a git repository");
-}
-
-function normTabPath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-}
-function samePath(a: string, b: string): boolean {
-  return normTabPath(a) === normTabPath(b);
 }
 
 export async function openRepo(path: string) {
@@ -489,8 +77,7 @@ export async function activateTab(id: string) {
   if (!t) return;
   activeTabId.set(id);
   if (t.kind === "newtab" || !t.path) {
-    if (unlistenChange) { unlistenChange(); unlistenChange = null; }
-    await ipc.watcherStop().catch(() => {});
+    await stopWatcher();
     return;
   }
   // First-activation registration: tabs restored from disk are stubs with
@@ -546,15 +133,14 @@ export async function closeTab(id: string) {
     closedStack.push(closed.path);
     if (closedStack.length > CLOSED_LIMIT) closedStack.shift();
   }
-  graphLimits.delete(id);
+  forgetGraphLimit(id);
   const remaining = list.filter((t) => t.id !== id);
   tabs.set(remaining);
   if (remaining.length === 0) {
     activeTabId.set(null);
     showingNewTab.set(true);
     showingInfo.set(false);
-    if (unlistenChange) { unlistenChange(); unlistenChange = null; }
-    await ipc.watcherStop().catch(() => {});
+    await stopWatcher();
   } else if (get(activeTabId) === id) {
     const fallback = remaining[Math.min(idx, remaining.length - 1)];
     await activateTab(fallback.id);

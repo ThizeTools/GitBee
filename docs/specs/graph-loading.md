@@ -37,7 +37,7 @@ Output `GraphPage`: `nodes`, `refs`, `head_sha`, `head_branch`, plus
 Errors: unchanged from before (git failures in log/refs still fall back
 to an empty graph; see the QoL backlog).
 
-### Paging (frontend, `src/lib/stores/repo.ts`)
+### Paging (frontend, `src/lib/stores/repoRefresh.ts`)
 - First load of a tab asks for `GRAPH_PAGE` (2000) commits.
 - `loadMoreCommits()` grows the tab's limit by `GRAPH_PAGE` and runs a
   silent full refresh. It is a no-op while a previous load-more is
