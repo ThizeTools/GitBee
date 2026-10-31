@@ -21,10 +21,8 @@
   // the git side, the stage direction and the copy.
   interface Props {
     kind: ListKind;
-    /** Entries for this side, without conflicts. */
+    /** Entries for this side. Conflicted entries live in ConflictList instead. */
     files: StatusEntry[];
-    /** Conflicted entries; only the unstaged list has any. */
-    conflicts?: StatusEntry[];
     viewMode: ViewMode;
     sortMode: SortMode;
     activeFile: ActiveFile | null;
@@ -38,7 +36,7 @@
     anchor: string | null;
   }
   let {
-    kind, files, conflicts = [], viewMode, sortMode, activeFile, collapsed, otherCollapsed,
+    kind, files, viewMode, sortMode, activeFile, collapsed, otherCollapsed,
     selection = $bindable(), anchor = $bindable(),
   }: Props = $props();
 
@@ -53,8 +51,7 @@
   // Sort by full path. The Tree view passes sortMode straight to FileTree
   // so its internal sortedChildren() flips direction too.
   const sortedFiles = $derived(sortByPath(files, sortMode));
-  const sortedConflicts = $derived(sortByPath(conflicts, sortMode));
-  const total = $derived(files.length + conflicts.length);
+  const total = $derived(files.length);
 
   /** Fold or unfold this section. The flag lives in the persisted layout store. */
   function toggleCollapsed() { setSize(collapseKey, !collapsed); }
@@ -170,31 +167,12 @@
   {#if !collapsed}
     <div class="list-wrap">
       {#if viewMode === "tree"}
-        {#if sortedConflicts.length > 0}
-          {@render tree(sortedConflicts)}
-        {/if}
         {#if total === 0}
           <div class="empty">{COPY[kind].empty}</div>
         {:else}
           {@render tree(sortedFiles)}
         {/if}
       {:else}
-        {#if sortedConflicts.length > 0}
-          <ul class="flat conflicts">
-            {#each sortedConflicts as f (f.path)}
-              <li
-                class:active={isActive(f.path)}
-                class:multi-selected={selection.has(f.path)}
-                oncontextmenu={(e) => onFileContext(e, f)}
-              >
-                <button class="row" onclick={(e) => handleRowClick(e, f.path)}>
-                  <span class="status conflicted" title="Conflicted">!</span>
-                  <span class="path conflicted">{f.path}</span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {/if}
         <ul class="flat">
           {#each sortedFiles as f (f.path)}
             <li

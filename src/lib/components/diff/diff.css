@@ -89,11 +89,15 @@
 
 /* ---- hunks and lines ---- */
 .dv-hunk-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: color-mix(in srgb, var(--renamed) 12%, transparent);
   color: var(--renamed);
   padding: 2px 10px;
   font-size: 11px;
 }
+.dv-hunk-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-line,
 .dv-split-row {
   line-height: 1.5;
@@ -186,3 +190,60 @@
   background: repeating-conic-gradient(#8884 0% 25%, transparent 0% 50%) 50% / 16px 16px;
 }
 .dv-img-none { padding: 24px 8px; text-align: center; color: var(--fg-muted); font-style: italic; }
+
+/* ---- hunk and line staging (docs/specs/hunk-staging.md) ---- */
+/* A pickable gutter is a button, so it takes keyboard focus. Reset the button look
+   so it matches the span gutter beside it. */
+button.dv-num {
+  margin: 0;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  font: inherit;
+  line-height: inherit;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+button.dv-num:hover { color: var(--fg); }
+.dv-num.dv-picked { background: color-mix(in srgb, var(--accent) 28%, var(--bg-elev)); color: var(--fg); }
+.dv-content.dv-picked { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+
+.dv-hunk-btn {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dv-hunk-btn:hover { background: var(--border); }
+.dv-hunk-danger:hover {
+  background: color-mix(in srgb, var(--del) 22%, transparent);
+  border-color: var(--del);
+  color: var(--del);
+}
+.dv-ghost { background: transparent; border-color: transparent; color: var(--fg-muted); }
+
+.dv-hint { font-size: 11px; color: var(--fg-muted); font-style: italic; font-family: inherit; }
+
+/* Floats at the bottom of its file block while the picked lines are off-screen. */
+.dv-pick-bar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 8px auto;
+  padding: 6px 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  font-family: inherit;
+}
+.dv-pick-count { color: var(--fg-muted); font-size: 11px; }

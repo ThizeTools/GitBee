@@ -1,59 +1,77 @@
 <script lang="ts">
-  import { graph, currentRepo, refsByCommit, withBusy } from "$lib/stores/repo";
-  import { checkoutShaAutoStash } from "$lib/stores/graphscroll";
-  import { notifyError } from "$lib/stores/notifications";
-  import { pushUndo } from "$lib/stores/history";
-  import { tagCreateUndo } from "$lib/stores/undoEntries";
-  import { runAction } from "$lib/menus/menuActions";
-  import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
+  import { untrack } from "svelte";
+  import { graph, currentRepo } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
-  import DiffViewer from "./DiffViewer.svelte";
+  import type { CommitFileStat, FileDiff, GraphNode } from "$lib/ipc";
   import { diffPrefs } from "$lib/stores/diffPrefs";
-  import { commitRevs } from "$lib/diff/revs";
-  import Avatar from "./Avatar.svelte";
   import { showCommitFile } from "$lib/stores/center";
-  import type { FileDiff, GraphNode } from "$lib/ipc";
   import { commitFiles, selectedFileIndex, focusMode } from "$lib/stores/graphNav";
+  import { buildTree, listOrder, type SortMode, type ViewMode } from "$lib/commit/fileTree";
+  import { commitDiffCache } from "$lib/commit/commitDiffs";
+  import type { DiffKey } from "$lib/commit/diffCache";
+  import { commitBody } from "$lib/commit/format";
+  import { EXPAND_ALL_CAP, expandAllPaths, notRequested } from "$lib/commit/diffRequests";
+  import CommitHeader from "./commit/CommitHeader.svelte";
+  import CommitFileList from "./commit/CommitFileList.svelte";
+  import CommitInlineDiffs from "./commit/CommitInlineDiffs.svelte";
+  import CommitActions from "./commit/CommitActions.svelte";
 
   interface Props { sha: string; onClose: () => void; }
   let { sha, onClose }: Props = $props();
 
-  let diffs = $state<FileDiff[]>([]);
+  // Files come from commit_files (names and counts only). A file's diff
+  // loads when its row is expanded, so selecting a big commit stays cheap.
+  let files = $state<CommitFileStat[]>([]);
   let loading = $state(false);
-  let viewMode = $state<"path" | "tree">("tree");
+  let viewMode = $state<ViewMode>("tree");
   // Sort cycles between two states: A→Z and Z→A, by full path. Used by
   // both the Path list and the Tree's `sortedChildren()` so the toggle
   // visibly affects either view.
-  type SortMode = "asc" | "desc";
   let sortMode = $state<SortMode>("asc");
   let body = $state("");
-  let allExpanded = $state(true);
+  // "Show diffs" in the toolbar. On requests the first EXPAND_ALL_CAP diffs.
+  let showDiffs = $state(false);
+  // Paths whose diff is shown below the list, the loaded diffs, and the
+  // paths still loading.
+  let requested = $state<Record<string, true>>({});
+  let diffsByPath = $state<Record<string, FileDiff[]>>({});
+  let pendingPaths = $state<Record<string, true>>({});
+  // Each load gets a number, so a slow load for an earlier commit cannot
+  // overwrite the files of the one selected now.
+  let loadSeq = 0;
 
-  function cycleSort() {
-    sortMode = sortMode === "asc" ? "desc" : "asc";
-  }
   function sortIcon(): string {
     return sortMode === "asc" ? "↓A" : "↑A";
   }
   function sortLabel(): string {
     return sortMode === "asc" ? "Sort: A→Z" : "Sort: Z→A";
   }
-  function pathOf(f: FileDiff): string { return f.new_path || f.old_path; }
-  const sortedDiffs = $derived.by<FileDiff[]>(() => {
-    const arr = diffs.slice();
-    arr.sort((a, b) => sortMode === "asc"
-      ? pathOf(a).localeCompare(pathOf(b))
-      : pathOf(b).localeCompare(pathOf(a)));
-    return arr;
-  });
+  function cycleSort() {
+    sortMode = sortMode === "asc" ? "desc" : "asc";
+  }
 
   const node = $derived.by<GraphNode | null>(() => {
     if (!$graph) return null;
     return $graph.nodes.find((n) => n.sha === sha) ?? null;
   });
 
+  const tree = $derived(buildTree(files));
+  // Visible order: the same order the list draws. Keyboard nav and the
+  // "first N" requests both follow it, or they would pick the wrong rows.
+  const order = $derived(listOrder(files, viewMode, sortMode));
+  const navPath = $derived(order[$selectedFileIndex]?.path ?? null);
+  const inlinePaths = $derived(order.filter((f) => requested[f.path]));
+  const inlineDiffs = $derived(inlinePaths.flatMap((f) => diffsByPath[f.path] ?? []));
+  const inlineLoading = $derived(inlinePaths.some((f) => pendingPaths[f.path]));
+  const loadAllTotal = $derived(
+    showDiffs && order.length > EXPAND_ALL_CAP && notRequested(order, requested).length > 0
+      ? order.length
+      : null,
+  );
+
   $effect(() => {
-    void sha; void $diffPrefs.ignoreWs;
+    void sha;
+    resetDiffs();
     if ($currentRepo) load();
     // New commit selected → reset nav state so ArrowRight starts on the
     // first file again. Keeps focus state consistent as user steps
@@ -62,32 +80,19 @@
     focusMode.set("graph");
   });
 
+  // -w changes the diffs, not the file list, so only the requested diffs reload.
+  $effect(() => {
+    void $diffPrefs.ignoreWs;
+    untrack(() => reloadRequested());
+  });
+
   // Publish the visible-order file list to the navigation store so the
   // global ArrowUp/Down handler can highlight + open files. Order has to
   // match what the user sees on screen (same sort + tree-flatten), or
   // ArrowDown jumps to the wrong row.
   $effect(() => {
-    commitFiles.set(visibleFileOrder());
-    if ($selectedFileIndex >= visibleFileOrder().length) selectedFileIndex.set(0);
-  });
-
-  function visibleFileOrder(): FileDiff[] {
-    if (viewMode === "path") return sortedDiffs;
-    // Tree mode: depth-first walk in the same order the template renders.
-    const out: FileDiff[] = [];
-    const walk = (n: TreeNode) => {
-      if (n.file) { out.push(n.file); return; }
-      for (const ch of sortedChildren(n)) walk(ch);
-    };
-    for (const ch of sortedChildren(root)) walk(ch);
-    return out;
-  }
-
-  // Path of the currently highlighted file (used by template to add the
-  // .nav-current class to the matching button).
-  const navCurrentPath = $derived.by<string | null>(() => {
-    const f = visibleFileOrder()[$selectedFileIndex];
-    return f ? (f.new_path || f.old_path) : null;
+    commitFiles.set(order);
+    if ($selectedFileIndex >= order.length) selectedFileIndex.set(0);
   });
 
   // Auto-scroll the highlighted file button into view when index changes
@@ -101,219 +106,113 @@
     });
   });
 
-  async function load() {
-    if (!$currentRepo) return;
+  async function load(): Promise<void> {
+    const repo = $currentRepo;
+    if (!repo) return;
+    const seq = ++loadSeq;
     loading = true;
     try {
-      const [d, full] = await Promise.all([
-        ipc.diffCommit($currentRepo, sha, undefined, $diffPrefs.ignoreWs),
-        ipc.commitShow($currentRepo, sha).catch(() => ""),
+      const [list, message] = await Promise.all([
+        ipc.commitFiles(repo, sha),
+        ipc.commitShow(repo, sha).catch(() => ""),
       ]);
-      diffs = d;
-      const lines = (full ?? "").replace(/\r\n/g, "\n").split("\n");
-      // skip the subject line + blank line, the rest is the body
-      let i = 1;
-      while (i < lines.length && lines[i] === "") i++;
-      body = lines.slice(i).join("\n").trim();
-    } catch { diffs = []; body = ""; }
-    finally { loading = false; }
-  }
-
-  // ----- actions (kept compact in a toolbar) -----
-  // The repo is read before the dialog opens: the dialog waits for the user,
-  // and the open tab may change while it is up.
-  async function cherryPick() {
-    const repo = $currentRepo;
-    if (!repo) return;
-    const ok = await confirmDialog({ title: `Cherry-pick ${sha.slice(0, 7)}?`, confirmLabel: "Cherry-pick" });
-    if (!ok) return;
-    await withBusy(() => ipc.cherryPick(repo, sha));
-  }
-  async function revert() {
-    const repo = $currentRepo;
-    if (!repo) return;
-    const ok = await confirmDialog({ title: `Revert ${sha.slice(0, 7)}?`, confirmLabel: "Revert" });
-    if (!ok) return;
-    await withBusy(() => ipc.revert(repo, sha, true));
-  }
-  async function resetTo(mode: "soft" | "mixed" | "hard") {
-    const repo = $currentRepo;
-    if (!repo) return;
-    const ok = await confirmDialog({
-      title: `Reset --${mode} to ${sha.slice(0, 7)}?`,
-      confirmLabel: "Reset",
-      danger: mode === "hard",
-    });
-    if (!ok) return;
-    await withBusy(() => ipc.reset(repo, sha, mode));
-  }
-  async function checkoutDetached() {
-    if (!$currentRepo) return;
-    const r = await checkoutShaAutoStash($currentRepo, sha);
-    if (r !== true) notifyError("Checkout failed", `${sha.slice(0, 7)}: ${r}`);
-  }
-  async function createBranch() {
-    const repo = $currentRepo;
-    if (!repo) return;
-    const name = await promptDialog({ title: "New branch name:", validate: requireName });
-    if (!name) return;
-    await withBusy(() => ipc.branchCreate(repo, name, sha));
-  }
-  async function createTag() {
-    const repo = $currentRepo;
-    if (!repo) return;
-    const name = await promptDialog({ title: "Tag name:", validate: requireName });
-    if (!name) return;
-    const typed = await promptDialog({ title: "Message (empty for lightweight):" });
-    // Cancelling (null) aborts. An empty message keeps the lightweight tag.
-    if (typed === null) return;
-    const message = typed || undefined;
-    const res = await runAction(`Create tag ${name}`, () => ipc.tagCreate(repo, name, sha, message));
-    if (res.ok) pushUndo(tagCreateUndo(repo, name, sha, message));
-  }
-
-  function fmtDate(ts: number): string {
-    const d = new Date(ts * 1000);
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yy = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    return `${dd}/${mm}/${yy} @ ${hh}:${mi}`;
-  }
-  function initials(name: string): string {
-    return name.split(/\s+/).filter(Boolean).slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() ?? "").join("");
-  }
-  function avatarColor(seed: string): string {
-    let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-    return `hsl(${h % 360}, 45%, 42%)`;
-  }
-
-  // ----- file tree (path-style or nested) -----
-  type TreeNode = {
-    name: string; path: string;
-    file?: FileDiff;
-    children: Map<string, TreeNode>;
-  };
-  const root = $derived.by<TreeNode>(() => {
-    const r: TreeNode = { name: "", path: "", children: new Map() };
-    for (const f of diffs) {
-      const fp = f.new_path || f.old_path;
-      const parts = fp.split("/").filter(Boolean);
-      let cur = r;
-      for (let i = 0; i < parts.length; i++) {
-        const isLeaf = i === parts.length - 1;
-        const seg = parts[i];
-        let child = cur.children.get(seg);
-        if (!child) {
-          child = { name: seg, path: parts.slice(0, i + 1).join("/"), children: new Map() };
-          cur.children.set(seg, child);
-        }
-        if (isLeaf) child.file = f;
-        cur = child;
-      }
-    }
-    return r;
-  });
-
-  // Directories first, then files — alphabetical within each group, with
-  // direction driven by `sortMode` so the toggle in the toolbar affects
-  // both Path and Tree views.
-  function sortedChildren(n: TreeNode): TreeNode[] {
-    return [...n.children.values()].sort((a, b) => {
-      const aIsDir = !a.file;
-      const bIsDir = !b.file;
-      if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-      return sortMode === "asc"
-        ? a.name.localeCompare(b.name)
-        : b.name.localeCompare(a.name);
-    });
-  }
-
-  let collapsed = $state<Record<string, boolean>>({});
-  function toggle(p: string) { collapsed[p] = !collapsed[p]; }
-  function expandAll() {
-    collapsed = {};
-    allExpanded = !allExpanded;
-    if (!allExpanded) {
-      // collapse everything: walk tree and mark every dir collapsed
-      const c: Record<string, boolean> = {};
-      const walk = (n: TreeNode) => {
-        if (!n.file && n.path) c[n.path] = true;
-        for (const ch of n.children.values()) walk(ch);
-      };
-      walk(root);
-      collapsed = c;
+      if (seq === loadSeq) applyLoaded(list, message);
+    } catch {
+      if (seq === loadSeq) applyLoaded([], "");
+    } finally {
+      if (seq === loadSeq) loading = false;
     }
   }
 
-  function fileChanges(f: FileDiff): { add: number; del: number } {
-    let add = 0, del = 0;
-    for (const h of f.hunks) for (const l of h.lines) {
-      if (l.kind === "add") add++;
-      else if (l.kind === "del") del++;
-    }
-    return { add, del };
+  function applyLoaded(list: CommitFileStat[], message: string): void {
+    files = list;
+    body = commitBody(message);
+    // "Show diffs" stays on across commits, so the new list gets its first diffs.
+    if (showDiffs) requestPaths(expandAllPaths(listOrder(list, viewMode, sortMode)));
   }
 
-  let showDiffs = $state(false);
+  function resetDiffs(): void {
+    requested = {};
+    diffsByPath = {};
+    pendingPaths = {};
+  }
+
+  function setShowDiffs(on: boolean): void {
+    showDiffs = on;
+    if (on) requestPaths(expandAllPaths(order));
+    else resetDiffs();
+  }
+
+  function loadAll(): void {
+    requestPaths(notRequested(order, requested));
+  }
+
+  function toggleDiff(path: string): void {
+    if (!requested[path]) {
+      requestPaths([path]);
+      return;
+    }
+    delete requested[path];
+    delete diffsByPath[path];
+  }
+
+  /** Requests the diffs of `paths` that are not requested yet. */
+  function requestPaths(paths: string[]): void {
+    for (const p of paths) {
+      if (requested[p]) continue;
+      requested[p] = true;
+      fetchDiff(p);
+    }
+  }
+
+  function reloadRequested(): void {
+    for (const p of Object.keys(requested)) {
+      delete diffsByPath[p];
+      fetchDiff(p);
+    }
+  }
+
+  /**
+   * Loads one file's diff into `diffsByPath`. A result is dropped when the
+   * user has moved to another commit, changed the `-w` setting, or collapsed
+   * the row meanwhile. The cache keeps the diff either way.
+   */
+  function fetchDiff(path: string): void {
+    const repo = $currentRepo;
+    if (!repo) return;
+    const key: DiffKey = { repo, sha, file: path, ignoreWs: $diffPrefs.ignoreWs };
+    pendingPaths[path] = true;
+    commitDiffCache.get(key)
+      .then((list) => {
+        if (isWanted(key)) diffsByPath[path] = list;
+      })
+      .catch(() => {
+        // A failed diff leaves the row expanded with nothing under it; the
+        // next expand asks git again, because the cache drops failures.
+      })
+      .finally(() => {
+        delete pendingPaths[path];
+      });
+  }
+
+  function isWanted(key: DiffKey): boolean {
+    return key.sha === sha
+      && key.repo === $currentRepo
+      && key.ignoreWs === $diffPrefs.ignoreWs
+      && requested[key.file] === true;
+  }
 </script>
 
 <div class="commit-panel">
   {#if !node}
     <div class="empty">Loading commit…</div>
   {:else}
-    <header class="bar">
-      <span class="commit-label">commit:</span>
-      <span class="commit-sha">{sha.slice(0, 7)}</span>
-      <span class="spacer"></span>
-      <button class="close" onclick={onClose} title="Back to changes">×</button>
-    </header>
-
-    <div class="subject-box">
-      <div class="subject">{node.subject}</div>
-      {#if body}
-        <pre class="body">{body}</pre>
-      {/if}
-    </div>
-
-    <div class="grip"></div>
-
-    <div class="meta">
-      <div class="author">
-        <Avatar email={node.author_email} name={node.author_name} size={32} />
-        <div class="author-text">
-          <div class="name">{node.author_name}</div>
-          <div class="when">authored {fmtDate(node.timestamp)}</div>
-        </div>
-      </div>
-      <div class="parents">
-        {#if node.parents.length === 1}
-          <span class="parent-label">parent:</span>
-          <span class="parent-sha">{node.parents[0].slice(0, 7)}</span>
-        {:else if node.parents.length > 1}
-          <span class="parent-label">parents:</span>
-          {#each node.parents as p (p)}
-            <span class="parent-sha">{p.slice(0, 7)}</span>
-          {/each}
-        {/if}
-      </div>
-    </div>
-
-    {#if ($refsByCommit.get(sha) ?? []).length > 0}
-      <div class="refs-row">
-        {#each $refsByCommit.get(sha) ?? [] as r (r.name)}
-          <span class="ref" class:branch={r.kind === "localbranch"}
-            class:remote={r.kind === "remotebranch"} class:tag={r.kind === "tag"}>{r.name}</span>
-        {/each}
-      </div>
-    {/if}
+    <CommitHeader {sha} {node} {body} {onClose} />
 
     <div class="files-bar">
       <span class="modified">
         <span class="m-ico">✎</span>
-        <span class="m-count">{diffs.length}</span>
+        <span class="m-count">{files.length}</span>
         <span class="m-lbl">modified</span>
       </span>
       <button class="bb" onclick={cycleSort} title={sortLabel()}>{sortIcon()}</button>
@@ -322,7 +221,8 @@
         <button class:active={viewMode === "tree"} onclick={() => viewMode = "tree"}>⌘ Tree</button>
       </span>
       <label class="ck">
-        <input type="checkbox" bind:checked={showDiffs} />
+        <input type="checkbox" checked={showDiffs}
+          onchange={(e) => setShowDiffs(e.currentTarget.checked)} />
         Show diffs
       </label>
     </div>
@@ -330,85 +230,24 @@
     <div class="files-body">
       {#if loading}
         <div class="empty">Loading…</div>
-      {:else if diffs.length === 0 && !$diffPrefs.ignoreWs}
+      {:else if files.length === 0}
         <div class="empty">No changes (or empty commit).</div>
-      {:else if showDiffs || diffs.length === 0}
-        <!-- Empty with whitespace hidden: DiffViewer shows the toolbar that undoes it. -->
-        <DiffViewer {diffs} revs={commitRevs(sha)} />
       {:else}
-        <div class="expand-row">
-          <button class="link" onclick={expandAll}>{allExpanded ? "Collapse All" : "Expand All"}</button>
-        </div>
-        {#if viewMode === "tree"}
-          <ul class="tree">
-            {#each sortedChildren(root) as child (child.path)}
-              {@render treeNode(child, 0)}
-            {/each}
-          </ul>
-        {:else}
-          <ul class="flat">
-            {#each sortedDiffs as f (f.new_path || f.old_path)}
-              {@const c = fileChanges(f)}
-              {@const fp = f.new_path || f.old_path}
-              <li>
-                <button class="file-btn" type="button"
-                  class:nav-current={navCurrentPath === fp}
-                  onclick={() => showCommitFile(sha, fp)}>
-                  <span class="f-ico">✎</span>
-                  <span class="f-count">{c.add + c.del}</span>
-                  <span class="f-path">{fp}</span>
-                </button>
-              </li>
-            {/each}
-          </ul>
+        <CommitFileList
+          {viewMode} {sortMode} {tree} pathRows={order} {requested} {navPath} {loadAllTotal}
+          onToggleDiff={toggleDiff}
+          onOpen={(path) => showCommitFile(sha, path)}
+          onLoadAll={loadAll}
+        />
+        {#if inlinePaths.length > 0}
+          <CommitInlineDiffs {sha} diffs={inlineDiffs} loading={inlineLoading && inlineDiffs.length === 0} />
         {/if}
       {/if}
     </div>
 
-    <nav class="actions">
-      <button onclick={cherryPick}>Cherry-pick</button>
-      <button onclick={revert}>Revert</button>
-      <button onclick={createBranch}>+ Branch</button>
-      <button onclick={createTag}>+ Tag</button>
-      <button onclick={checkoutDetached}>Checkout</button>
-      <span class="reset-group">
-        Reset:
-        <button onclick={() => resetTo("soft")}>soft</button>
-        <button onclick={() => resetTo("mixed")}>mixed</button>
-        <button class="danger" onclick={() => resetTo("hard")}>hard</button>
-      </span>
-    </nav>
+    <CommitActions {sha} />
   {/if}
 </div>
-
-{#snippet treeNode(node: TreeNode, depth: number)}
-  {#if node.file}
-    {@const c = fileChanges(node.file)}
-    {@const fp = node.file.new_path || node.file.old_path}
-    <li class="file">
-      <button class="file-btn" type="button"
-        class:nav-current={navCurrentPath === fp}
-        style="padding-left: {12 + depth * 14}px"
-        onclick={() => showCommitFile(sha, fp)}>
-        <span class="f-ico">✎</span>
-        <span class="f-count">{c.add + c.del}</span>
-        <span class="f-path">{node.name}</span>
-      </button>
-    </li>
-  {:else}
-    <li class="dir" style="padding-left: {12 + depth * 14}px">
-      <button class="dir-toggle" onclick={() => toggle(node.path)}>
-        <span class="caret">{collapsed[node.path] ? "▶" : "▼"}</span>
-        <span class="name">{node.name}</span>
-      </button>
-    </li>
-    {#if !collapsed[node.path]}
-      {#each sortedChildren(node) as ch (ch.path)}
-        {@render treeNode(ch, depth + 1)}
-      {/each}
-    {/if}
-  {/if}
-{/snippet}
 
 <style>
   .commit-panel {
@@ -419,88 +258,6 @@
     overflow: hidden;
   }
   .empty { padding: 30px; text-align: center; color: var(--fg-muted); font-style: italic; }
-
-  .bar {
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 12px;
-    background: var(--bg-elev);
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-  }
-  .commit-label { color: var(--fg-muted); }
-  .commit-sha {
-    color: var(--sha);
-    font-family: "Cascadia Code", Consolas, monospace;
-  }
-  .spacer { flex: 1; }
-  .close {
-    background: transparent; border: 0; color: var(--fg-muted);
-    font-size: 18px; cursor: pointer; padding: 0 8px; line-height: 1;
-  }
-  .close:hover { color: var(--del); }
-
-  .subject-box {
-    padding: 14px 16px;
-    background: var(--bg-elev);
-    border-bottom: 1px solid var(--border);
-  }
-  .subject {
-    color: var(--fg);
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 1.4;
-  }
-  .body {
-    margin: 8px 0 0;
-    color: var(--fg-muted);
-    font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 11px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    max-height: 220px;
-    overflow: auto;
-  }
-  .grip {
-    height: 4px;
-    width: 38px;
-    background: var(--border-strong);
-    border-radius: 2px;
-    margin: 6px auto;
-    opacity: 0.6;
-  }
-
-  .meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--border);
-  }
-  .author { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-  .author-text { display: flex; flex-direction: column; min-width: 0; }
-  .name { font-size: 12px; color: var(--fg); font-weight: 500; }
-  .when { font-size: 11px; color: var(--fg-muted); }
-  .parents {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 11px;
-    color: var(--fg-muted);
-    flex-shrink: 0;
-  }
-  .parent-label { color: var(--fg-muted); }
-  .parent-sha { color: var(--sha); font-family: "Cascadia Code", Consolas, monospace; }
-
-  .refs-row {
-    padding: 6px 14px;
-    display: flex; gap: 4px; flex-wrap: wrap;
-    border-bottom: 1px solid var(--border);
-  }
-  .ref {
-    font-size: 10px; padding: 1px 7px;
-    border-radius: 3px; border: 1px solid; line-height: 14px;
-  }
-  .ref.branch { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
-  .ref.remote { color: var(--remote); border-color: color-mix(in srgb, var(--remote) 55%, transparent); }
-  .ref.tag { color: var(--tag); border-color: color-mix(in srgb, var(--tag) 55%, transparent); border-radius: 8px; }
 
   .files-bar {
     display: flex;
@@ -530,71 +287,5 @@
   .files-body {
     flex: 1;
     overflow: auto;
-  }
-  .expand-row {
-    padding: 6px 14px;
-    border-bottom: 1px solid var(--border);
-    background: transparent;
-  }
-  .link {
-    background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; font-size: 11px;
-  }
-  .link:hover { color: var(--fg); text-decoration: underline; }
-
-  .tree, .flat { list-style: none; margin: 0; padding: 0; }
-  .file, .dir {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0;
-    font-size: 11px;
-    color: var(--fg);
-  }
-  .dir { padding: 3px 12px; }
-  .file-btn {
-    display: flex; align-items: center; gap: 8px;
-    width: 100%;
-    padding: 3px 12px;
-    background: transparent; border: 0; color: inherit;
-    text-align: left; font: inherit; cursor: pointer;
-  }
-  .file-btn:hover { background: rgba(255,255,255,0.06); }
-  /* ArrowUp/Down highlight while in "files" focus mode — uses accent
-     so it reads as keyboard-driven, distinct from mouse hover. */
-  .file-btn.nav-current {
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
-    outline: 1px solid var(--accent);
-  }
-  .f-ico { color: var(--tag); font-size: 11px; }
-  .f-count { color: var(--fg-muted); font-size: 10px; min-width: 14px; }
-  .f-path {
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: 11px;
-  }
-  .dir-toggle {
-    background: transparent; border: 0; color: var(--fg-muted);
-    cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 6px;
-    font-size: 11px;
-  }
-  .dir-toggle:hover { color: var(--fg); }
-  .caret { font-size: 9px; width: 10px; }
-
-  .actions {
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-    padding: 8px 12px;
-    border-top: 1px solid var(--border);
-    background: var(--bg-elev);
-  }
-  .actions button {
-    background: var(--bg); color: var(--fg);
-    border: 1px solid var(--border); padding: 4px 10px;
-    border-radius: 3px; cursor: pointer; font-size: 11px;
-  }
-  .actions button:hover:not(.danger) { background: var(--border-strong); }
-  .actions button.danger:hover { background: color-mix(in srgb, var(--del) 22%, transparent); border-color: var(--del); color: var(--del); }
-  .reset-group {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 11px; color: var(--fg-muted); margin-left: auto;
   }
 </style>

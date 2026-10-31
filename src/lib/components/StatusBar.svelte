@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { layout, setZoom, ZOOM_STEPS, displayPercent } from "$lib/stores/layout";
   import { logsPanelOpen } from "$lib/stores/logs";
   import { currentRepo } from "$lib/stores/repo";
@@ -7,10 +8,34 @@
   import { logAppend } from "$lib/stores/logs";
   import { appVersion } from "$lib/version";
   import { updateState, installNow } from "$lib/stores/updater";
+  import {
+    autofetchStatus, absoluteFetchTime, autofetchErrorTooltip, formatFetchAge,
+  } from "$lib/stores/autofetchStatus";
+  import { retryAutofetch } from "$lib/stores/autofetch";
+  import {
+    gitProgress, startGitProgress, pickProgressForRepo, progressFraction, progressLabel,
+  } from "$lib/stores/gitProgress";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
+
+  // Re-rendered every 30 s so "Fetched 3 min ago" ages without a store event.
+  const AGE_TICK_MS = 30_000;
 
   let zoomMenu = $state(false);
   let shortcutsOpen = $state(false);
+  let nowMs = $state(Date.now());
+
+  const progress = $derived(pickProgressForRepo($gitProgress, $currentRepo));
+  const fraction = $derived(progress ? progressFraction(progress) : null);
+  const fetchState = $derived($currentRepo ? ($autofetchStatus[$currentRepo] ?? null) : null);
+
+  onMount(() => {
+    const ageTimer = setInterval(() => { nowMs = Date.now(); }, AGE_TICK_MS);
+    const stopProgress = startGitProgress();
+    return () => {
+      clearInterval(ageTimer);
+      void stopProgress.then((stop) => stop());
+    };
+  });
 
   async function openTerm() {
     if (!$currentRepo) return;
@@ -25,8 +50,33 @@
     <button class="bi" onclick={openTerm} disabled={!$currentRepo} title="Open external terminal (Ctrl+`)">
       <span class="ico">▶_</span>
     </button>
+    {#if progress}
+      <span class="prog" class:done={progress.done} title="git {progress.op}">
+        <span class="prog-text">{progressLabel(progress)}</span>
+        <span class="prog-track">
+          <span
+            class="prog-fill"
+            class:indet={fraction === null}
+            style:width={fraction === null ? undefined : `${Math.round(fraction * 100)}%`}
+          ></span>
+        </span>
+      </span>
+    {/if}
   </div>
   <div class="right">
+    {#if fetchState?.lastFetchError}
+      <button
+        class="bi af err"
+        onclick={() => retryAutofetch()}
+        title={autofetchErrorTooltip(fetchState.lastFetchError)}
+      >
+        <span class="ico">⚠</span><span>Auto-fetch failed</span>
+      </button>
+    {:else if fetchState?.lastFetchAt}
+      <span class="af" title={absoluteFetchTime(fetchState.lastFetchAt)}>
+        Fetched {formatFetchAge(fetchState.lastFetchAt, nowMs)}
+      </span>
+    {/if}
     <button class="bi" onclick={() => logsPanelOpen.update((v) => !v)} title="Logs (Ctrl+L)">
       <span class="ico">≡</span><span>Logs</span>
     </button>
@@ -174,4 +224,44 @@
     animation: upd-spin 0.8s linear infinite;
   }
   @keyframes upd-spin { to { transform: rotate(360deg); } }
+
+  /* Git progress pill: label plus a thin bar. Indeterminate (no percent yet)
+     slides a short segment instead of showing a fake fraction. */
+  .prog {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 22px; padding: 0 8px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .prog.done { color: var(--add, var(--accent)); }
+  .prog-track {
+    position: relative;
+    width: 72px; height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .prog-fill {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    background: var(--accent);
+    transition: width 0.2s linear;
+  }
+  .prog-fill.indet {
+    width: 35%;
+    transition: none;
+    animation: prog-slide 1.2s ease-in-out infinite;
+  }
+  @keyframes prog-slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(290%); }
+  }
+
+  /* Auto-fetch status: quiet age text, or a warning pill that retries on click. */
+  .af {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 22px; padding: 0 8px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .bi.af.err { color: var(--del); }
 </style>

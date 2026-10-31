@@ -72,6 +72,10 @@ transfer never ended, so a background fetch hung and kept the auto-fetch
 their own `-c http.lowSpeed*` (initial push of a new repo) override
 these, because later `-c` values win.
 
+Fetch, pull, push and clone run through `run_with_progress`, which uses
+the same base command and so the same env and flags. Its stderr
+handling is in git-progress.md.
+
 ### Frontend: `refreshActive(opts)` (`src/lib/stores/repoRefresh.ts`)
 - At most one refresh runs at a time. Calls during a run coalesce into
   one follow-up run, which starts after the current one. The follow-up
@@ -94,6 +98,34 @@ these, because later `-c` values win.
   keying on `status` showed a stale diff.
 - Auto-fetch skips a tick while `busy` is set, so a background
   `fetch` never races a user's pull/push/commit for refs or locks.
+
+### Frontend: auto-fetch status and waiting
+(`src/lib/stores/autofetch.ts`, `autofetchStatus.ts`, `inFlightGate.ts`)
+- Each background fetch records its outcome per repo path in
+  `autofetchStatus`: `lastFetchAt` (ms, last success) and
+  `lastFetchError` (git's stderr, or null). Keyed by repo because
+  auto-fetch only runs for the active tab; a single value would show the
+  previous repo's status after a tab switch.
+- A failure is shown, not toasted: the status bar turns into an
+  "Auto-fetch failed" pill whose tooltip carries git's stderr. Clicking
+  it calls `retryAutofetch()`, which runs one tick (so it respects
+  `busy`). The next success clears the error. Before this, an expired
+  token failed silently for the whole session.
+- Success shows "Fetched N min ago" (see `formatFetchAge`). A failure
+  keeps the last success time, so the repo's history is not erased.
+- The refresh after a successful fetch is still silent, and a failing
+  refresh does not count as a failing fetch.
+- `waitForAutofetch()` resolves when the in-flight fetch (including its
+  silent refresh) settles. `runAction` sets `busy` first, then awaits
+  it, so no new fetch starts while the user's pull/push waits. Without
+  this a background fetch updating refs and FETCH_HEAD raced the user's
+  pull/push ("cannot lock ref").
+- Trade-off: a user action waits for a fetch that is stalled. The
+  low-speed limit above bounds the stall (about a minute); no cancel.
+- Actions that call `withBusy` directly (sidebar fetch, command palette,
+  branch menus) set `busy` but do not await an in-flight fetch, so they
+  can still overlap one that started just before. Known gap, see Out of
+  scope.
 
 ### Frontend: busy veil (`busyVisible`)
 Rising edge delayed by 250 ms, falling edge by 350 ms. Fast operations
@@ -124,6 +156,8 @@ checkout). Errors surface as "Checkout failed" toasts with git's stderr.
 ## Invariants
 - No refresh is triggered by GitBee's own read-only git commands.
 - At most one `refreshActive` load is in flight per app.
+- At most one background fetch is in flight per app, and `runAction`
+  never starts git while it runs.
 - Background refreshes never show the veil.
 - While the window is unfocused GitBee holds no watcher handle.
 
@@ -134,6 +168,10 @@ checkout). Errors surface as "Checkout failed" toasts with git's stderr.
 - Timeouts on local git commands (a slow `log` on a huge repo is not a
   hang). Network stalls are bounded by the low-speed limit above.
 - Single-click checkout.
+- Making `withBusy` callers await an in-flight auto-fetch. Only
+  `runAction` does so today; moving the wait into `withBusy` is a small
+  follow-up once its callers are audited.
+- Cancelling a running auto-fetch to free a waiting user action.
 
 ## Rejected alternatives
 - **Single-click checkout in the sidebar.** One stray click would

@@ -1,9 +1,10 @@
+use crate::commands::git_progress::{run_reporting, GitOp};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 fn cwd(p: &str) -> PathBuf { PathBuf::from(p) }
 
@@ -39,6 +40,7 @@ pub async fn repo_logs(
 pub async fn repo_clone(
     url: String,
     dest: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
     let dest_pb = PathBuf::from(&dest);
@@ -56,7 +58,8 @@ pub async fn repo_clone(
     if target.exists() {
         return Err(AppError::Other(format!("target already exists: {}", target.display())));
     }
-    state.git.run(&dest_pb, ["clone", &url, target.to_string_lossy().as_ref()]).await?;
+    let target_str = target.to_string_lossy().into_owned();
+    run_reporting(&app, &state.git, &dest_pb, &target_str, GitOp::Clone, ["clone", "--progress", &url, &target_str]).await?;
     let ts = now_secs();
     let _ = state.cache.upsert_repo(target.to_string_lossy().as_ref(), ts);
     Ok(target.to_string_lossy().into_owned())

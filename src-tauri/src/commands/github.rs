@@ -1,13 +1,14 @@
 //! Tauri commands for the GitHub integration. Thin layer — all real
 //! work lives in `crate::github::*`.
 
+use crate::commands::git_progress::{run_reporting, GitOp};
 use crate::error::{AppError, AppResult};
 use crate::github::{api, avatars, create, oauth, storage, types::*};
 use crate::state::AppState;
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Default)]
 pub struct OAuthRegistry {
@@ -131,6 +132,7 @@ pub async fn github_list_repos(state: State<'_, AppState>) -> AppResult<Vec<GhRe
 pub async fn github_clone(
     url: String,
     dest: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
     use std::path::PathBuf;
@@ -158,12 +160,17 @@ pub async fn github_clone(
     // doesn't persist the inline `x-access-token:<token>@…` we used.
     // Otherwise GCM later asks the user to pick between their normal
     // GitHub account and this leftover x-access-token entry.
-    state.git.run(
+    let target_str = target.to_string_lossy().into_owned();
+    run_reporting(
+        &app,
+        &state.git,
         &dest_pb,
+        &target_str,
+        GitOp::Clone,
         [
             "-c", "credential.helper=",
             "-c", "credential.useHttpPath=true",
-            "clone", &auth_url, target.to_string_lossy().as_ref(),
+            "clone", "--progress", &auth_url, &target_str,
         ],
     ).await?;
     // Strip token from the saved remote URL — git stores whatever URL

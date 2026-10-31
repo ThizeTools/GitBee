@@ -1,7 +1,8 @@
+use super::progress::{parse_progress, ProgressLine, SegmentSplitter};
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use tokio::io::AsyncWriteExt;
+use std::process::{ExitStatus, Stdio};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 #[derive(Debug, Clone)]
@@ -66,6 +67,37 @@ impl GitRunner {
         Ok(output.stdout)
     }
 
+    /// Like `run`, but calls `on_line` for each progress segment git writes to
+    /// stderr while it works. Git redraws progress with `\r`, so `\r` and `\n`
+    /// both end a segment. The full stderr is still kept for the error, so a
+    /// failure is reported exactly as `run` reports it. See
+    /// docs/specs/git-progress.md.
+    pub async fn run_with_progress<I, S, F>(
+        &self,
+        cwd: &Path,
+        args: I,
+        on_line: F,
+    ) -> AppResult<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+        F: Fn(ProgressLine) + Send + Sync,
+    {
+        let mut cmd = self.base_command(cwd, Stdio::null());
+        cmd.args(args);
+        let mut child = cmd.spawn()?;
+        let stdout = take_piped(child.stdout.take(), "stdout")?;
+        let stderr = take_piped(child.stderr.take(), "stderr")?;
+        // Stdout is drained while stderr is read: a full pipe on either side
+        // would otherwise block git and deadlock the wait.
+        let (out, err, status) = tokio::join!(
+            read_all(stdout),
+            read_progress(stderr, &on_line),
+            child.wait(),
+        );
+        finish_output(status?, out?, err?)
+    }
+
     pub async fn run_text<I, S>(&self, cwd: &Path, args: I) -> AppResult<String>
     where
         I: IntoIterator<Item = S>,
@@ -124,6 +156,57 @@ impl GitRunner {
         }
         Ok(output.stdout)
     }
+}
+
+// `base_command` always pipes both streams, so a missing pipe is a bug in
+// this file, not a git failure. The error names the stream to make it findable.
+fn take_piped<T>(pipe: Option<T>, name: &str) -> AppResult<T> {
+    pipe.ok_or_else(|| AppError::Other(format!("git {name} was not piped; check base_command")))
+}
+
+async fn read_all<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).await?;
+    Ok(bytes)
+}
+
+/// Reads stderr to the end, reporting each progress segment as it arrives.
+/// Returns every byte read so the caller can build the error from it.
+async fn read_progress<R, F>(mut reader: R, on_line: &F) -> std::io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+    F: Fn(ProgressLine),
+{
+    let mut all = Vec::new();
+    let mut splitter = SegmentSplitter::default();
+    let mut chunk = [0u8; 4096];
+    loop {
+        let n = reader.read(&mut chunk).await?;
+        if n == 0 {
+            break;
+        }
+        all.extend_from_slice(&chunk[..n]);
+        splitter.feed(&chunk[..n], |segment| report_segment(segment, on_line));
+    }
+    splitter.finish(|segment| report_segment(segment, on_line));
+    Ok(all)
+}
+
+fn report_segment<F: Fn(ProgressLine)>(segment: &[u8], on_line: &F) {
+    if let Some(line) = parse_progress(&String::from_utf8_lossy(segment)) {
+        on_line(line);
+    }
+}
+
+// Same error shape as `run`, so callers cannot tell the two apart on failure.
+fn finish_output(status: ExitStatus, stdout: Vec<u8>, stderr: Vec<u8>) -> AppResult<Vec<u8>> {
+    if !status.success() {
+        return Err(AppError::GitFailed {
+            status: status.code(),
+            stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        });
+    }
+    Ok(stdout)
 }
 
 fn which_git() -> Option<PathBuf> {
@@ -201,5 +284,42 @@ mod tests {
         );
         assert_eq!(env_value(&cmd, "GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
         assert_eq!(env_value(&cmd, "GIT_OPTIONAL_LOCKS").as_deref(), Some("0"));
+    }
+
+    #[tokio::test]
+    async fn read_progress_reports_each_segment_and_keeps_every_byte() {
+        let input: &[u8] = b"Receiving objects:  10% (1/10)\rReceiving objects:  20% (2/10)\n";
+        let seen = std::sync::Mutex::new(Vec::new());
+        let on_line = |line: ProgressLine| seen.lock().unwrap().push(line);
+        let all = read_progress(input, &on_line).await.unwrap();
+        assert_eq!(all, input);
+        let percents: Vec<Option<u8>> = seen.lock().unwrap().iter().map(|l| l.percent).collect();
+        assert_eq!(percents, [Some(10), Some(20)]);
+    }
+
+    #[tokio::test]
+    async fn run_with_progress_returns_stdout_on_success() {
+        let runner = GitRunner::discover().unwrap();
+        let out = runner.run_with_progress(Path::new("."), ["--version"], |_| {}).await.unwrap();
+        assert!(String::from_utf8_lossy(&out).starts_with("git version"));
+    }
+
+    #[tokio::test]
+    async fn run_with_progress_keeps_git_stderr_in_the_error() {
+        let runner = GitRunner::discover().unwrap();
+        let err = runner
+            .run_with_progress(Path::new("."), ["--no-such-flag-gitbee-test"], |_| {})
+            .await
+            .unwrap_err();
+        match err {
+            AppError::GitFailed { stderr, .. } => assert!(!stderr.is_empty()),
+            other => panic!("expected GitFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_with_progress_reports_a_missing_executable_as_an_error() {
+        let runner = GitRunner::with_executable(PathBuf::from("no-such-git-binary-gitbee-test"));
+        assert!(runner.run_with_progress(Path::new("."), ["status"], |_| {}).await.is_err());
     }
 }

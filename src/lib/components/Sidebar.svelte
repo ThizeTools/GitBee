@@ -11,6 +11,10 @@
   import { soloRefs, toggleSolo } from "$lib/stores/graphFilter";
   import { promptDialog } from "$lib/stores/dialog";
   import { dropStashAt } from "$lib/menus/stashActions";
+  import type { DragRef } from "$lib/menus/dragOptions";
+  import {
+    beginRefDrag, endRefDrag, dragOverRef, dropOnRef, leaveDropHover, sidebarDropKey, dropHoverKey,
+  } from "$lib/stores/refDrag";
   import { onMount } from "svelte";
 
   // True when the user is currently soloing at least one ref. Drives the
@@ -62,6 +66,13 @@
   }
 
   function isHead(name: string): boolean { return $graph?.head_branch === name; }
+
+  // Branch rows are drag sources and drop targets. A local row is its own name;
+  // a remote row is `<remote>/<branch>`, the name git accepts for the ref.
+  function localRef(name: string): DragRef { return { name, kind: "localbranch" }; }
+  function remoteRef(remote: string, branch: string): DragRef {
+    return { name: `${remote}/${branch}`, kind: "remotebranch" };
+  }
   function toggleSection(k: SectionKey) { openSections[k] = !openSections[k]; }
 
   // Stash actions
@@ -172,7 +183,17 @@
         <ul class="list">
           {#each filteredLocal as b (b.name)}
             {@const inSolo = $soloRefs.has(b.name)}
-            <li class="leaf" class:active={isHead(b.name)} class:solo-row={soloActive} class:solo-on={inSolo}>
+            {@const ref = localRef(b.name)}
+            <li
+              class="leaf" class:active={isHead(b.name)} class:solo-row={soloActive} class:solo-on={inSolo}
+              draggable="true"
+              class:drop-target={$dropHoverKey === sidebarDropKey(ref)}
+              ondragstart={(e) => beginRefDrag(e, ref)}
+              ondragend={endRefDrag}
+              ondragover={(e) => dragOverRef(e, sidebarDropKey(ref), ref)}
+              ondragleave={() => leaveDropHover(sidebarDropKey(ref))}
+              ondrop={(e) => dropOnRef(e, ref)}
+            >
               {#if soloActive}
                 <button
                   class="eye"
@@ -222,7 +243,17 @@
                 {#each branches as b (b.name)}
                   {@const qname = `${remote}/${b.name}`}
                   {@const inSolo = $soloRefs.has(qname)}
-                  <li class="leaf" class:solo-row={soloActive} class:solo-on={inSolo}>
+                  {@const ref = remoteRef(remote, b.name)}
+                  <li
+                    class="leaf" class:solo-row={soloActive} class:solo-on={inSolo}
+                    draggable="true"
+                    class:drop-target={$dropHoverKey === sidebarDropKey(ref)}
+                    ondragstart={(e) => beginRefDrag(e, ref)}
+                    ondragend={endRefDrag}
+                    ondragover={(e) => dragOverRef(e, sidebarDropKey(ref), ref)}
+                    ondragleave={() => leaveDropHover(sidebarDropKey(ref))}
+                    ondrop={(e) => dropOnRef(e, ref)}
+                  >
                     {#if soloActive}
                       <button
                         class="eye"
@@ -451,4 +482,6 @@
      paints as a single colored strip — easier to scan when picking which
      branches to add. */
   .leaf.solo-row .link:hover { background: transparent; border-left-color: transparent; }
+  /* Drag-and-drop target: a branch dragged over this row would land here. */
+  .leaf.drop-target { outline: 1px solid var(--accent); outline-offset: -1px; }
 </style>

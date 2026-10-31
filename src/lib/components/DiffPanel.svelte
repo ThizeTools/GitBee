@@ -8,6 +8,11 @@
   import { confirmDialog } from "$lib/stores/dialog";
   import { diffPrefs } from "$lib/stores/diffPrefs";
   import { commitRevs, stagedRevs, unstagedRevs } from "$lib/diff/revs";
+  import { runPatchAction, type PatchAction } from "$lib/diff/patchAction";
+  import type { PatchSelection } from "$lib/diff/patchBuilder";
+  import type { DiffMode } from "./diff/hunkView";
+  import { pushUndo } from "$lib/stores/history";
+  import { discardPatchUndo } from "$lib/stores/undoEntries";
 
   interface Props {
     file: string;
@@ -88,6 +93,28 @@
     showGraph();
   }
 
+  // Which hunk actions the viewer offers: none in commit or stash diffs (readonly).
+  const viewMode = $derived<DiffMode>(isCommitMode ? "readonly" : staged ? "staged" : "unstaged");
+
+  /** Runs a hunk or line action. Discard asks first, like the file discard, and
+   * records an undo entry once git has applied the patch. withBusy refreshes the
+   * status, and the worktree tick reloads this diff. */
+  async function patchFile(file: FileDiff, selection: PatchSelection, action: PatchAction): Promise<void> {
+    const repo = $currentRepo;
+    if (!repo) return;
+    if (action === "discard") {
+      const ok = await confirmDialog({
+        title: `Discard the selected changes in ${file.new_path || file.old_path}?`,
+        message: "Undo brings them back.",
+        confirmLabel: "Discard",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    const backup = await withBusy(() => runPatchAction(ipc, repo, file, selection, action));
+    if (backup) pushUndo(discardPatchUndo(repo, backup.file, backup.blob, backup.patch));
+  }
+
   const additions = $derived.by(() =>
     diffs.reduce((a, f) => a + f.hunks.reduce((b, h) => b + h.lines.filter((l) => l.kind === "add").length, 0), 0),
   );
@@ -144,7 +171,7 @@
     {:else}
       <!-- DiffViewer owns the empty state so its toolbar stays reachable: turning
            on whitespace-hiding can empty a diff that the toggle must still undo. -->
-      <DiffViewer {diffs} {loading} revs={imageRevs} />
+      <DiffViewer {diffs} {loading} revs={imageRevs} mode={viewMode} onPatch={patchFile} />
     {/if}
   </div>
 </div>

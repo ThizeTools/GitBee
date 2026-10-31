@@ -136,7 +136,7 @@
     const t = get(activeTab);
     const sha = t?.selectedSha;
     if (!sha || sha === WIP_SHA) return;
-    showCommitFile(sha, f.new_path || f.old_path);
+    showCommitFile(sha, f.path);
   }
 
   // Reset center to Graph and right to Changes whenever the active tab changes.

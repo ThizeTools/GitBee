@@ -64,6 +64,18 @@ export interface FileDiff {
   // Lines past the backend cap (MAX_FILE_DIFF_LINES), not sent to the viewer.
   omitted_lines: number;
 }
+// One file of a commit with its counts, no diff text. Merges list against
+// the first parent. See docs/specs/commit-details.md.
+export interface CommitFileStat {
+  path: string;
+  old_path: string | null;
+  // First letter of git's status: A M D R C T.
+  status: string;
+  // Both null for a binary file.
+  additions: number | null;
+  deletions: number | null;
+}
+export interface CommitStat { sha: string; files: number; additions: number; deletions: number; }
 /** Image bytes for the diff viewer: base64 payload plus the MIME type the backend chose. */
 export interface FileBytes { base64: string; mime: string; }
 
@@ -106,6 +118,12 @@ export const ipc = {
   branchSetUpstream: (
     path: string, branch: string, remote?: string, remoteBranch?: string,
   ) => invoke("branch_set_upstream", { path, branch, remote, remoteBranch }),
+  // Drag-and-drop fast-forwards: `from` is fast-forwarded into the checked-out branch;
+  // `src` moves local branch `target` forward without a checkout.
+  branchMergeFfOnly: (path: string, from: string) =>
+    invoke("branch_merge_ff_only", { path, from }),
+  branchFastForwardLocal: (path: string, src: string, target: string) =>
+    invoke("branch_fast_forward_local", { path, src, target }),
 
   // staging
   statusLoad: (path: string) => invoke<StatusEntry[]>("status_load", { path }),
@@ -128,11 +146,17 @@ export const ipc = {
     invoke<FileDiff[]>("diff_workdir", { path, file, ignoreWs }),
   diffIndex: (path: string, file?: string, ignoreWs?: boolean) =>
     invoke<FileDiff[]>("diff_index", { path, file, ignoreWs }),
+  // hunk and line staging: patch built by patchBuilder, docs/specs/hunk-staging.md
+  applyPatchText: (path: string, patch: string, cached: boolean, reverse: boolean) =>
+    invoke<void>("apply_patch_text", { path, patch, cached, reverse }),
 
   // commits
   commitCreate: (path: string, message: string, amend = false, sign = false) =>
     invoke("commit_create", { path, message, amend, sign }),
   commitShow: (path: string, sha: string) => invoke<string>("commit_show", { path, sha }),
+  commitFiles: (path: string, sha: string) => invoke<CommitFileStat[]>("commit_files", { path, sha }),
+  // At most 200 shas per call (the backend refuses more).
+  commitStats: (path: string, shas: string[]) => invoke<CommitStat[]>("commit_stats", { path, shas }),
   cherryPick: (path: string, sha: string) => invoke("commit_cherry_pick", { path, sha }),
   revert: (path: string, sha: string, noEdit = true) =>
     invoke("commit_revert", { path, sha, noEdit }),
@@ -184,6 +208,10 @@ export const ipc = {
   opContinue: (path: string, kind: "merge" | "rebase" | "cherry-pick" | "revert") =>
     invoke("op_continue", { path, kind }),
   markResolved: (path: string, file: string) => invoke("mark_resolved", { path, file }),
+  /** Rewrites a conflicted file from one side, then stages it. "ours" is the
+   * rebase target during a rebase (see docs/specs/conflict-resolution.md). */
+  conflictTakeSide: (path: string, file: string, side: "ours" | "theirs") =>
+    invoke("conflict_take_side", { path, file, side }),
 
   // watcher
   watcherStart: (path: string) => invoke("watcher_start", { path }),
@@ -211,6 +239,8 @@ export const ipc = {
   fileShowInFolder: (path: string, file: string) =>
     invoke("file_show_in_folder", { path, file }),
   fileEdit: (path: string, file: string) => invoke("file_edit", { path, file }),
+  fileWrite: (path: string, file: string, content: string) =>
+    invoke("file_write", { path, file, content }),
   fileHistory: (path: string, file: string, limit?: number) =>
     invoke<Array<{ sha: string; subject: string; author: string; ts: number }>>(
       "file_history", { path, file, limit },

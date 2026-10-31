@@ -1,9 +1,10 @@
+use crate::commands::git_progress::{run_reporting, GitOp};
 use crate::error::{AppError, AppResult};
 use crate::git::checked_ref;
 use crate::state::AppState;
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 fn cwd(path: &str) -> PathBuf { PathBuf::from(path) }
 
@@ -60,10 +61,11 @@ pub async fn remote_remove(
 pub async fn remote_fetch(
     path: String,
     name: Option<String>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let n = fetch_target(name)?;
-    state.git.run(&cwd(&path), ["fetch", "--prune", &n]).await?;
+    run_reporting(&app, &state.git, &cwd(&path), &path, GitOp::Fetch, ["fetch", "--prune", "--progress", &n]).await?;
     Ok(())
 }
 
@@ -80,11 +82,12 @@ fn fetch_target(name: Option<String>) -> AppResult<String> {
 pub async fn remote_pull(
     path: String,
     rebase: Option<bool>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let mut args: Vec<&str> = vec!["pull"];
+    let mut args: Vec<&str> = vec!["pull", "--progress"];
     if rebase.unwrap_or(false) { args.push("--rebase"); }
-    state.git.run(&cwd(&path), args).await?;
+    run_reporting(&app, &state.git, &cwd(&path), &path, GitOp::Pull, args).await?;
     Ok(())
 }
 
@@ -118,13 +121,14 @@ pub async fn remote_push(
     remote: String,
     branch: Option<String>,
     force: Option<bool>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let mut args: Vec<String> = vec!["push".into()];
+    let mut args: Vec<String> = vec!["push".into(), "--progress".into()];
     if force.unwrap_or(false) { args.push("--force-with-lease".into()); }
     args.push(checked_ref(&remote)?.to_string());
     if let Some(b) = branch { args.push(checked_ref(&b)?.to_string()); }
-    state.git.run(&cwd(&path), args).await?;
+    run_reporting(&app, &state.git, &cwd(&path), &path, GitOp::Push, args).await?;
     Ok(())
 }
 

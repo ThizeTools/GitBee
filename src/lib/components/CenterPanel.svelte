@@ -2,6 +2,7 @@
   import { centerMode } from "$lib/stores/center";
   import GraphCanvas from "./GraphCanvas.svelte";
   import DiffPanel from "./DiffPanel.svelte";
+  import ConflictEditor from "./conflict/ConflictEditor.svelte";
 </script>
 
 <section class="center">
@@ -9,6 +10,8 @@
     <DiffPanel file={$centerMode.file} staged={$centerMode.staged} />
   {:else if $centerMode.kind === "commit-file"}
     <DiffPanel file={$centerMode.file} commitSha={$centerMode.sha} />
+  {:else if $centerMode.kind === "conflict"}
+    <ConflictEditor file={$centerMode.file} />
   {:else}
     <GraphCanvas />
   {/if}

@@ -196,6 +196,47 @@ pub async fn file_edit(path: String, file: String) -> AppResult<()> {
     Ok(())
 }
 
+/// Real write location for a repo-relative file. `safe_join` only inspects the
+/// text of the path, so this also resolves symlinks: a link inside the repo
+/// that points outside it is refused. Returns the canonical parent joined with
+/// the file name, so the write lands where the check ran.
+pub fn confined_write_path(repo: &Path, file: &str) -> AppResult<PathBuf> {
+    let full = safe_join(repo, file)?;
+    let root = std::fs::canonicalize(repo)?;
+    let name = full
+        .file_name()
+        .ok_or_else(|| AppError::Other(format!("no file name in {file:?}")))?;
+    let parent = full
+        .parent()
+        .ok_or_else(|| AppError::Other(format!("no parent directory for {file:?}")))?;
+    let real_parent = std::fs::canonicalize(parent)?;
+    ensure_inside(&root, &real_parent, file)?;
+    let target = real_parent.join(name);
+    if target.exists() {
+        ensure_inside(&root, &std::fs::canonicalize(&target)?, file)?;
+    }
+    Ok(target)
+}
+
+fn ensure_inside(root: &Path, real: &Path, file: &str) -> AppResult<()> {
+    if real.starts_with(root) {
+        return Ok(());
+    }
+    Err(AppError::Other(format!(
+        "write outside the repo refused: {file} resolves to {}",
+        real.display()
+    )))
+}
+
+/// Saves the conflict editor's result to a worktree file. The editor refuses to
+/// send text that still has markers, and the caller stages the file afterwards.
+#[tauri::command]
+pub async fn file_write(path: String, file: String, content: String) -> AppResult<()> {
+    let target = confined_write_path(&cwd(&path), &file)?;
+    fs::write(&target, content.as_bytes()).await?;
+    Ok(())
+}
+
 #[derive(Debug, Serialize)]
 pub struct FileHistoryRow { pub sha: String, pub subject: String, pub author: String, pub ts: i64 }
 
@@ -355,5 +396,81 @@ mod tests {
         assert!(check_size(MAX_IMAGE_BYTES, "a.png").is_ok());
         let err = check_size(21 * 1024 * 1024, "big.png").unwrap_err().to_string();
         assert!(err.contains("big.png is 21.0 MB"), "unexpected message: {err}");
+    }
+
+    /// A throwaway directory under the OS temp dir, removed on drop, so each
+    /// test gets a fresh "repo root" without a git init.
+    struct ScratchRepo { root: PathBuf }
+
+    impl ScratchRepo {
+        fn new(tag: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let root = std::env::temp_dir()
+                .join(format!("gitbee-{tag}-{}-{nanos}", std::process::id()));
+            std::fs::create_dir_all(root.join("sub")).unwrap();
+            Self { root }
+        }
+    }
+
+    impl Drop for ScratchRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn confined_write_path_accepts_an_existing_file_inside_the_repo() {
+        let repo = ScratchRepo::new("confine-ok");
+        std::fs::write(repo.root.join("sub/a.txt"), "x").unwrap();
+        let target = confined_write_path(&repo.root, "sub/a.txt").unwrap();
+        assert!(target.ends_with("a.txt"));
+    }
+
+    #[test]
+    fn confined_write_path_accepts_a_new_file_in_an_existing_directory() {
+        let repo = ScratchRepo::new("confine-new");
+        assert!(confined_write_path(&repo.root, "sub/new.txt").is_ok());
+    }
+
+    #[test]
+    fn confined_write_path_refuses_parent_traversal() {
+        let repo = ScratchRepo::new("confine-dotdot");
+        assert!(confined_write_path(&repo.root, "../escape.txt").is_err());
+    }
+
+    #[test]
+    fn confined_write_path_refuses_absolute_paths() {
+        let repo = ScratchRepo::new("confine-abs");
+        let outside = std::env::temp_dir().join("escape.txt");
+        let err = confined_write_path(&repo.root, &outside.to_string_lossy())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("absolute path not allowed"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn confined_write_path_refuses_a_missing_parent_directory() {
+        let repo = ScratchRepo::new("confine-missing");
+        assert!(confined_write_path(&repo.root, "nope/x.txt").is_err());
+    }
+
+    #[test]
+    fn ensure_inside_accepts_the_root_and_refuses_siblings_of_it() {
+        let repo = ScratchRepo::new("confine-real");
+        assert!(ensure_inside(&repo.root, &repo.root.join("sub"), "x").is_ok());
+        assert!(ensure_inside(&repo.root, &std::env::temp_dir(), "x").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confined_write_path_refuses_a_link_inside_the_repo_that_points_outside() {
+        let repo = ScratchRepo::new("confine-link");
+        let outside = ScratchRepo::new("confine-outside");
+        std::fs::write(outside.root.join("x.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(outside.root.join("x.txt"), repo.root.join("link.txt")).unwrap();
+        assert!(confined_write_path(&repo.root, "link.txt").is_err());
     }
 }

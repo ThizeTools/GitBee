@@ -24,7 +24,8 @@ line cap are unchanged.
 - `diff_commit(path, sha, file?, ignore_ws?)`, `diff_stash(path, index, ignore_ws?)`,
   `diff_workdir(path, file?, ignore_ws?)`, `diff_index(path, file?, ignore_ws?)`
   return `FileDiff[]`. `ignore_ws: true` adds `-w`. Absent or `false` gives the
-  exact diff.
+  exact diff. `diff_commit` diffs a merge against its first parent
+  (`--diff-merges=first-parent`), see [commit-details.md](commit-details.md).
 - `file_bytes_base64(path, rev?, file)` (`src-tauri/src/commands/files.rs`)
   returns `{ base64, mime }`.
   - `rev` absent: the working-tree file.
@@ -45,7 +46,10 @@ line cap are unchanged.
 - `fileBytesBase64(path, rev: string | null, file)`. `null` means the working tree.
 
 ### Frontend
-- `DiffViewer.svelte` props: `diffs`, `revs?: ImageRevs | null`, `loading?`.
+- `DiffViewer.svelte` props: `diffs`, `revs?: ImageRevs | null`, `loading?`,
+  `mode?` (`unstaged` | `staged` | `readonly`, default `readonly`) and `onPatch?`.
+  In `unstaged` and `staged` the hunk and line actions show. See
+  [hunk-staging.md](hunk-staging.md).
   It renders the toolbar, the file list and the empty state. Without `revs`,
   image files show "Binary file".
 - `diffPrefs` store (`src/lib/stores/diffPrefs.ts`): `{ layout: "unified" | "split",
@@ -101,7 +105,8 @@ line cap are unchanged.
 ## Out of scope
 - Semantic or AST diff.
 - Expanding context beyond the hunks git emits (`-U3`).
-- Hunk staging. It arrives later and uses the exact (non `-w`) diff.
+- Hunk and line staging is in [hunk-staging.md](hunk-staging.md). It uses the exact
+  (non `-w`) diff.
 
 ## Rejected alternatives
 - **shiki**: WASM and large grammars, and slow when called per line.

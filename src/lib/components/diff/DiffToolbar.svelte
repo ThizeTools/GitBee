@@ -1,6 +1,12 @@
 <script lang="ts">
   import { diffPrefs, setDiffLayout, setIgnoreWs } from "$lib/stores/diffPrefs";
 
+  interface Props {
+    /** True when hunk actions are off because ignore-whitespace is on. Shows the hint. */
+    stagingOff?: boolean;
+  }
+  let { stagingOff = false }: Props = $props();
+
   function onIgnoreWs(e: Event): void {
     setIgnoreWs((e.currentTarget as HTMLInputElement).checked);
   }
@@ -17,5 +23,8 @@
   </label>
   {#if $diffPrefs.ignoreWs}
     <span class="dv-badge" title="Whitespace-only changes are hidden. Hunk staging still uses the exact diff.">whitespace hidden</span>
+  {/if}
+  {#if stagingOff}
+    <span class="dv-hint">Turn off ignore whitespace to stage hunks</span>
   {/if}
 </div>

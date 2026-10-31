@@ -180,3 +180,19 @@ export function stashDropUndo(repo: string, entry: StashEntry): UndoEntry {
     },
   };
 }
+
+/** Undo writes the file's backed-up bytes back, or deletes it when `blob` is
+ * null. Redo backs the restored file up again and applies the same discard
+ * patch. Re-applying is safe: undo restored the exact bytes the patch was
+ * built against. Spec: docs/specs/hunk-staging.md. */
+export function discardPatchUndo(repo: string, file: string, blob: string | null, patch: string): UndoEntry {
+  let saved = blob;
+  return {
+    label: `Discard part of ${file}`,
+    undo: async () => { await ipc.restoreFile(repo, file, saved); },
+    redo: async () => {
+      saved = await ipc.backupFile(repo, file);
+      await ipc.applyPatchText(repo, patch, false, true);
+    },
+  };
+}

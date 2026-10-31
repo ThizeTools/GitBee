@@ -1,5 +1,5 @@
 import { writable } from "svelte/store";
-import type { FileDiff } from "$lib/ipc";
+import type { CommitFileStat } from "$lib/ipc";
 
 // Keyboard navigation state for the graph + commit details flow.
 // - "graph"  → ArrowUp/Down move the selected commit, ArrowRight enters
@@ -13,7 +13,7 @@ export type FocusMode = "graph" | "files";
 
 export const focusMode = writable<FocusMode>("graph");
 export const selectedFileIndex = writable<number>(0);
-export const commitFiles = writable<FileDiff[]>([]);
+export const commitFiles = writable<CommitFileStat[]>([]);
 
 export function setFocus(m: FocusMode): void {
   focusMode.set(m);

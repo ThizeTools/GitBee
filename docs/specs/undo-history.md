@@ -26,6 +26,7 @@ entry does; the entry is recorded only after the action succeeded.
 | Reset soft or mixed | reset the same mode to the old HEAD | reset to the target |
 | Reset hard | apply the backup of the changes, after resetting to the old HEAD | back up the changes again, reset to the target |
 | Discard changes in one file | write the file's backed-up bytes back (or delete it if it was absent) | back it up again, discard again |
+| Discard a hunk or picked lines (diff viewer, `hunk-staging.md`) | write the file's backed-up bytes back | back it up again, apply the same discard patch |
 | Discard all changes (staging panel) | apply the discard-all backup commit | discard all again, keep the new backup |
 | Drop stash (graph row, sidebar, stash panel) | put the stash commit back on the stash list | find its index by sha, drop it |
 

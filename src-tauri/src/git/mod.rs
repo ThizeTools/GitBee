@@ -1,6 +1,8 @@
 pub mod diff;
 pub mod graph;
 pub mod log_parser;
+pub mod numstat;
+pub mod progress;
 pub mod refs;
 pub mod runner;
 pub mod status;

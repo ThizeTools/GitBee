@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { currentRepo, status } from "$lib/stores/repo";
+  import { currentRepo, opState, status } from "$lib/stores/repo";
   import { centerMode } from "$lib/stores/center";
   import { layout, setSize } from "$lib/stores/layout";
+  import { activeOp, sideNames } from "$lib/conflict/labels";
   import ResizeHandle from "./ResizeHandle.svelte";
   import OpBanner from "./staging/OpBanner.svelte";
+  import ConflictList from "./staging/ConflictList.svelte";
   import StagingFileList from "./staging/StagingFileList.svelte";
   import CommitBox from "./staging/CommitBox.svelte";
   import StashTab from "./staging/StashTab.svelte";
@@ -26,9 +28,12 @@
 
   let confirmDiscardAll = $state(false);
 
-  const staged = $derived($status.filter(isStaged));
+  // A conflicted entry has index "conflicted", which isStaged counts as staged,
+  // so it is excluded from both lists and shown only in ConflictList.
+  const staged = $derived($status.filter((s) => isStaged(s) && !s.conflicted));
   const unstaged = $derived($status.filter((s) => !isStaged(s) && !s.conflicted));
   const conflicted = $derived($status.filter((s) => s.conflicted));
+  const names = $derived(sideNames(activeOp($opState)));
 
   const activeFile: ActiveFile | null = $derived.by(() => {
     if ($centerMode.kind !== "file") return null;
@@ -85,11 +90,14 @@
 
 <OpBanner />
 
+{#if conflicted.length > 0}
+  <ConflictList files={conflicted} {names} {sortMode} />
+{/if}
+
 <div class="files-scroll">
   <StagingFileList
     kind="unstaged"
     files={unstaged}
-    conflicts={conflicted}
     {viewMode}
     {sortMode}
     {activeFile}

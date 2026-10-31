@@ -12,6 +12,9 @@
   import { laneX, AVATAR_SIZE } from "$lib/graph/layout";
   import { displaySubjectFor, isRowDimmed, type WipBreakdown } from "./graphDerive";
   import { formatRelativeDate, formatAbsoluteDate } from "$lib/graph/relativeDate";
+  import {
+    dragOverRow, dropOnRow, leaveDropHover, rowDropKey, dropHoverKey,
+  } from "$lib/stores/refDrag";
 
   interface Props {
     row: number;
@@ -67,6 +70,10 @@
   onclick={onSelect}
   ondblclick={() => { if (!isWip) onCheckout(); }}
   oncontextmenu={onContextMenu}
+  ondragover={(e) => { if (!isWip) dragOverRow(e, node!.sha, refsFor(node!.sha)); }}
+  ondragleave={() => { if (!isWip) leaveDropHover(rowDropKey(node!.sha)); }}
+  ondrop={(e) => { if (!isWip) dropOnRow(e, refsFor(node!.sha)); }}
+  class:drop-target={!isWip && $dropHoverKey === rowDropKey(node!.sha)}
 >
   {#each order as col, i (col)}
     {#if col === "refs"}
@@ -182,6 +189,8 @@
     background: color-mix(in srgb, var(--row-lane) 28%, transparent);
   }
   .row.wip { border-bottom: 1px dashed var(--border); }
+  /* Drag-and-drop target: a branch dragged over this row would land here. */
+  .row.drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
 
   /* Search highlight: every match gets a soft yellow tint, the active
      cursor row gets a brighter band so the user can see which match

@@ -30,6 +30,7 @@ import {
   resetHardKeepingChanges,
 } from "$lib/stores/undoEntries";
 import { openModal } from "$lib/stores/modals";
+import { waitForAutofetch } from "$lib/stores/autofetch";
 import { commitWebUrl } from "$lib/github/url";
 import {
   hiddenRefs, soloRefs, pinnedRef,
@@ -53,9 +54,14 @@ export async function runAction<T>(
   label: string,
   fn: () => Promise<T>,
 ): Promise<ActionResult<T>> {
+  // WHY: busy is set before waiting, so no new background fetch can start
+  // while we wait for one already running. A fetch updating refs and
+  // FETCH_HEAD during the user's pull/push caused "cannot lock ref" errors.
+  // See docs/specs/repo-refresh.md.
   busy.set(true);
   errorMessage.set(null);
   try {
+    await waitForAutofetch();
     const r = await logAction(label, fn);
     if (r.ok) await refreshActive();
     else errorMessage.set(r.error);

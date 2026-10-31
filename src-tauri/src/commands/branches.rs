@@ -78,6 +78,83 @@ pub async fn branch_rebase(
     Ok(())
 }
 
+// Moves local branch `target` to `src` without checking it out (the drag-and-drop
+// "fast-forward" option). The refspec is a plain update, so git itself refuses a
+// non-fast-forward move and refuses the branch that is checked out.
+#[tauri::command]
+pub async fn branch_fast_forward_local(
+    path: String,
+    src: String,
+    target: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let args = fast_forward_local_args(&src, &target)?;
+    state.git.run(&cwd(&path), args).await?;
+    Ok(())
+}
+
+// Fast-forwards the checked-out branch to `from`. `--ff-only` makes git refuse
+// to create a merge commit, so this option can never add history by itself.
+#[tauri::command]
+pub async fn branch_merge_ff_only(
+    path: String,
+    from: String,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let args = merge_ff_only_args(&from)?;
+    state.git.run(&cwd(&path), args).await?;
+    Ok(())
+}
+
+// Fully qualified refs, so a branch named like a git option or a force flag
+// cannot change what the refspec means.
+fn fast_forward_local_args(src: &str, target: &str) -> AppResult<Vec<String>> {
+    let refspec = format!(
+        "refs/heads/{}:refs/heads/{}",
+        checked_ref(src)?,
+        checked_ref(target)?
+    );
+    Ok(vec!["fetch".into(), ".".into(), refspec])
+}
+
+fn merge_ff_only_args(from: &str) -> AppResult<Vec<String>> {
+    Ok(vec!["merge".into(), "--ff-only".into(), checked_ref(from)?.into()])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fast_forward_local_args_name_both_branches_as_full_refs() {
+        let args = fast_forward_local_args("feature", "main").unwrap();
+        assert_eq!(args, ["fetch", ".", "refs/heads/feature:refs/heads/main"]);
+    }
+
+    #[test]
+    fn fast_forward_local_args_keep_a_plus_name_out_of_the_force_position() {
+        let args = fast_forward_local_args("+feature", "+main").unwrap();
+        assert_eq!(args[2], "refs/heads/+feature:refs/heads/+main");
+    }
+
+    #[test]
+    fn fast_forward_local_args_reject_an_option_like_source_or_target() {
+        assert!(fast_forward_local_args("--force", "main").is_err());
+        assert!(fast_forward_local_args("feature", "-d").is_err());
+    }
+
+    #[test]
+    fn merge_ff_only_args_pass_ff_only_before_the_ref() {
+        let args = merge_ff_only_args("origin/main").unwrap();
+        assert_eq!(args, ["merge", "--ff-only", "origin/main"]);
+    }
+
+    #[test]
+    fn merge_ff_only_args_reject_an_option_like_ref() {
+        assert!(merge_ff_only_args("--no-ff").is_err());
+    }
+}
+
 // Set or clear the upstream tracking branch for `branch`. Passing
 // `remote=None` (or empty) unsets the upstream — useful when the user
 // wants to detach from a deleted upstream. The remote-side branch name

@@ -8,6 +8,10 @@
   import { pinnedRef } from "$lib/stores/graphFilter";
   import { onDestroy } from "svelte";
   import { scheduleRefHover, releaseRefHover } from "$lib/stores/refHover";
+  import { dragRefOf, type DragRef } from "$lib/menus/dragOptions";
+  import {
+    beginRefDrag, endRefDrag, dragOverRef, dropOnRef, leaveDropHover, badgeDropKey, dropHoverKey,
+  } from "$lib/stores/refDrag";
 
   interface Props {
     refs: CommitRef[];
@@ -186,6 +190,39 @@
       }
     }
   }
+
+  // The branch a pill stands for, or null for tags, stashes and the detached
+  // HEAD pill. A local badge drags as its local branch even with a remote twin.
+  function dragRefOfItem(it: DisplayItem): DragRef | null {
+    if (it.kind !== "localbranch" && it.kind !== "remotebranch") return null;
+    if (it.hasLocal) return { name: it.label, kind: "localbranch" };
+    return dragRefOf({ name: it.full, kind: "remotebranch" });
+  }
+  // Ghost badges are a hover preview, not refs: they neither drag nor take drops.
+  function dragPill(it: DisplayItem): DragRef | null {
+    return ghost ? null : dragRefOfItem(it);
+  }
+  // Pills that are not branches let the event bubble, so the row handles them.
+  function onPillDragOver(e: DragEvent, it: DisplayItem): void {
+    const ref = dragPill(it);
+    if (!ref) return;
+    e.stopPropagation();
+    dragOverRef(e, badgeDropKey(ref), ref);
+  }
+  function onPillDrop(e: DragEvent, it: DisplayItem): void {
+    const ref = dragPill(it);
+    if (!ref) return;
+    e.stopPropagation();
+    dropOnRef(e, ref);
+  }
+  function onPillDragLeave(it: DisplayItem): void {
+    const ref = dragPill(it);
+    if (ref) leaveDropHover(badgeDropKey(ref));
+  }
+  function isDropTarget(it: DisplayItem): boolean {
+    const ref = dragPill(it);
+    return ref !== null && $dropHoverKey === badgeDropKey(ref);
+  }
 </script>
 
 {#if items.length > 0}
@@ -212,6 +249,13 @@
       tabindex="0"
       ondblclick={(e) => { e.stopPropagation(); checkout(primary); }}
       oncontextmenu={(e) => onContext(e, primary)}
+      draggable={dragPill(primary) ? "true" : "false"}
+      ondragstart={(e) => { const ref = dragPill(primary); if (ref) beginRefDrag(e, ref); }}
+      ondragend={endRefDrag}
+      ondragover={(e) => onPillDragOver(e, primary)}
+      ondragleave={() => onPillDragLeave(primary)}
+      ondrop={(e) => onPillDrop(e, primary)}
+      class:drop-target={isDropTarget(primary)}
     >
       {#if primary.isHead}<span class="head-mark">✓</span>{/if}
       <span class="lbl">{primary.label}</span>
@@ -255,6 +299,13 @@
           onclick={(e) => e.stopPropagation()}
           ondblclick={(e) => { e.stopPropagation(); checkout(it); }}
           oncontextmenu={(e) => onContext(e, it)}
+          draggable={dragPill(it) ? "true" : "false"}
+          ondragstart={(e) => { const ref = dragPill(it); if (ref) beginRefDrag(e, ref); }}
+          ondragend={endRefDrag}
+          ondragover={(e) => onPillDragOver(e, it)}
+          ondragleave={() => onPillDragLeave(it)}
+          ondrop={(e) => onPillDrop(e, it)}
+          class:drop-target={isDropTarget(it)}
           title={it.kind === "tag" ? "Tag" : "Double-click to checkout"}
         >
           {#if it.isHead}<span class="head-mark">✓</span>{/if}
@@ -354,4 +405,7 @@
     max-width: none;
   }
   .pop-row:hover { filter: brightness(1.15); }
+  /* Drag-and-drop: the branch badge a dragged branch would land on. */
+  .ref[draggable="true"] { cursor: grab; }
+  .ref.drop-target { outline: 2px solid #ffffff; outline-offset: 1px; }
 </style>

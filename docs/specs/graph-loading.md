@@ -51,8 +51,9 @@ fall back to an empty graph; see the QoL backlog.
 
 ### Diffs (`src-tauri/src/commands/diff.rs`, `src-tauri/src/git/diff.rs`)
 - `diff_commit(path, sha, file?)`: with `file`, runs
-  `git show --format= --no-color -U3 <sha> -- <file>`. The center diff
-  panel passes the file; the commit details panel does not.
+  `git show --format= --no-color -U3 --diff-merges=first-parent <sha> -- <file>`.
+  The center diff panel and the commit details panel pass the file. The
+  details panel asks per expanded row, see [commit-details.md](commit-details.md).
 - `FileDiff.omitted_lines: u32`: the parser keeps at most
   `MAX_FILE_DIFF_LINES` (5000) lines per file and counts the rest. The
   viewer shows "N more lines not shown" when it is non-zero.
@@ -76,8 +77,8 @@ fall back to an empty graph; see the QoL backlog.
 ## Out of scope
 - True incremental log (`git log <new>..` merged into the old set).
 - Backend commit search across unloaded history.
-- Lazy per-file diffs in the commit details panel (it still loads the
-  whole commit; the line cap bounds the worst case).
+- Lazy per-file diffs in the commit details panel. Done: the file list loads
+  first and each diff on expand, see [commit-details.md](commit-details.md).
 
 ## Rejected alternatives
 - **Append-only paging (`git log --skip=N`).** Lanes of the new page
