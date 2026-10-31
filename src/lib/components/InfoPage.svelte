@@ -135,7 +135,8 @@
         { title: "Persisted layout (widths, column order, zoom, collapse states)", status: "done" },
         { title: "Ctrl +/- and 80–200% zoom picker in status bar", status: "done" },
         { title: "Status bar (logs, shortcuts, zoom, version)", status: "done" },
-        { title: "Auto-update: background download + signature-verified one-click install", status: "done" },
+        { title: "Auto-update: background download + signature-verified one-click install", status: "partial",
+          note: "Windows only — macOS builds are local and unsigned, so the check is skipped there" },
         { title: "Light / dark theme toggle", status: "done" },
         { title: "Command palette (Ctrl+P)", status: "done" },
       ],
@@ -143,9 +144,19 @@
     {
       title: "Terminal",
       items: [
-        { title: "Open external terminal at repo (Windows Terminal → PowerShell → cmd)", status: "done" },
+        { title: "Open external terminal at repo (Windows Terminal → PowerShell → cmd · Terminal.app on macOS)", status: "done" },
         { title: "Embedded line-mode terminal", status: "planned",
           note: "removed in favor of external; revisit when we add a real PTY" },
+      ],
+    },
+    {
+      title: "Platforms",
+      items: [
+        { title: "Windows: NSIS / MSI / portable builds, signed auto-update", status: "done" },
+        { title: "macOS: unsigned local .app / .dmg build (bun run build:mac)", status: "done" },
+        { title: "macOS: Cmd works wherever Ctrl is listed", status: "done" },
+        { title: "macOS: closing hides to the menu bar; Dock icon click reopens the window", status: "done" },
+        { title: "macOS: signed + notarized builds that open on other Macs", status: "planned" },
       ],
     },
     {
