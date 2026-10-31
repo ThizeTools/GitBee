@@ -32,6 +32,11 @@ pub enum AppError {
     #[error("{0}")]
     Ai(String),
 
+    /// Git LFS refusals ("Git LFS is not installed") and bad LFS input. Shown
+    /// as is, without a prefix (docs/specs/git-lfs.md "Errors").
+    #[error("{0}")]
+    Lfs(String),
+
     #[error("other: {0}")]
     Other(String),
 }

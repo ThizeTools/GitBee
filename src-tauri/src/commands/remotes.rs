@@ -158,8 +158,9 @@ fn fast_forward_refspec(branch: &str) -> String {
     format!("refs/heads/{branch}:refs/heads/{branch}")
 }
 
-// See `remote_add`: a URL is validated for a leading '-' only.
-fn checked_remote_url(value: &str) -> AppResult<&str> {
+// See `remote_add`: a URL is validated for a leading '-' only. `repo_clone`
+// shares this check, so it is public to the commands module.
+pub fn checked_remote_url(value: &str) -> AppResult<&str> {
     if value.starts_with('-') {
         return Err(AppError::Other(format!(
             "invalid remote URL {value:?}: must not start with '-'"

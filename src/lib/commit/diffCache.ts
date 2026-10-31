@@ -5,11 +5,14 @@ import type { FileDiff } from "$lib/ipc";
 /**
  * One per-file commit diff. `ignoreWs` is part of the key because `-w`
  * changes which hunks git emits, so the two results are different diffs.
+ * `oldFile` is part of it too: a rename's diff pairs two paths, so the same
+ * new name with another old name is another diff.
  */
 export interface DiffKey {
   repo: string;
   sha: string;
   file: string;
+  oldFile?: string;
   ignoreWs: boolean;
 }
 
@@ -69,5 +72,5 @@ export class DiffCache {
 }
 
 function keyId(key: DiffKey): string {
-  return JSON.stringify([key.repo, key.sha, key.ignoreWs, key.file]);
+  return JSON.stringify([key.repo, key.sha, key.ignoreWs, key.file, key.oldFile ?? null]);
 }

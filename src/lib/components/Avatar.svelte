@@ -1,3 +1,15 @@
+<script lang="ts" module>
+  // Process-wide cache so re-rendering rows doesn't re-hit the backend. Value
+  // is a Promise so concurrent mounts coalesce into one IPC call. Capped at
+  // 2000 emails, least recently used first out: a long session over many
+  // authors used to grow an unbounded map on `window`. It is in this module
+  // block, not the instance script, so every row shares one cache.
+  import { LruMap } from "$lib/stores/lruMap";
+
+  const AVATAR_CACHE_LIMIT = 2000;
+  const cache = new LruMap<string, Promise<string>>(AVATAR_CACHE_LIMIT);
+</script>
+
 <script lang="ts">
   // Resolves an email to a cached avatar PNG via the backend, displaying
   // colored initials while the file isn't there yet (or if the resolve
@@ -17,14 +29,6 @@
   let src = $state<string | null>(null);
   let failed = $state(false);
 
-  // Process-wide cache so re-rendering rows doesn't re-hit the backend.
-  // Value is a Promise so concurrent mounts coalesce into one IPC call.
-  type Pending = Promise<string>;
-  const cache: Map<string, Pending> = ((): Map<string, Pending> => {
-    const w = window as unknown as { __ghAvatarCache?: Map<string, Pending> };
-    if (!w.__ghAvatarCache) w.__ghAvatarCache = new Map();
-    return w.__ghAvatarCache;
-  })();
 
   $effect(() => {
     src = null; failed = false;

@@ -1,6 +1,6 @@
 // Shared shapes for the command palette (Ctrl+P). Spec: docs/specs/command-palette.md.
 
-export type PaletteCategory = "Action" | "Repo" | "Branch" | "File" | "Theme" | "Commit";
+export type PaletteCategory = "Action" | "Repo" | "Branch" | "File" | "Theme" | "Commit" | "LFS";
 
 // One row of the finder. `id` is stable across sessions because recently used
 // ids are stored in localStorage and matched against the next session's items.

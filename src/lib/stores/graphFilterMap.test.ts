@@ -1,7 +1,8 @@
 import { describe, test, expect } from "bun:test";
+import type { CommitRef } from "$lib/ipc";
 import {
   emptyRepoFilters, getRepoFilters, parseFilterMap, repoFilterKey,
-  seedRepoFilters, serializeFilterMap, setRepoFilters, type RepoFilters,
+  pinnedShaFor, seedRepoFilters, serializeFilterMap, setRepoFilters, type RepoFilters,
 } from "./graphFilterMap";
 
 const LEGACY: RepoFilters = { hidden: ["gh-pages"], solo: [], pinned: "main" };
@@ -84,5 +85,32 @@ describe("seedRepoFilters", () => {
   test("seeding one repo leaves others untouched", () => {
     const map = seedRepoFilters({}, "c:/a", LEGACY);
     expect(getRepoFilters(map, "c:/b")).toBeNull();
+  });
+});
+
+describe("pinnedShaFor", () => {
+  const refs: CommitRef[] = [
+    { name: "main", kind: "localbranch", target_sha: "aaa" },
+    { name: "origin/main", kind: "remotebranch", target_sha: "bbb" },
+    { name: "v1", kind: "tag", target_sha: "ccc" },
+    { name: "stash", kind: "stash", target_sha: "ddd" },
+  ];
+
+  test("returns the target of the pinned ref", () => {
+    expect(pinnedShaFor("origin/main", refs)).toBe("bbb");
+    expect(pinnedShaFor("main", refs)).toBe("aaa");
+  });
+
+  test("null when nothing is pinned", () => {
+    expect(pinnedShaFor(null, refs)).toBeNull();
+    expect(pinnedShaFor("", refs)).toBeNull();
+  });
+
+  test("null when the pinned ref vanished, so HEAD takes lane 0", () => {
+    expect(pinnedShaFor("feature/gone", refs)).toBeNull();
+  });
+
+  test("never resolves a stash entry as a pin", () => {
+    expect(pinnedShaFor("stash", refs)).toBeNull();
   });
 });

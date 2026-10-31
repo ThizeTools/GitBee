@@ -91,17 +91,3 @@ pub async fn discard_file(
     state.git.run(&cwd(&path), ["checkout", "--", &file]).await?;
     Ok(())
 }
-
-/// Reset everything in the working tree to HEAD: revert tracked file edits
-/// (staged or not) and remove untracked files / directories. Equivalent to
-/// `git reset --hard HEAD` followed by `git clean -fd`. Caller is expected
-/// to have already confirmed with the user — this is destructive.
-#[tauri::command]
-pub async fn discard_all_changes(
-    path: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
-    state.git.run(&cwd(&path), ["reset", "--hard", "HEAD"]).await?;
-    state.git.run(&cwd(&path), ["clean", "-fd"]).await?;
-    Ok(())
-}

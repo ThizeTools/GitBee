@@ -21,7 +21,7 @@ line cap are unchanged.
 ## Public contract
 
 ### Backend commands (`src-tauri/src/commands/diff.rs`)
-- `diff_commit(path, sha, file?, ignore_ws?)`, `diff_stash(path, index, ignore_ws?)`,
+- `diff_commit(path, sha, file?, old_file?, ignore_ws?)`, `diff_stash(path, index, ignore_ws?)`,
   `diff_workdir(path, file?, ignore_ws?)`, `diff_index(path, file?, ignore_ws?)`
   return `FileDiff[]`. `ignore_ws: true` adds `-w`. Absent or `false` gives the
   exact diff. `diff_commit` diffs a merge against its first parent

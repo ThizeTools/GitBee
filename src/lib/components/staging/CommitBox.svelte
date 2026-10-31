@@ -19,6 +19,8 @@
   import SignToggle from "./commit/SignToggle.svelte";
   import CoAuthorPicker from "./commit/CoAuthorPicker.svelte";
   import AiGenerateButton from "./commit/AiGenerateButton.svelte";
+  import { identityFor, repoIdentity } from "$lib/profiles/identityStore";
+  import { commitIdentityHint } from "$lib/profiles/profile";
 
   // The commit message form: summary, description, amend, sign, co-authors,
   // AI draft and the commit action. Self-contained so commit features land
@@ -51,6 +53,8 @@
   const stagedCount = $derived($status.filter(isStaged).length);
   const authors = $derived(distinctAuthors($graph?.nodes ?? [], identity));
   const coAuthors = $derived(parseCoAuthors(description));
+  // Which identity the commit is made as, from the status bar's read (docs/specs/git-profiles.md).
+  const identityHint = $derived(commitIdentityHint(identityFor($repoIdentity, $currentRepo)));
 
   $effect(() => {
     const repo = $currentRepo;
@@ -257,6 +261,9 @@
       <AiGenerateButton {repo} canGenerate={stagedCount > 0} onDraft={applyDraft} />
     {/if}
   </div>
+  {#if identityHint}
+    <div class="identity-hint" class:warn={identityHint.warn}>{identityHint.text}</div>
+  {/if}
   <button
     class="commit-btn"
     onclick={commit}
@@ -302,6 +309,8 @@
     display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
   }
   .spacer { flex: 1; }
+  .identity-hint { font-size: 11px; color: var(--fg-muted); }
+  .identity-hint.warn { color: var(--modified); }
   .amend {
     font-size: 11px; color: var(--fg-muted);
     display: flex; gap: 6px; align-items: center;

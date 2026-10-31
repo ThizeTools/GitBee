@@ -135,6 +135,17 @@ authors again would cost a git process per open, for the same people. The
 trade-off: only authors in the loaded history are offered, which is the list a
 user usually means.
 
+## Identity hint
+
+A line above the commit button says who the commit is made as:
+`Committing as Name <email>`. When git has no name or no email for the repo, the
+line is a warning, `No git identity set for this repo`. The line reads the
+identity the status bar loaded (docs/specs/git-profiles.md), and shows nothing
+while that read is unknown.
+
+**Why a line here and not only in the pill:** the commit box is where a wrong
+identity does harm. The pill can be missed; the line sits next to the button.
+
 ## Invariants
 
 - Co-author state lives only in the description text. The chips are derived.
@@ -150,7 +161,9 @@ user usually means.
 
 - Choosing, creating, or unlocking a signing key from GitBee. The box does not
   read `gpg.format` or `user.signingkey`; both are allowed keys for later use.
-- Writing `user.*`, `commit.gpgsign` or `commit.template` from GitBee.
+- Writing `commit.gpgsign` or `commit.template` from GitBee. The `user.*` keys
+  are written only by git profiles, from the status bar pill
+  (docs/specs/git-profiles.md).
 - Templates with variables or placeholders (git has none).
 - Co-authors who are not in the loaded history, and mailmap resolution. A
   GitHub user search would need the network and a token for an everyday

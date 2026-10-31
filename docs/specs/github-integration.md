@@ -211,6 +211,64 @@ Disk cache at `<app_data>/gitbee/avatars/<sha1(email)>.png`.
   image loads.
 - File blame, stash list, branch list: out of scope, hooks left for v2.
 
+## Gist sharing
+
+Commit context menu: **Share as Gist…** (replaces the "Share commit as Cloud
+Patch" stub, which never shipped). Code: `src/lib/github/gistShare.ts`
+(flow), `src-tauri/src/github/gists.rs` (payload and errors),
+`commands::github::gist_create_patch` (git side).
+
+Flow:
+1. Not signed in: info toast "Sign in to GitHub first". Stop.
+2. Choice dialog. **Secret gist** is the first and default choice; **Public
+   gist** is the second. Secret gists are listed nowhere, but anyone with the
+   link can open them.
+3. `gist_create_patch(path, sha, public)`:
+   - `git format-patch -1 --stdout <sha>` gives the patch text. The same output
+     as "Create patch from commit".
+   - `git log -1 --format=%s <sha>` gives the subject, which becomes the gist
+     description.
+   - The file name is `<sha7>-<slug>.patch`. The slug is the subject in
+     lower-case ASCII words joined by `-`, cut at 50 characters, and `commit`
+     when nothing is left.
+   - `POST /gists` with one file. The reply's `html_url` is returned.
+4. The URL is copied to the clipboard and a success toast shows it. Toasts take
+   no actions, so there is no "Open" button; the user pastes the link.
+
+Scope: the device flow requests `gist` (`SCOPES` in `github/oauth.rs`). A token
+issued before that lacks the scope. The POST then returns 401, 403 or 404,
+which becomes `GIST_SCOPE_MISSING: sign in again to grant gist access (GitHub
+answered <status>: <message>)`. The command layer clears the stored token (as
+it does for `INSUFFICIENT_SCOPES`), and the toast says "Sign in again to grant
+gist access". GitHub's message stays in the error, so a rate limit is not
+mistaken for a scope problem.
+
+Invariants:
+- Git runs first. The token is used only after the patch and subject exist, so
+  a git failure never reaches GitHub.
+- The SHA is checked with `checked_ref` (no leading `-`).
+- Only one file per gist. The description is the commit subject, which the
+  user chose to share.
+
+Rejected alternatives:
+- **Keep the Cloud Patch name.** "Cloud Patch" is not a GitHub feature. The
+  name describes what the user gets: a gist.
+- **Store the patch in a repo or as a PR comment.** Needs write access to a
+  repo and leaves a trace in its history. A gist needs only the `gist` scope.
+- **Upload with `gh gist create`.** Second auth source and an external binary.
+  The token GitBee already holds is enough.
+
+Tests: `gists.rs` covers the slug rules, the file name, the payload (one file,
+visibility flag), and the three error paths (404 scope, 403 rate limit kept
+visible, a reply without `html_url`). `commands/github.rs` covers the clone URL
+rule.
+
+## Clone URLs
+
+`github_clone` refuses a URL that starts with `-` before git runs
+(`checked_clone_url`, same rule as `remote_add`). git would read such a value as
+an option, for example `--upload-pack=...`.
+
 ## Invariants
 
 - `CLIENT_ID` is the only build-time GitHub identifier. Removing the
@@ -234,7 +292,8 @@ Disk cache at `<app_data>/gitbee/avatars/<sha1(email)>.png`.
   already configured one).
 - Two-factor / SSO enforcement edge cases: rely on GitHub's normal OAuth
   flow which already prompts.
-- Creating repos, forking, issues, PRs, gists.
+- Forking and issues. Pull requests: see [github-pull-requests.md](github-pull-requests.md).
+  Gists: see "Gist sharing" below.
 - GitHub Enterprise / self-hosted GitLab / Bitbucket. The architecture
   leaves room for additional providers (the `github` module is one of
   potentially many) but only `github.com` ships.

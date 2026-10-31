@@ -5,6 +5,7 @@
   import ConflictEditor from "./conflict/ConflictEditor.svelte";
   import FileHistory from "./history/FileHistory.svelte";
   import FileBlame from "./history/FileBlame.svelte";
+  import PullRequestsView from "./pr/PullRequestsView.svelte";
 </script>
 
 <section class="center">
@@ -18,6 +19,8 @@
     <FileHistory file={$centerMode.file} />
   {:else if $centerMode.kind === "blame"}
     <FileBlame file={$centerMode.file} rev={$centerMode.rev} />
+  {:else if $centerMode.kind === "pulls"}
+    <PullRequestsView />
   {:else}
     <GraphCanvas />
   {/if}

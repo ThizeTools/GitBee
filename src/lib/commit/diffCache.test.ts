@@ -51,6 +51,16 @@ describe("DiffCache", () => {
     expect(loader.calls.length).toBe(2);
   });
 
+  test("keeps a rename's diff apart from the plain diff of the same new name", async () => {
+    const loader = new FakeLoader();
+    const cache = new DiffCache(loader.load, 10);
+    await cache.get(key("new.ts"));
+    await cache.get({ ...key("new.ts"), oldFile: "old.ts" });
+    await cache.get({ ...key("new.ts"), oldFile: "old.ts" });
+    expect(loader.calls.length).toBe(2);
+    expect(loader.calls[1].oldFile).toBe("old.ts");
+  });
+
   test("does not keep a failed load, so the next request retries", async () => {
     const loader = new FakeLoader();
     const cache = new DiffCache(loader.load, 10);

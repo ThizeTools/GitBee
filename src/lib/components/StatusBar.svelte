@@ -16,6 +16,13 @@
     gitProgress, startGitProgress, pickProgressForRepo, progressFraction, progressLabel,
   } from "$lib/stores/gitProgress";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
+  import ProfilesDialog from "./profiles/ProfilesDialog.svelte";
+  import { openMenu } from "$lib/stores/contextmenu";
+  import { profiles, refreshProfiles } from "$lib/profiles/profilesStore";
+  import { identityFor, refreshRepoIdentity, repoIdentity } from "$lib/profiles/identityStore";
+  import { identityTone, pillText } from "$lib/profiles/profile";
+  import { pillMenuItems } from "$lib/profiles/menu";
+  import { applyProfileWithNotice } from "$lib/profiles/applyToRepo";
 
   // Re-rendered every 30 s so "Fetched 3 min ago" ages without a store event.
   const AGE_TICK_MS = 30_000;
@@ -28,7 +35,18 @@
   const fraction = $derived(progress ? progressFraction(progress) : null);
   const fetchState = $derived($currentRepo ? ($autofetchStatus[$currentRepo] ?? null) : null);
 
+  // The identity pill shows what git would commit as in the open repo. It is
+  // re-read when the repo changes and after an apply (docs/specs/git-profiles.md).
+  const identity = $derived(identityFor($repoIdentity, $currentRepo));
+  let profilesOpen = $state(false);
+
+  $effect(() => {
+    const repo = $currentRepo;
+    if (repo) void refreshRepoIdentity(repo);
+  });
+
   onMount(() => {
+    refreshProfiles().catch((e: unknown) => logAppend("error", `profiles: ${e}`));
     const ageTimer = setInterval(() => { nowMs = Date.now(); }, AGE_TICK_MS);
     const stopProgress = startGitProgress();
     return () => {
@@ -43,6 +61,16 @@
     catch (e) { logAppend("error", `terminal: ${e}`); }
   }
   function pickZoom(z: number) { setZoom(z); zoomMenu = false; }
+
+  // The pill's menu: one line per saved profile, then the manager.
+  function openIdentityMenu(e: MouseEvent): void {
+    const repo = $currentRepo;
+    if (!repo) return;
+    openMenu(e, pillMenuItems($profiles, {
+      apply: (profile) => { void applyProfileWithNotice(repo, profile); },
+      manage: () => { profilesOpen = true; },
+    }));
+  }
 </script>
 
 <footer class="status">
@@ -64,6 +92,19 @@
     {/if}
   </div>
   <div class="right">
+    {#if identity}
+      <button
+        class="bi ident"
+        class:none={identity.source === "none"}
+        onclick={openIdentityMenu}
+        title={identity.source === "none"
+          ? "Git has no name or email for this repo. Click to apply a profile."
+          : `Commits here are made as this identity (${identity.source}). Click to switch profile.`}
+      >
+        <span class="dot tone-{identityTone(identity.source)}"></span>
+        <span class="ident-text">{pillText(identity)}</span>
+      </button>
+    {/if}
     {#if fetchState?.lastFetchError}
       <button
         class="bi af err"
@@ -123,6 +164,9 @@
 </footer>
 
 <ShortcutsPanel open={shortcutsOpen} onClose={() => shortcutsOpen = false} />
+{#if profilesOpen}
+  <ProfilesDialog onClose={() => profilesOpen = false} />
+{/if}
 
 <style>
   .status {
@@ -255,6 +299,18 @@
     from { transform: translateX(-100%); }
     to { transform: translateX(290%); }
   }
+
+  /* Identity pill: a dot for the source, then "Name <email>" cut short with an
+     ellipsis. An unset identity turns the text the warning color. */
+  .ident { max-width: 320px; }
+  .ident-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ident.none { color: var(--modified); }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    background: var(--fg-muted);
+  }
+  .dot.tone-accent { background: var(--accent); }
+  .dot.tone-warn { background: var(--modified); }
 
   /* Auto-fetch status: quiet age text, or a warning pill that retries on click. */
   .af {

@@ -1,6 +1,8 @@
 // Pure storage model for per-repo graph filters (hide, solo, pin). graphFilter.ts
 // keeps the live stores in sync with one JSON object in localStorage whose keys
 // are normalized repo paths. Kept free of storage access so bun test can run it.
+import type { CommitRef } from "$lib/ipc";
+import { normTabPath } from "./repoPath";
 
 export interface RepoFilters {
   hidden: string[];
@@ -14,12 +16,11 @@ export function emptyRepoFilters(): RepoFilters {
   return { hidden: [], solo: [], pinned: null };
 }
 
-// Same rule as normTabPath in repoState.ts (kept separate to avoid an import
-// cycle: repoState imports graphFilter). Windows paths are case-insensitive
-// and may use either slash, so "C:\\Repo\\" and "c:/repo" name one key.
+// The same rule the repo tabs compare with (normTabPath, repoPath.ts), so
+// "C:\\Repo\\" and "c:/repo" name one key.
 /** Normalized map key for a repo path. Example: repoFilterKey("C:\\Code\\App\\") → "c:/code/app" */
 export function repoFilterKey(path: string): string {
-  return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return normTabPath(path);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -77,4 +78,15 @@ export function setRepoFilters(map: FilterMap, key: string, filters: RepoFilters
  * when nothing changes. Example: seedRepoFilters(map, key, legacy) */
 export function seedRepoFilters(map: FilterMap, key: string, legacy: RepoFilters): FilterMap {
   return getRepoFilters(map, key) === null ? setRepoFilters(map, key, legacy) : map;
+}
+
+/** The target sha of the pinned ref, or null when nothing is pinned or the pinned
+ * ref is not among `refs`. Pins are stored by qualified ref name (`CommitRef.name`),
+ * so "main" and "origin/main" pin different refs. WHY a null: the backend then
+ * gives lane 0 to HEAD, the documented fallback (docs/specs/lane-pin.md).
+ * Example: pinnedShaFor("origin/main", graph.refs) */
+export function pinnedShaFor(pin: string | null, refs: readonly CommitRef[]): string | null {
+  if (!pin) return null;
+  const ref = refs.find((r) => r.name === pin && r.kind !== "stash");
+  return ref?.target_sha ?? null;
 }

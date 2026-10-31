@@ -70,15 +70,16 @@ pub async fn op_continue(
     Ok(())
 }
 
-/// Pure: env for `<op> --continue`. A rebase can reach a squash step that
-/// opens the message editor, and the process is hidden, so that editor would
-/// block forever. Only rebase gets it for now; merge, cherry-pick and revert
-/// keep git's default (docs/specs/interactive-rebase.md).
+/// Pure: env for `<op> --continue`. Each of these can open a message editor
+/// (a rebase squash, the merge, cherry-pick or revert commit message), and the
+/// process is hidden, so that editor would block forever. `GIT_EDITOR=true`
+/// keeps the message git prepared (MERGE_MSG, the cherry-pick message).
+/// WHY: merge, cherry-pick and revert hung the same way before this. See
+/// docs/specs/conflict-resolution.md and docs/specs/interactive-rebase.md.
 fn continue_envs(kind: &str) -> Vec<(&'static str, &'static str)> {
-    if kind == "rebase" {
-        vec![NO_EDITOR_ENV]
-    } else {
-        Vec::new()
+    match kind {
+        "merge" | "rebase" | "cherry-pick" | "revert" => vec![NO_EDITOR_ENV],
+        _ => Vec::new(),
     }
 }
 
@@ -162,10 +163,15 @@ mod tests {
     }
 
     #[test]
-    fn continue_envs_leave_other_operations_as_git_runs_them() {
-        assert!(continue_envs("merge").is_empty());
-        assert!(continue_envs("cherry-pick").is_empty());
-        assert!(continue_envs("revert").is_empty());
+    fn continue_envs_stop_merge_cherry_pick_and_revert_from_opening_an_editor() {
+        for kind in ["merge", "cherry-pick", "revert"] {
+            assert_eq!(continue_envs(kind), vec![NO_EDITOR_ENV], "op {kind}");
+        }
+    }
+
+    #[test]
+    fn continue_envs_add_nothing_for_an_unknown_op() {
+        assert!(continue_envs("bisect").is_empty());
     }
 
     #[test]

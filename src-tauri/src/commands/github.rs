@@ -3,12 +3,61 @@
 
 use crate::commands::git_progress::{run_reporting, GitOp};
 use crate::error::{AppError, AppResult};
+use crate::git::checked_ref;
+use crate::github::api::TokenApi;
+use crate::github::gists;
 use crate::github::{api, avatars, create, oauth, storage, types::*};
 use crate::state::AppState;
 use parking_lot::Mutex;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+
+/// The signed-in token. Errors when nothing is stored, so every GitHub
+/// command fails with the same "not signed in" text.
+pub fn require_token(state: &AppState) -> AppResult<String> {
+    storage::load_token(&state.cache)?
+        .ok_or_else(|| AppError::GitHub("not signed in".into()))
+}
+
+/// Runs one GitHub call with the signed-in token and applies `settle_scoped`
+/// to its result. The pull-request commands are all this shape.
+pub async fn with_api<T, Fut>(
+    state: &AppState,
+    call: impl FnOnce(TokenApi) -> Fut,
+) -> AppResult<T>
+where
+    Fut: std::future::Future<Output = AppResult<T>>,
+{
+    let token = require_token(state)?;
+    settle_scoped(state, call(TokenApi { token }).await)
+}
+
+/// Passes a GitHub call's result through. A token that lacks a scope is
+/// cleared, as `github_list_repos` does, so the next screen is the sign-in
+/// panel. The error text tells the user what to do.
+pub fn settle_scoped<T>(state: &AppState, result: AppResult<T>) -> AppResult<T> {
+    if let Err(e) = &result {
+        let msg = e.to_string();
+        if msg.contains("INSUFFICIENT_SCOPES") || msg.contains(gists::GIST_SCOPE_MISSING) {
+            let _ = storage::clear_token(&state.cache);
+        }
+    }
+    result
+}
+
+/// Refuses a clone URL that git would read as an option, such as
+/// `--upload-pack=...`. Same rule as `remote_add`. Spec:
+/// docs/specs/github-integration.md.
+fn checked_clone_url(value: &str) -> AppResult<&str> {
+    if value.starts_with('-') {
+        return Err(AppError::Other(format!(
+            "invalid clone URL {value:?}: must not start with '-'"
+        )));
+    }
+    Ok(value)
+}
 
 #[derive(Default)]
 pub struct OAuthRegistry {
@@ -135,7 +184,7 @@ pub async fn github_clone(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> AppResult<String> {
-    use std::path::PathBuf;
+    checked_clone_url(&url)?;
     let token = storage::load_token(&state.cache)?;
     let dest_pb = PathBuf::from(&dest);
     if !dest_pb.exists() {
@@ -261,4 +310,43 @@ pub async fn github_publish_local(
     let token = storage::load_token(&state.cache)?
         .ok_or_else(|| AppError::GitHub("not signed in".into()))?;
     create::publish_local(&state.git, &token, repo_path, req).await
+}
+
+/// Shares one commit as a gist. Builds the patch with `git format-patch`
+/// (the same output as "Create patch"), posts it as one file, and returns the
+/// gist URL. Spec: docs/specs/github-integration.md, "Gist sharing".
+#[tauri::command]
+pub async fn gist_create_patch(
+    path: String,
+    sha: String,
+    public: bool,
+    state: State<'_, AppState>,
+) -> AppResult<String> {
+    let token = require_token(&state)?;
+    let cwd = PathBuf::from(&path);
+    let sha_ref = checked_ref(&sha)?;
+    // The patch and subject come from git first, so a git failure never
+    // reaches GitHub. Only then is the token used.
+    let patch = state.git.run(&cwd, ["format-patch", "-1", "--stdout", sha_ref]).await?;
+    let subject = state.git.run_text(&cwd, ["log", "-1", "--format=%s", sha_ref]).await?;
+    let req = gists::patch_gist_request(sha_ref, &subject, public, &patch);
+    let result = gists::create_gist(&TokenApi { token }, &req).await;
+    settle_scoped(&state, result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checked_clone_url_rejects_a_leading_dash_and_names_the_value() {
+        let err = checked_clone_url("--upload-pack=evil").unwrap_err();
+        assert!(err.to_string().contains("--upload-pack=evil"));
+    }
+
+    #[test]
+    fn checked_clone_url_accepts_https_and_scp_style_urls() {
+        assert!(checked_clone_url("https://github.com/o/r.git").is_ok());
+        assert!(checked_clone_url("git@github.com:o/r.git").is_ok());
+    }
 }

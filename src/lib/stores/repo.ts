@@ -11,6 +11,8 @@ import {
 import {
   refreshActive, attachWatcher, stopWatcher, forgetGraphLimit,
 } from "$lib/stores/repoRefresh";
+// Not from autofetch.ts: that module imports this one (see autofetchGate.ts).
+import { waitForAutofetch } from "$lib/stores/autofetchGate";
 
 // Repo actions (open, close, activate, persist) over the state in repoState,
 // busy and repoRefresh. The three layers are re-exported here so every
@@ -51,7 +53,7 @@ export async function openRepo(path: string) {
     const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newTab: RepoTab = {
       id, path: opened.path, name: tabName(opened.path),
-      graph: null, status: [], stashes: [], remotes: [], worktrees: [],
+      graph: null, status: [], stashes: [], remotes: [], worktrees: [], submodules: [],
       opState: null, selectedSha: null,
     };
     tabs.update((arr) => [...arr, newTab]);
@@ -188,10 +190,14 @@ export async function forgetRepo(path: string) {
   catch { await refreshRecent(); }
 }
 
+// WHY the wait: a background fetch updating refs or FETCH_HEAD during a user's
+// git action caused "cannot lock ref" errors (same reason as runAction).
+// busy is set first, so no new fetch starts while we wait for one in flight.
 export async function withBusy<T>(fn: () => Promise<T>): Promise<T | null> {
   busy.set(true);
   errorMessage.set(null);
   try {
+    await waitForAutofetch();
     const r = await fn();
     await refreshActive();
     return r;
@@ -255,7 +261,7 @@ export async function restoreTabs(): Promise<void> {
     id: `tab-${Math.random().toString(36).slice(2, 9)}`,
     path,
     name: tabName(path),
-    graph: null, status: [], stashes: [], remotes: [], worktrees: [],
+    graph: null, status: [], stashes: [], remotes: [], worktrees: [], submodules: [],
     opState: null, selectedSha: null,
   }));
   // Always enable persistence after the restore attempt — even if activateTab

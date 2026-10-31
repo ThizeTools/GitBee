@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::git::graph::{assign_lanes, GraphNode};
+use crate::git::graph::{assign_lanes, pick_lane0_tip, GraphNode};
 use crate::git::log_parser::{parse_log_z, LOG_FORMAT};
 use crate::git::refs::{parse_refs, REF_FORMAT};
 use crate::git::types::CommitRef;
@@ -19,6 +19,10 @@ pub struct GraphLoadOpts {
     /// The `fingerprint` of the graph the caller already holds. Equal to the
     /// current fingerprint means `git log` is skipped (see graph-loading.md).
     pub known_fingerprint: Option<String>,
+    /// Target sha of the pinned ref, which takes lane 0. None when nothing is
+    /// pinned or the pinned ref is not in the graph; HEAD then takes lane 0.
+    /// See docs/specs/lane-pin.md.
+    pub pinned_sha: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,8 +56,9 @@ pub async fn graph_load(
     let cwd = PathBuf::from(&opts.path);
     let limit = opts.limit.unwrap_or(2000);
     let all_branches = opts.all_branches.unwrap_or(true);
+    let pinned_sha = opts.pinned_sha.filter(|s| !s.is_empty());
     let refs_state = load_ref_state(&state.git, &cwd).await;
-    let fingerprint = graph_fingerprint(limit, all_branches, &refs_state);
+    let fingerprint = graph_fingerprint(limit, all_branches, pinned_sha.as_deref(), &refs_state);
     let head_sha = (!refs_state.head_sha.is_empty()).then(|| refs_state.head_sha.clone());
     let head_branch = head_branch_name(&refs_state.head_branch);
     if opts.known_fingerprint.as_deref() == Some(fingerprint.as_str()) {
@@ -63,7 +68,8 @@ pub async fn graph_load(
     let log_bytes = run_log(&state.git, &cwd, log_args, &refs_state.head_sha).await?;
     let commits = parse_log_z(&log_bytes).unwrap_or_default();
     let has_more = commits.len() >= limit;
-    let nodes = assign_lanes(commits, head_sha.as_deref());
+    let lane0 = pick_lane0_tip(&commits, pinned_sha.as_deref(), head_sha.as_deref());
+    let nodes = assign_lanes(commits, lane0);
     let refs = parse_refs(&refs_state.ref_bytes).unwrap_or_default();
     Ok(GraphPage {
         nodes,
@@ -170,11 +176,19 @@ fn build_log_args(limit: usize, all_branches: bool, stash_shas: &[String]) -> Ve
 
 /// Refs + HEAD + stashes fully decide `git log` output for a fixed limit,
 /// so an equal fingerprint means the graph is unchanged (see
-/// docs/specs/graph-loading.md). Example: `graph_fingerprint(2000, true, &s)`.
-fn graph_fingerprint(limit: usize, all_branches: bool, s: &RefState) -> String {
+/// docs/specs/graph-loading.md). The pinned sha is hashed too: it decides lane 0,
+/// and without it a pin change would hit the unchanged fast path.
+/// Example: `graph_fingerprint(2000, true, None, &s)`.
+fn graph_fingerprint(
+    limit: usize,
+    all_branches: bool,
+    pinned_sha: Option<&str>,
+    s: &RefState,
+) -> String {
     let mut hasher = DefaultHasher::new();
     limit.hash(&mut hasher);
     all_branches.hash(&mut hasher);
+    pinned_sha.hash(&mut hasher);
     s.ref_bytes.hash(&mut hasher);
     s.head_sha.hash(&mut hasher);
     s.head_branch.hash(&mut hasher);
@@ -203,8 +217,8 @@ mod tests {
 
     #[test]
     fn fingerprint_is_equal_for_identical_inputs() {
-        let a = graph_fingerprint(2000, true, &sample_state());
-        let b = graph_fingerprint(2000, true, &sample_state());
+        let a = graph_fingerprint(2000, true, None, &sample_state());
+        let b = graph_fingerprint(2000, true, None, &sample_state());
         assert_eq!(a, b);
         assert_eq!(a.len(), 16);
     }
@@ -213,8 +227,36 @@ mod tests {
     fn fingerprint_differs_when_limit_differs() {
         let s = sample_state();
         assert_ne!(
-            graph_fingerprint(2000, true, &s),
-            graph_fingerprint(4000, true, &s)
+            graph_fingerprint(2000, true, None, &s),
+            graph_fingerprint(4000, true, None, &s)
+        );
+    }
+
+    // Regression: a pin change must not hit the "unchanged" fast path.
+    #[test]
+    fn fingerprint_differs_when_pinned_sha_differs() {
+        let s = sample_state();
+        assert_ne!(
+            graph_fingerprint(2000, true, Some("aaa111"), &s),
+            graph_fingerprint(2000, true, Some("bbb222"), &s)
+        );
+    }
+
+    #[test]
+    fn fingerprint_differs_when_a_pin_is_set_or_cleared() {
+        let s = sample_state();
+        assert_ne!(
+            graph_fingerprint(2000, true, None, &s),
+            graph_fingerprint(2000, true, Some("aaa111"), &s)
+        );
+    }
+
+    #[test]
+    fn fingerprint_is_equal_for_the_same_pin() {
+        let s = sample_state();
+        assert_eq!(
+            graph_fingerprint(2000, true, Some("aaa111"), &s),
+            graph_fingerprint(2000, true, Some("aaa111"), &s)
         );
     }
 
@@ -223,8 +265,8 @@ mod tests {
         let mut other = sample_state();
         other.head_branch = "feature".into();
         assert_ne!(
-            graph_fingerprint(2000, true, &sample_state()),
-            graph_fingerprint(2000, true, &other)
+            graph_fingerprint(2000, true, None, &sample_state()),
+            graph_fingerprint(2000, true, None, &other)
         );
     }
 
@@ -233,8 +275,8 @@ mod tests {
         let mut more = sample_state();
         more.stash_shas.push("789abc".into());
         assert_ne!(
-            graph_fingerprint(2000, true, &sample_state()),
-            graph_fingerprint(2000, true, &more)
+            graph_fingerprint(2000, true, None, &sample_state()),
+            graph_fingerprint(2000, true, None, &more)
         );
     }
 

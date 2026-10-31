@@ -15,6 +15,8 @@
   import SplitHunk from "./diff/SplitHunk.svelte";
   import ImageDiff from "./diff/ImageDiff.svelte";
   import LineSelectionBar from "./diff/LineSelectionBar.svelte";
+  import LfsPointerCard from "./diff/LfsPointerCard.svelte";
+  import { pointerPairOf } from "$lib/lfs/pointer";
   import type { DiffMode, HunkView } from "./diff/hunkView";
 
   interface Props {
@@ -89,6 +91,7 @@
     {#each diffs as f (pathOf(f))}
       {@const path = pathOf(f)}
       {@const lang = langForPath(path)}
+      {@const pointer = pointerPairOf(f)}
       <div class="dv-file">
         <button class="dv-file-head" onclick={() => toggle(path)}>
           <span class="dv-caret">{collapsed[path] ? "▶" : "▼"}</span>
@@ -101,6 +104,8 @@
               <ImageDiff file={f} {revs} />
             {:else if f.binary}
               <div class="dv-note">Binary file</div>
+            {:else if pointer}
+              <LfsPointerCard {pointer} />
             {:else}
               {#each f.hunks as h, i (i)}
                 {#if $diffPrefs.layout === "split"}

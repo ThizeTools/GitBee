@@ -24,7 +24,9 @@ pub const CLIENT_ID: &str = "Ov23li9Byp22UMrMNVdb";
 
 // `read:org` is required to enumerate the viewer's organizations and
 // thus list org-owned repos. Without it the list silently misses orgs.
-const SCOPES: &str = "repo read:user read:org";
+// `gist` is required for "Share as Gist". Tokens issued before it was added
+// lack it; those users sign in again (see docs/specs/github-integration.md).
+const SCOPES: &str = "repo read:user read:org gist";
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 

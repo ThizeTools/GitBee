@@ -7,6 +7,8 @@ import { busy } from "$lib/stores/busy";
 import {
   tabs, activeTab, errorMessage, updateTab, type RepoTab,
 } from "$lib/stores/repoState";
+import { pinnedRef } from "$lib/stores/graphFilter";
+import { pinnedShaFor } from "$lib/stores/graphFilterMap";
 
 // Bumped after every completed refresh, even when the status list is identical.
 // An already-modified file edited again keeps the same status entry, so the
@@ -76,7 +78,7 @@ function startRefresh(silent: boolean, scope: RefreshScope): Promise<void> {
   return run;
 }
 
-type TabSnapshot = Pick<RepoTab, "graph" | "status" | "stashes" | "remotes" | "worktrees" | "opState">;
+type TabSnapshot = Pick<RepoTab, "graph" | "status" | "stashes" | "remotes" | "worktrees" | "submodules" | "opState">;
 
 /** Whether one snapshot field differs from the stored value. The graph is
  * compared by fingerprint: the fingerprint decides the graph, and stringifying
@@ -106,18 +108,36 @@ function withChangedFields(cur: RepoTab, next: TabSnapshot): RepoTab {
 /** Loads everything a full refresh shows for `t`. When the graph fingerprint
  * is unchanged the backend skipped `git log`, so the caller keeps `t.graph`. */
 async function fetchFullSnapshot(t: RepoTab): Promise<TabSnapshot> {
-  const [g, st, sl, rl, wt, op] = await Promise.all([
-    ipc.graphLoad(t.path, graphLimitFor(t.id), t.graph?.fingerprint ?? null),
+  const [g, st, sl, rl, wt, op, sm] = await Promise.all([
+    loadGraphFor(t),
     ipc.statusLoad(t.path).catch(() => []),
     ipc.stashList(t.path).catch(() => []),
     ipc.remoteList(t.path).catch(() => []),
     ipc.worktreeList(t.path).catch(() => []),
     ipc.opState(t.path).catch(() => null),
+    // Full loads only: status-only refreshes stay free of the submodule read.
+    ipc.submoduleList(t.path).catch(() => []),
   ]);
   return {
     graph: g.unchanged ? t.graph : g,
-    status: st, stashes: sl, remotes: rl, worktrees: wt, opState: op,
+    status: st, stashes: sl, remotes: rl, worktrees: wt, submodules: sm, opState: op,
   };
+}
+
+/** Loads the graph with the pinned ref's commit on lane 0 (docs/specs/lane-pin.md).
+ * The pin is resolved from the refs of the last graph. If this load's refs show
+ * the pinned ref moved or appeared, the graph is loaded once more with the fresh
+ * sha: a stale sha would lay lane 0 out from an old tip until the next refresh.
+ * Example: `const g = await loadGraphFor(tab)` */
+async function loadGraphFor(t: RepoTab): Promise<GraphPage> {
+  const pin = get(pinnedRef);
+  const limit = graphLimitFor(t.id);
+  const sentSha = pinnedShaFor(pin, t.graph?.refs ?? []);
+  const first = await ipc.graphLoad(t.path, limit, t.graph?.fingerprint ?? null, true, sentSha);
+  if (first.unchanged) return first;
+  const freshSha = pinnedShaFor(pin, first.refs);
+  if (freshSha === sentSha) return first;
+  return ipc.graphLoad(t.path, limit, null, true, freshSha);
 }
 
 /** Reloads only `git status` for `t`. Returns false when that call fails,
@@ -164,18 +184,32 @@ let loadMorePending = false;
 
 /** Grows the active tab's commit limit by one page and refreshes silently.
  * No-op while a previous load is pending or the graph has no older commits.
+ * Resolves true when it loaded a page, false when it was a no-op (history search
+ * uses that to wait and retry instead of spinning).
  * Example: `onScroll → if near bottom: void loadMoreCommits()` */
-export async function loadMoreCommits(): Promise<void> {
+export async function loadMoreCommits(): Promise<boolean> {
   const t = get(activeTab);
-  if (loadMorePending || t?.kind === "newtab" || !t?.graph?.has_more) return;
+  if (loadMorePending || t?.kind === "newtab" || !t?.graph?.has_more) return false;
   loadMorePending = true;
   try {
     graphLimits.set(t.id, graphLimitFor(t.id) + GRAPH_PAGE);
     await refreshActive({ silent: true });
+    return true;
   } finally {
     loadMorePending = false;
   }
 }
+
+// A pin moves lane 0, so every pin change lays the graph out again. The listener
+// lives here rather than in togglePin, because graphFilter cannot import this
+// module without a cycle. setFilterRepo also changes the pin on a tab switch; the
+// backend fingerprint keeps that refresh cheap when nothing moved.
+let lastPin: string | null = get(pinnedRef);
+pinnedRef.subscribe((pin) => {
+  if (pin === lastPin) return;
+  lastPin = pin;
+  void refreshActive({ silent: true });
+});
 
 // Set while the window is unfocused and the backend watcher is stopped.
 let watcherPaused = false;

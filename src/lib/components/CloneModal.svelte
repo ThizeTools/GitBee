@@ -7,6 +7,10 @@
   import { logAppend } from "$lib/stores/logs";
   import { ghAuth, bootGithubAuth } from "$lib/stores/github";
   import { openRepo } from "$lib/stores/repo";
+  import {
+    gitProgress, pickProgressForRepo, progressFraction, progressLabel,
+  } from "$lib/stores/gitProgress";
+  import { checkCloneForm, DEFAULT_CLONE_DEPTH } from "$lib/clone/cloneOptions";
   import GitHubLoginPanel from "./GitHubLoginPanel.svelte";
   import GitHubRepoPicker from "./GitHubRepoPicker.svelte";
   import { onMount } from "svelte";
@@ -21,6 +25,19 @@
   let dest = $state("");
   let busy = $state(false);
   let ghPicked = $state<GhRepo | null>(null);
+
+  // Shallow and single-branch apply to the URL source only; github_clone takes none.
+  let shallow = $state(false);
+  // Text, not a number: the field is validated as typed (see cloneOptions.ts).
+  let depthText = $state(String(DEFAULT_CLONE_DEPTH));
+  let singleBranch = $state(false);
+  let branchText = $state("");
+  const cloneCheck = $derived(checkCloneForm({ shallow, depthText, singleBranch, branchText }));
+
+  // The clone reports progress under its target folder, which the dialog does
+  // not know yet, so it shows the clone entry while this dialog is busy.
+  const progress = $derived(busy ? pickProgressForRepo($gitProgress, null) : null);
+  const fraction = $derived(progress ? progressFraction(progress) : null);
 
   onMount(() => {
     bootGithubAuth();
@@ -40,11 +57,12 @@
       ? (ghPicked?.clone_url ?? "")
       : cloneUrl.trim();
     if (!url) return;
+    if (source === "url" && cloneCheck.error) return;
     try {
       busy = true;
       const path = source === "github"
         ? await ipc.githubClone(url, dest.trim())
-        : await ipc.repoClone(url, dest.trim());
+        : await ipc.repoClone(url, dest.trim(), cloneCheck.options);
       logAppend("info", `cloned ${url} into ${path}`);
       // Persist destination so the next clone defaults to the same parent.
       ipc.cloneSaveDest(dest.trim()).catch(() => {});
@@ -56,7 +74,7 @@
   }
 
   const cloneDisabled = $derived(
-    busy || !dest.trim() || (source === "url" ? !cloneUrl.trim() : !ghPicked),
+    busy || !dest.trim() || (source === "url" ? !cloneUrl.trim() || cloneCheck.error !== null : !ghPicked),
   );
 
   function onKey(e: KeyboardEvent) {
@@ -101,6 +119,31 @@
             <label for="url">URL</label>
             <input id="url" placeholder="git@github.com:user/repo.git" bind:value={cloneUrl} />
           </div>
+          <div class="field options">
+            <label class="check">
+              <input type="checkbox" bind:checked={shallow} />
+              Shallow clone
+            </label>
+            {#if shallow}
+              <div class="sub">
+                <label for="depth">Depth</label>
+                <input id="depth" inputmode="numeric" bind:value={depthText} />
+              </div>
+            {/if}
+            <label class="check">
+              <input type="checkbox" bind:checked={singleBranch} />
+              Single branch
+            </label>
+            {#if singleBranch}
+              <div class="sub">
+                <label for="branch">Branch (optional)</label>
+                <input id="branch" placeholder="e.g. main" bind:value={branchText} />
+              </div>
+            {/if}
+            {#if cloneCheck.error}
+              <div class="option-error">{cloneCheck.error}</div>
+            {/if}
+          </div>
         {:else}
           <h2>Clone from GitHub</h2>
           {#if !$ghAuth.authenticated}
@@ -128,6 +171,15 @@
     </div>
 
     <footer class="modal-foot">
+      {#if progress}
+        <div class="progress" role="status">
+          <span class="progress-text">{progressLabel(progress)}</span>
+          <div class="bar">
+            <div class="fill" class:indeterminate={fraction === null}
+              style:width={fraction === null ? "30%" : `${fraction * 100}%`}></div>
+          </div>
+        </div>
+      {/if}
       <button class="ghost" onclick={onClose}>Cancel</button>
       <button class="primary" onclick={doClone} disabled={cloneDisabled}>
         {busy ? "Cloning…" : "Clone the repo!"}
@@ -232,6 +284,26 @@
   .picked code {
     font-family: "Cascadia Code", Consolas, monospace;
     color: var(--accent);
+  }
+  .field label.check {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--fg); font-weight: 500;
+    text-transform: none; letter-spacing: 0;
+  }
+  .sub { display: flex; flex-direction: column; gap: 6px; padding-left: 24px; }
+  .option-error { font-size: 11px; color: var(--del); }
+
+  .progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .progress-text {
+    font-size: 11px; color: var(--fg-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); transition: width 0.2s; }
+  .fill.indeterminate { animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
   }
 
   .modal-foot {

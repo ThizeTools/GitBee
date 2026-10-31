@@ -9,6 +9,7 @@
   import { logAppend } from "$lib/stores/logs";
   import { ipc, type FileDiff, type FileLogEntry } from "$lib/ipc";
   import { commitRevs } from "$lib/diff/revs";
+  import { renamedFromLog } from "$lib/commit/renamedFrom";
   import { formatCommitDate } from "$lib/commit/format";
   import DiffViewer from "../DiffViewer.svelte";
   import HistoryRow from "./HistoryRow.svelte";
@@ -38,6 +39,10 @@
   let diffSeq = 0;
 
   const selectedEntry = $derived(entries.find((e) => e.sha === selected) ?? null);
+  // The name before the selected commit renamed the file, when its older entry is loaded.
+  const selectedOldFile = $derived(
+    selectedEntry ? renamedFromLog(entries, entries.indexOf(selectedEntry)) : undefined,
+  );
 
   $effect(() => {
     const repo = $currentRepo;
@@ -47,8 +52,9 @@
   $effect(() => {
     const repo = $currentRepo;
     const entry = selectedEntry;
+    const oldFile = selectedOldFile;
     const ignoreWs = $diffPrefs.ignoreWs;
-    if (repo && entry) void loadDiff(repo, entry, ignoreWs);
+    if (repo && entry) void loadDiff(repo, entry, oldFile, ignoreWs);
     else diffs = [];
   });
 
@@ -89,13 +95,15 @@
     }
   }
 
-  // The diff of one commit, limited to the file's name at that commit. A
-  // rename's commit shows as an added file: diff_commit takes one path.
-  async function loadDiff(repo: string, entry: FileLogEntry, ignoreWs: boolean): Promise<void> {
+  // The diff of one commit, limited to the file's name at that commit. For a
+  // rename the old name goes too, so the commit shows as a rename, not an add.
+  async function loadDiff(
+    repo: string, entry: FileLogEntry, oldFile: string | undefined, ignoreWs: boolean,
+  ): Promise<void> {
     const seq = ++diffSeq;
     diffLoading = true;
     try {
-      const result = await ipc.diffCommit(repo, entry.sha, entry.path_at_commit, ignoreWs);
+      const result = await ipc.diffCommit(repo, entry.sha, entry.path_at_commit, ignoreWs, oldFile);
       if (seq === diffSeq) diffs = result;
     } catch (e) {
       if (seq !== diffSeq) return;

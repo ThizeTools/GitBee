@@ -6,7 +6,10 @@ import {
   withFetchFailure,
   withFetchSuccess,
 } from "$lib/stores/autofetchStatus";
-import { InFlightGate } from "$lib/stores/inFlightGate";
+import { autofetchGate, waitForAutofetch } from "$lib/stores/autofetchGate";
+
+// Re-exported: callers import the wait from here (menuActions does).
+export { waitForAutofetch };
 
 // Periodic background `git fetch --all --prune` so remote-tracking refs
 // (e.g. origin/gh-pages updated by external tools like the `gh-pages` npm
@@ -24,17 +27,16 @@ const FOCUS_MIN_MS = 30 * 1000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let focusListener: (() => void) | null = null;
 let lastFocusFetch = 0;
-const gate = new InFlightGate();
 
 async function tick(): Promise<void> {
-  if (gate.active) return;
+  if (autofetchGate.active) return;
   // A background fetch must not race a user's pull/push/commit for refs or
   // index.lock; it runs on the next tick instead. See docs/specs/repo-refresh.md.
   if (get(busy)) return;
   const t = get(activeTab);
   if (!t || t.kind === "newtab" || !t.path) return;
   const path = t.path;
-  await gate.run(() => fetchAndRecord(path));
+  await autofetchGate.run(() => fetchAndRecord(path));
 }
 
 // Never rejects: the failure is recorded for the status bar, and the refresh
@@ -80,15 +82,6 @@ export function stopAutoFetch(): void {
     window.removeEventListener("focus", focusListener);
     focusListener = null;
   }
-}
-
-/**
- * Resolves when no background fetch is in flight. runAction awaits it before
- * a user's pull/push, after setting `busy` so no new fetch can start.
- * See docs/specs/repo-refresh.md.
- */
-export function waitForAutofetch(): Promise<void> {
-  return gate.wait();
 }
 
 /** Status-bar retry for a failed auto-fetch. Respects `busy` like any tick. */

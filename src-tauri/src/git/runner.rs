@@ -125,6 +125,33 @@ impl GitRunner {
         finish_output(status?, out?, err?)
     }
 
+    /// Like `run`, but writes `input` to git's stdin. Used for
+    /// `check-attr --stdin`, where a long path list would overflow the Windows
+    /// command line. Stdin is written while stdout is drained: git can fill its
+    /// stdout pipe before it has read all of stdin, and a sequential write
+    /// would then deadlock (the hazard run_with_progress also guards against).
+    pub async fn run_with_input<I, S>(
+        &self,
+        cwd: &Path,
+        args: I,
+        input: Vec<u8>,
+    ) -> AppResult<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        let mut cmd = self.base_command(cwd, Stdio::piped());
+        cmd.args(args);
+        let mut child = cmd.spawn()?;
+        let mut stdin = take_piped(child.stdin.take(), "stdin")?;
+        // A write error means git exited before reading all of stdin. Its own
+        // exit status then decides the result, so the write error is dropped.
+        let write = async move { stdin.write_all(&input).await };
+        let (_write_result, output) = tokio::join!(write, child.wait_with_output());
+        let output = output?;
+        finish_output(output.status, output.stdout, output.stderr)
+    }
+
     pub async fn run_text<I, S>(&self, cwd: &Path, args: I) -> AppResult<String>
     where
         I: IntoIterator<Item = S>,
@@ -360,5 +387,17 @@ mod tests {
     async fn run_with_progress_reports_a_missing_executable_as_an_error() {
         let runner = GitRunner::with_executable(PathBuf::from("no-such-git-binary-gitbee-test"));
         assert!(runner.run_with_progress(Path::new("."), ["status"], |_| {}).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn run_with_input_feeds_the_bytes_to_git_stdin() {
+        // "hello\n" hashes to ce0136... in git; the sha only matches if the
+        // input reached git's stdin intact.
+        let runner = GitRunner::discover().unwrap();
+        let out = runner
+            .run_with_input(Path::new("."), ["hash-object", "--stdin"], b"hello\n".to_vec())
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out).trim(), "ce013625030ba8dba906f756967f9e9ca394464a");
     }
 }

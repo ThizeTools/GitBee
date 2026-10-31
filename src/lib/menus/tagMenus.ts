@@ -23,6 +23,7 @@ import {
   resetToCommitItem,
   revertCommitItem,
   checkoutCommitItem,
+  openWorktreeCreate,
 } from "$lib/menus/menuActions";
 
 // `git tag -f <name> <head_sha>`. We resolve HEAD up-front so the
@@ -135,6 +136,13 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
     { separator: true, label: "" },
     // Group 3
     checkoutCommitItem(sha, `Checkout the commit at ${tagName}`),
+    {
+      label: `Create worktree from ${tagName}`,
+      icon: "📂",
+      // refs/tags/ spells out that this is a tag, so a branch with the same
+      // name cannot be picked instead. The worktree is detached at the tag.
+      onClick: () => openWorktreeCreate(`refs/tags/${tagName}`, tagName),
+    },
     { separator: true, label: "" },
     // Group 5 (former Group 4 removed — "Explain Branch Changes" dropped)
     createBranchHereItem(sha),

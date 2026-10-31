@@ -46,7 +46,7 @@ A change to any handler changes its row in the same PR.
 | Ctrl+Alt+B | Toggle right panel |
 | Ctrl+Alt+F | Focus the sidebar filter |
 | Esc | Close the topmost menu, palette, dialog or search; from a diff or file view, back to the graph |
-| Palette: ↑ / ↓, Enter | Move through commands, run the highlighted one |
+| Palette: ↑ / ↓, PageUp / PageDown, Enter | Move through rows (PageUp / PageDown move 8), run the highlighted one. Typed into the empty box, the first character picks a mode: `>` actions, `@` branches, `#` commits, `/` files, `:` themes (see command-palette.md) |
 | Ctrl+Enter | Submit the edit-message, set-upstream and new-worktree dialogs |
 | Terminal: Ctrl+Shift+C / Ctrl+Shift+V | Copy the selection / paste from the clipboard (keys go to the terminal; plain Ctrl+C still sends SIGINT) |
 | GitHub login: Enter | Submit the access token |

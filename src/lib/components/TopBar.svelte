@@ -14,6 +14,9 @@
   import { logAppend, logAction } from "$lib/stores/logs";
   import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
   import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
+  import { ghAuth } from "$lib/stores/github";
+  import { originGitHubRepo } from "$lib/github/url";
+  import { showPullRequests } from "$lib/stores/center";
 
   // Wrap an async git action: show busy spinner, log start/finish/fail,
   // refresh repo state on success, and surface real error messages to the
@@ -104,6 +107,9 @@
   // for "Publish to GitHub" which guides the user through creating the
   // remote repo and wiring up origin in one shot.
   const hasOrigin = $derived($remotes.some((r) => r.name === "origin"));
+  // The PRs button shows only when origin is a github.com remote and the user is
+  // signed in. Spec: docs/specs/github-pull-requests.md.
+  const prsAvailable = $derived($ghAuth.authenticated && originGitHubRepo($remotes) !== null);
   let publishOpen = $state(false);
   function repoBasename(p: string | null): string {
     if (!p) return "";
@@ -160,6 +166,12 @@
     <button class="icon-btn" title="Open external terminal at repo" onclick={openTerminal} disabled={!$currentRepo}>
       <span class="ico">▶_</span><span class="lbl">Terminal</span>
     </button>
+    {#if prsAvailable}
+      <span class="vsep"></span>
+      <button class="icon-btn" title="Pull requests on GitHub" onclick={showPullRequests}>
+        <span class="ico">⇄</span><span class="lbl">PRs</span>
+      </button>
+    {/if}
   </div>
 
   <div class="right">

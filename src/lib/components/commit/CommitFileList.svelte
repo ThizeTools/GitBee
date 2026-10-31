@@ -6,6 +6,9 @@
   import type { CommitFileStat } from "$lib/ipc";
   import { sortedChildren, type SortMode, type TreeNode, type ViewMode } from "$lib/commit/fileTree";
   import { changeCountLabel, statusColor, statusName } from "$lib/commit/fileStatus";
+  import { currentRepo } from "$lib/stores/repo";
+  import { currentLfsFlags, requestLfsPaths } from "$lib/stores/lfs";
+  import LfsBadge from "$lib/components/lfs/LfsBadge.svelte";
 
   interface Props {
     viewMode: ViewMode;
@@ -27,6 +30,13 @@
     viewMode, sortMode, tree, pathRows, requested, navPath, loadAllTotal,
     onToggleDiff, onOpen, onLoadAll,
   }: Props = $props();
+
+  // LFS flags of the listed files. The answers are cached per repo, so a commit
+  // seen before asks git nothing (docs/specs/git-lfs.md).
+  const lfsFlags = $derived($currentLfsFlags);
+  $effect(() => {
+    if ($currentRepo) requestLfsPaths($currentRepo, pathRows.map((f) => f.path));
+  });
 
   // Tree directories the user collapsed, keyed by full path.
   let collapsed = $state<Record<string, boolean>>({});
@@ -85,6 +95,7 @@
       <span class="f-ico" style="color: {statusColor(f.status)}" title={statusName(f.status)}>{f.status}</span>
       <span class="f-count">{changeCountLabel(f)}</span>
       <span class="f-path">{label}</span>
+      {#if lfsFlags[f.path]}<LfsBadge />{/if}
     </button>
   </li>
 {/snippet}

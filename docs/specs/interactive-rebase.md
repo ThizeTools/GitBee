@@ -72,7 +72,7 @@ A temp path with `"`, `$`, a backtick or a newline is refused with `cannot quote
   `sequence_editor_command`.
 - `git/runner.rs`: `run_with_env(cwd, args, envs)` (`run` calls it with none),
   `NO_EDITOR_ENV` (`GIT_EDITOR=true`), `executable()`.
-- `commands/merge.rs`: `op_continue` passes `NO_EDITOR_ENV` for `rebase` (`continue_envs`).
+- `commands/merge.rs`: `op_continue` passes `NO_EDITOR_ENV` for merge, rebase, cherry-pick and revert (`continue_envs`).
 
 ### Frontend
 
@@ -107,8 +107,8 @@ forward slashes, and the refusals above.
 ## Invariants
 
 1. A rebase call never opens an editor: `GIT_EDITOR=true` on every `rebase -i`
-   and on `op_continue` for a rebase, the sequence editor is replaced, and the
-   amend uses `--no-edit -F`.
+   and on `op_continue` for every op (merge, rebase, cherry-pick, revert), the
+   sequence editor is replaced, and the amend uses `--no-edit -F`.
 2. Refused with tracked changes in the worktree. Untracked files do not count,
    as in git. `reset --hard`, the undo, leaves them alone too.
 3. Refused with a merge commit in `base..HEAD`.

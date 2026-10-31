@@ -2,15 +2,21 @@
   // Inline search bar that sits above the graph. Filters matches by
   // SHA prefix / subject / author across the loaded graph slice and
   // wires up next/prev navigation that scrolls the graph to each hit.
+  // Matches older than the loaded slice come from the backend search and
+  // are reached with "Show" (docs/specs/history-search.md).
   //
   // Bindings:
   //   Enter / F3      → next match
   //   Shift+Enter     → previous match
   //   Esc             → close (clears query and highlight)
   import {
-    searchQuery, matchShas, currentMatchIdx,
+    searchQuery, matchShas, currentMatchIdx, olderMatchShas,
     nextMatch, prevMatch, closeSearch,
   } from "$lib/stores/graphSearch";
+  import {
+    scheduleHistorySearch, cancelHistorySearch, revealOlderMatch,
+    cancelOlderLoad, olderLoading,
+  } from "$lib/stores/historySearch";
   import { graphScrollTarget } from "$lib/stores/graphscroll";
   import { tick } from "svelte";
 
@@ -65,6 +71,14 @@
     }
     if (!q) lastJumpedQuery = "";
   });
+
+  // Each query change schedules one backend search after a pause. Its cleanup
+  // drops the pending search and any older-history load, so a stale query never
+  // reveals commits for a new one.
+  $effect(() => {
+    scheduleHistorySearch($searchQuery);
+    return () => cancelHistorySearch();
+  });
 </script>
 
 <div class="bar" role="search">
@@ -76,15 +90,26 @@
     spellcheck="false"
     aria-label="Search commits"
   />
-  <span class="count" class:empty={$matchShas.length === 0 && $searchQuery.trim().length > 0}>
+  <span class="count" class:empty={$matchShas.length === 0 && $olderMatchShas.length === 0 && $searchQuery.trim().length > 0}>
     {#if $searchQuery.trim().length === 0}
       &nbsp;
     {:else if $matchShas.length === 0}
-      no matches
+      {$olderMatchShas.length > 0 ? "none loaded" : "no matches"}
     {:else}
       {$currentMatchIdx + 1}/{$matchShas.length}
     {/if}
   </span>
+  {#if $olderMatchShas.length > 0}
+    <span class="older">
+      {#if $olderLoading}
+        loading older history…
+        <button class="btn" onclick={cancelOlderLoad} title="Stop loading older history">Cancel</button>
+      {:else}
+        {$olderMatchShas.length} more {$olderMatchShas.length === 1 ? "match" : "matches"} in older history
+        <button class="btn" onclick={() => void revealOlderMatch()} title="Load older history up to the next match">Show</button>
+      {/if}
+    </span>
+  {/if}
   <button
     class="btn"
     onclick={() => jumpTo(prevMatch())}
@@ -129,8 +154,17 @@
     min-width: 56px;
     text-align: right;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .count.empty { color: #d35a5a; }
+  .older {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
   .btn {
     background: transparent;
     border: 1px solid var(--border);

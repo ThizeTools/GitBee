@@ -91,7 +91,8 @@ handling is in git-progress.md.
 - `opts.scope`: `"status"` loads only `git status`; `"full"` (default)
   loads everything and passes the current graph `fingerprint` so an
   unchanged graph skips `git log` (see graph-loading.md). Coalesced
-  callers merge to `"full"` if any of them asked for it.
+  callers merge to `"full"` if any of them asked for it. A full load also
+  reads the submodule list; a status-only load skips it (see submodules.md).
 - Every completed refresh bumps `worktreeTick`, even when nothing in the
   status list changed. The working-tree diff panel reloads on it: an
   already-modified file edited again keeps an identical status entry, so
@@ -100,7 +101,7 @@ handling is in git-progress.md.
   `fetch` never races a user's pull/push/commit for refs or locks.
 
 ### Frontend: auto-fetch status and waiting
-(`src/lib/stores/autofetch.ts`, `autofetchStatus.ts`, `inFlightGate.ts`)
+(`src/lib/stores/autofetch.ts`, `autofetchGate.ts`, `autofetchStatus.ts`, `inFlightGate.ts`)
 - Each background fetch records its outcome per repo path in
   `autofetchStatus`: `lastFetchAt` (ms, last success) and
   `lastFetchError` (git's stderr, or null). Keyed by repo because
@@ -115,17 +116,16 @@ handling is in git-progress.md.
   keeps the last success time, so the repo's history is not erased.
 - The refresh after a successful fetch is still silent, and a failing
   refresh does not count as a failing fetch.
-- `waitForAutofetch()` resolves when the in-flight fetch (including its
-  silent refresh) settles. `runAction` sets `busy` first, then awaits
-  it, so no new fetch starts while the user's pull/push waits. Without
-  this a background fetch updating refs and FETCH_HEAD raced the user's
-  pull/push ("cannot lock ref").
+- `waitForAutofetch()` (`autofetchGate.ts`, apart from `autofetch.ts` so that
+  `repo.ts` can import it without a cycle) resolves when the in-flight fetch
+  (including its silent refresh) settles. `runAction` and `withBusy` set `busy`
+  first, then await it, so no new fetch starts while the user's action waits.
+  Without this a background fetch updating refs and FETCH_HEAD raced the
+  user's pull/push ("cannot lock ref").
 - Trade-off: a user action waits for a fetch that is stalled. The
   low-speed limit above bounds the stall (about a minute); no cancel.
-- Actions that call `withBusy` directly (sidebar fetch, command palette,
-  branch menus) set `busy` but do not await an in-flight fetch, so they
-  can still overlap one that started just before. Known gap, see Out of
-  scope.
+- `withBusy` callers (sidebar fetch, command palette, the worktree dialog)
+  wait for an in-flight fetch the same way `runAction` does.
 
 ### Frontend: busy veil (`busyVisible`)
 Rising edge delayed by 250 ms, falling edge by 350 ms. Fast operations
@@ -168,9 +168,6 @@ checkout). Errors surface as "Checkout failed" toasts with git's stderr.
 - Timeouts on local git commands (a slow `log` on a huge repo is not a
   hang). Network stalls are bounded by the low-speed limit above.
 - Single-click checkout.
-- Making `withBusy` callers await an in-flight auto-fetch. Only
-  `runAction` does so today; moving the wait into `withBusy` is a small
-  follow-up once its callers are audited.
 - Cancelling a running auto-fetch to free a waiting user action.
 
 ## Rejected alternatives

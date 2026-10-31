@@ -100,7 +100,10 @@ Built-in IDs are remapped to `custom-${timestamp}` to avoid collisions.
 
 ## Command Palette
 
-`CommandPalette.svelte` has a "Toggle theme" command that switches `"dark"` ↔ `"light"` — fast shortcut without opening the picker.
+The palette lists themes with the `:` prefix: one `Theme: <name>` row per
+built-in and custom theme (`providers/themes.ts`), the active one marked "active".
+Running a row applies the theme the same way the theme picker does. There is no
+single "Toggle theme" command any more. See [command-palette.md](command-palette.md).
 
 ---
 

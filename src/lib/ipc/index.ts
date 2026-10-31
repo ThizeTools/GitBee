@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { RebaseItem, RebaseOutcome } from "$lib/rebase/types";
+import type { CloneOptions } from "$lib/clone/cloneOptions";
+import type { Profile, RepoIdentity } from "$lib/profiles/profile";
+import type {
+  MergeMethod, NewPull, PullDetail, PullRow, ReviewEvent,
+} from "$lib/github/pullTypes";
 
 export interface OpenedRepo { id: number; path: string; }
 export interface RecentRepoDto { id: number; path: string; last_opened: number; }
@@ -98,6 +103,17 @@ export interface Remote { name: string; url: string; }
 export interface Worktree {
   path: string; branch: string | null; head: string; bare: boolean; locked: boolean;
 }
+// Mirrors git/submodules.rs. `out_of_sync` = checked out at another commit than
+// the parent records; `modified` = local changes inside the checkout.
+export type SubmoduleState = "uninitialized" | "clean" | "modified" | "out_of_sync" | "conflict";
+export interface Submodule {
+  name: string; path: string; url: string; branch: string | null;
+  sha: string | null; state: SubmoduleState;
+}
+// Mirrors git/lfs.rs. `installed` is about the machine, `used` about the repo's .gitattributes.
+export interface LfsInfo {
+  installed: boolean; version: string | null; used: boolean; patterns: string[];
+}
 export interface OperationState {
   merging: boolean;
   rebasing: boolean;
@@ -112,10 +128,17 @@ export const ipc = {
   repoForget: (path: string) => invoke("repo_forget", { path }),
 
   // graph
-  graphLoad: (path: string, limit = 2000, knownFingerprint: string | null = null, allBranches = true) =>
+  // pinnedSha: target sha of the pinned ref, which takes lane 0 (docs/specs/lane-pin.md).
+  graphLoad: (path: string, limit = 2000, knownFingerprint: string | null = null, allBranches = true, pinnedSha: string | null = null) =>
     invoke<GraphPage>("graph_load", {
-      opts: { path, limit, all_branches: allBranches, known_fingerprint: knownFingerprint },
+      opts: {
+        path, limit, all_branches: allBranches, known_fingerprint: knownFingerprint,
+        pinned_sha: pinnedSha,
+      },
     }),
+  // Shas of commits matching `query` anywhere in history, newest first (docs/specs/history-search.md).
+  graphSearch: (path: string, query: string, limit = 200) =>
+    invoke<string[]>("graph_search", { path, query, limit }),
 
   // branches
   branchCreate: (path: string, name: string, startPoint?: string) =>
@@ -148,12 +171,12 @@ export const ipc = {
   stageAll: (path: string) => invoke("stage_all", { path }),
   unstageAll: (path: string) => invoke("unstage_all", { path }),
   discardFile: (path: string, file: string) => invoke("discard_file", { path, file }),
-  discardAllChanges: (path: string) => invoke("discard_all_changes", { path }),
 
   // diff
   // ignoreWs maps to `git -w`; hunk staging must not pass it (diff-viewer spec).
-  diffCommit: (path: string, sha: string, file?: string, ignoreWs?: boolean) =>
-    invoke<FileDiff[]>("diff_commit", { path, sha, file, ignoreWs }),
+  // oldFile is the file's name in the parent when the commit renamed it (docs/specs/commit-details.md).
+  diffCommit: (path: string, sha: string, file?: string, ignoreWs?: boolean, oldFile?: string) =>
+    invoke<FileDiff[]>("diff_commit", { path, sha, file, oldFile, ignoreWs }),
   diffStash: (path: string, index: number, ignoreWs?: boolean) =>
     invoke<FileDiff[]>("diff_stash", { path, index, ignoreWs }),
   diffWorkdir: (path: string, file?: string, ignoreWs?: boolean) =>
@@ -192,6 +215,13 @@ export const ipc = {
   patchApply: (path: string, patchFile: string) =>
     invoke("patch_apply", { path, patchFile }),
 
+  // git profiles: named identities per repo (docs/specs/git-profiles.md)
+  profilesList: () => invoke<Profile[]>("profiles_list"),
+  profilesSave: (list: Profile[]) => invoke<void>("profiles_save", { list }),
+  profileApply: (path: string, profile: Profile) =>
+    invoke<void>("profile_apply", { path, profile }),
+  repoIdentity: (path: string) => invoke<RepoIdentity>("repo_identity", { path }),
+
   // stash
   stashList: (path: string) => invoke<StashEntry[]>("stash_list", { path }),
   stashCreate: (path: string, message?: string, includeUntracked = false) =>
@@ -210,6 +240,15 @@ export const ipc = {
     invoke("tag_move", { path, name, sha }),
   tagAnnotate: (path: string, name: string, message: string) =>
     invoke("tag_annotate", { path, name, message }),
+
+  // git LFS: docs/specs/git-lfs.md. Actions refuse when git-lfs is missing.
+  lfsStatus: (path: string) => invoke<LfsInfo>("lfs_status", { path }),
+  lfsFiles: (path: string, paths: string[]) => invoke<string[]>("lfs_files", { path, paths }),
+  lfsPull: (path: string) => invoke("lfs_pull", { path }),
+  lfsFetch: (path: string) => invoke("lfs_fetch", { path }),
+  lfsTrack: (path: string, pattern: string) => invoke("lfs_track", { path, pattern }),
+  lfsUntrack: (path: string, pattern: string) => invoke("lfs_untrack", { path, pattern }),
+  lfsInstall: (path: string) => invoke("lfs_install", { path }),
 
   // remotes
   remoteList: (path: string) => invoke<Remote[]>("remote_list", { path }),
@@ -246,7 +285,6 @@ export const ipc = {
 
   // system
   openTerminal: (path: string) => invoke("open_terminal", { path }),
-  undoLastCommit: (path: string) => invoke("undo_last_commit", { path }),
   // undo backups (docs/specs/undo-history.md)
   backupFile: (path: string, file: string) => invoke<string | null>("backup_file", { path, file }),
   restoreFile: (path: string, file: string, blob: string | null) =>
@@ -283,7 +321,11 @@ export const ipc = {
     invoke<Array<{ ts: string; subject: string; author: string }>>(
       "repo_logs", { path, limit },
     ),
-  repoClone: (url: string, dest: string) => invoke<string>("repo_clone", { url, dest }),
+  // Clone options: see src/lib/clone/cloneOptions.ts and docs/specs/clone-options.md.
+  repoClone: (url: string, dest: string, opts: CloneOptions) =>
+    invoke<string>("repo_clone", {
+      url, dest, depth: opts.depth, branch: opts.branch, singleBranch: opts.singleBranch,
+    }),
   repoCreate: (path: string) => invoke<string>("repo_create", { path }),
 
   // embedded terminal: real PTY sessions (src-tauri/src/pty). Output arrives
@@ -301,6 +343,14 @@ export const ipc = {
     invoke("worktree_add", { path, target, reference, newBranch }),
   worktreeRemove: (path: string, target: string, force = false) =>
     invoke("worktree_remove", { path, target, force }),
+
+  // submodules
+  submoduleList: (path: string) => invoke<Submodule[]>("submodule_list", { path }),
+  submoduleUpdate: (path: string, subPath: string | null, init: boolean, recursive: boolean) =>
+    invoke("submodule_update", { path, subPath, init, recursive }),
+  submoduleSync: (path: string) => invoke("submodule_sync", { path }),
+  submoduleAdd: (path: string, url: string, subPath: string) =>
+    invoke("submodule_add", { path, url, subPath }),
 
   // github
   githubStatus: () =>
@@ -324,6 +374,23 @@ export const ipc = {
     invoke<GhRepoCreated>("github_create_repo", { req }),
   githubPublishLocal: (repoPath: string, req: CreateRepoReq) =>
     invoke<GhRepoCreated>("github_publish_local", { repoPath, req }),
+  // pull requests and gists: docs/specs/github-pull-requests.md
+  githubListPulls: (owner: string, repo: string, prState: "open" | "closed") =>
+    invoke<PullRow[]>("github_list_pulls", { owner, repo, prState }),
+  githubPullDetail: (owner: string, repo: string, number: number) =>
+    invoke<PullDetail>("github_pull_detail", { owner, repo, number }),
+  githubMergePull: (owner: string, repo: string, number: number, method: MergeMethod) =>
+    invoke<string>("github_merge_pull", { owner, repo, number, method }),
+  githubReviewPull: (owner: string, repo: string, number: number, event: ReviewEvent, body: string) =>
+    invoke<void>("github_review_pull", { owner, repo, number, event, body }),
+  githubCreatePull: (owner: string, repo: string, req: NewPull) =>
+    invoke<PullRow>("github_create_pull", { owner, repo, req }),
+  githubBranchOnRemote: (owner: string, repo: string, branch: string) =>
+    invoke<boolean>("github_branch_on_remote", { owner, repo, branch }),
+  prCheckout: (path: string, number: number, headRef: string, sameRepo: boolean) =>
+    invoke<void>("pr_checkout", { path, number, headRef, sameRepo }),
+  gistCreatePatch: (path: string, sha: string, isPublic: boolean) =>
+    invoke<string>("gist_create_patch", { path, sha, public: isPublic }),
 };
 
 export interface GhUserInfo {

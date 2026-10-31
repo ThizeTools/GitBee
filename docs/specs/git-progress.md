@@ -68,6 +68,10 @@ bar stays current. The clock is a parameter, so tests need no sleeps.
   reaches its end and the outcome label is readable.
 - The status bar shows the entry for the current repo, or a clone in
   progress for any repo (the clone target is not open yet).
+- The clone dialog (`CloneModal.svelte`) shows the same entry while it is busy,
+  with a bar: the first clone entry (`pickProgressForRepo(map, null)`). It cannot
+  match the target folder, because the backend picks the folder name. Clone
+  options (depth, branch) are in [clone-options.md](clone-options.md).
 
 ## Invariants
 - Progress never changes a command's result, return value or error.

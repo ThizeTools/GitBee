@@ -5,6 +5,8 @@
   import { openMenu } from "$lib/stores/contextmenu";
   import { setSize } from "$lib/stores/layout";
   import { currentRepo } from "$lib/stores/repo";
+  import { currentLfsFlags, requestLfsPaths } from "$lib/stores/lfs";
+  import LfsBadge from "$lib/components/lfs/LfsBadge.svelte";
   import {
     discardFile, stageAll, stageFile, stageFiles,
     unstageAll, unstageFile, unstageFiles,
@@ -52,6 +54,12 @@
   // so its internal sortedChildren() flips direction too.
   const sortedFiles = $derived(sortByPath(files, sortMode));
   const total = $derived(files.length);
+  // Which shown files Git LFS stores. Answers are cached per repo, so a list that
+  // has not changed asks git nothing (docs/specs/git-lfs.md).
+  const lfsFlags = $derived($currentLfsFlags);
+  $effect(() => {
+    if ($currentRepo) requestLfsPaths($currentRepo, files.map((f) => f.path));
+  });
 
   /** Fold or unfold this section. The flag lives in the persisted layout store. */
   function toggleCollapsed() { setSize(collapseKey, !collapsed); }
@@ -183,6 +191,7 @@
               <button class="row" onclick={(e) => handleRowClick(e, f.path)}>
                 <span class="status {f[side]}" title={statusTitle(f, side)}>{statusChar(f, side)}</span>
                 <span class="path {f[side]}">{f.path}</span>
+                {#if lfsFlags[f.path]}<LfsBadge />{/if}
               </button>
               <button
                 class="hover-btn"

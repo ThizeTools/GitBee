@@ -1,0 +1,106 @@
+/* Rows and section headers shared by the sidebar sections. Imported once from
+   Sidebar.svelte. Every selector sits under `.sidebar`, so these rules cannot
+   reach other panels that reuse a class name such as `.count` or `.list`. */
+
+.sidebar .section { border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.sidebar .section-head-row { display: flex; align-items: center; }
+.sidebar .section-head {
+  flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: transparent; border: 0; color: var(--fg-muted);
+  padding: 6px 14px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.7px; font-weight: 700; cursor: pointer; text-align: left;
+}
+.sidebar .section-head:hover { color: var(--fg); }
+.sidebar .section-head .caret { font-size: 9px; width: 10px; }
+.sidebar .section-head .title { flex: 1; }
+/* The "⋯" beside a section title. Shown on hover, like the row "⋯" buttons. */
+.sidebar .section-menu {
+  background: transparent; border: 0; color: var(--fg-muted);
+  cursor: pointer; padding: 0 10px; font-size: 14px; line-height: 1;
+  visibility: hidden;
+}
+.sidebar .section-head-row:hover .section-menu { visibility: visible; }
+.sidebar .section-menu:hover { color: var(--fg); }
+.sidebar .count {
+  font-size: 11px; background: var(--bg); color: var(--fg-muted);
+  padding: 1px 8px; border-radius: 10px; font-weight: 600; border: 1px solid var(--border);
+}
+.sidebar .count-inline { font-size: 10px; color: var(--fg-muted); margin-left: auto; }
+
+.sidebar .list { list-style: none; margin: 0; padding: 0; }
+.sidebar .nested { list-style: none; margin: 0; padding: 0 0 0 22px; }
+.sidebar .leaf, .sidebar .group { display: flex; align-items: center; padding-right: 8px; }
+.sidebar .group { display: block; }
+.sidebar .leaf .link, .sidebar .group-head {
+  flex: 1; background: transparent; border: 0; color: var(--fg);
+  text-align: left; padding: 3px 14px 3px 26px; cursor: pointer;
+  overflow: hidden; display: flex; gap: 8px; align-items: center;
+  font-size: 12px; border-left: 2px solid transparent; width: 100%;
+  line-height: 18px;
+}
+.sidebar .group-head { padding-left: 28px; }
+/* readonly variant kept for future use (tags / remote heads). */
+.sidebar .leaf .link:hover:not(.readonly), .sidebar .group-head:hover {
+  background: var(--bg); border-left-color: var(--border);
+}
+.sidebar .leaf.active .link {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-left-color: var(--accent); color: var(--accent); font-weight: 500;
+}
+.sidebar .leaf .ico { width: 14px; text-align: center; flex-shrink: 0; font-size: 12px; color: var(--fg-muted); }
+.sidebar .leaf.active .ico { color: var(--accent); }
+.sidebar .leaf .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .muted { padding: 6px 28px; color: var(--fg-muted); font-style: italic; font-size: 11px; }
+.sidebar .dots {
+  background: transparent; border: 0; color: var(--fg-muted);
+  cursor: pointer; padding: 0 8px; visibility: hidden;
+  font-size: 16px; line-height: 1; border-radius: 3px;
+}
+.sidebar .leaf:hover .dots { visibility: visible; }
+.sidebar .dots:hover { color: var(--fg); background: rgba(255,255,255,0.06); }
+
+/* Submodule rows: the short sha and the state badge sit after the name. */
+.sidebar .leaf .sha {
+  font-family: ui-monospace, Consolas, monospace; font-size: 10px;
+  color: var(--fg-muted); flex-shrink: 0;
+}
+.sidebar .state {
+  margin-left: auto; flex-shrink: 0; font-size: 10px; padding: 0 6px;
+  border-radius: 8px; border: 1px solid var(--border); color: var(--fg-muted);
+  white-space: nowrap;
+}
+.sidebar .state-modified { color: var(--modified); border-color: var(--modified); }
+.sidebar .state-out_of_sync { color: var(--accent); border-color: var(--accent); }
+.sidebar .state-conflict { color: var(--del); border-color: var(--del); }
+.sidebar .state-uninitialized { font-style: italic; }
+.sidebar .leaf .link.uninit .name { color: var(--fg-muted); font-style: italic; }
+
+/* Eye toggle: only present while soloing. Sits at the left edge of the
+   row (outside the .link's padding) so it reads as the "include this"
+   affordance. Hover paints the whole row in accent so the click target
+   is unambiguous; rows already in the solo set get the same fill but
+   persistent. */
+.sidebar .eye {
+  background: transparent; border: 0; color: var(--fg-muted);
+  cursor: pointer; padding: 0 4px 0 12px; line-height: 1;
+  font-size: 13px; flex-shrink: 0;
+  filter: grayscale(1) opacity(0.55);
+}
+.sidebar .leaf.solo-row:hover .eye { filter: none; color: var(--accent); }
+.sidebar .eye.on { filter: none; color: var(--accent); }
+.sidebar .eye:hover { color: var(--accent); filter: none !important; }
+.sidebar .leaf.solo-row:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.sidebar .leaf.solo-on {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.sidebar .leaf.solo-on:hover {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+/* Strip the link's own bg/border-left under solo highlight so the row
+   paints as a single colored strip — easier to scan when picking which
+   branches to add. */
+.sidebar .leaf.solo-row .link:hover { background: transparent; border-left-color: transparent; }
+/* Drag-and-drop target: a branch dragged over this row would land here. */
+.sidebar .leaf.drop-target { outline: 1px solid var(--accent); outline-offset: -1px; }

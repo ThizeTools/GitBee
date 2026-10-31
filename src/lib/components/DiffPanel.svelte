@@ -13,13 +13,14 @@
   import type { DiffMode } from "./diff/hunkView";
   import { pushUndo } from "$lib/stores/history";
   import { discardPatchUndo } from "$lib/stores/undoEntries";
+  import { renamedFromStats } from "$lib/commit/renamedFrom";
 
   interface Props {
     file: string;
     /** Working-dir mode: pass `staged` (and omit `commitSha`). */
     staged?: boolean;
-    /** Commit-file mode: pass the commit sha. Diff = `git show <sha> -- file`,
-     *  File View = `git show <sha>:file`. Read-only. */
+    /** Commit-file mode: pass the commit sha. Diff = `git show <sha> -- file`
+     *  (plus the old name of a rename), File View = `git show <sha>:file`. Read-only. */
     commitSha?: string;
   }
   let { file, staged, commitSha }: Props = $props();
@@ -52,8 +53,10 @@
       if (toolTab === "diff") {
         if (commitSha) {
           // Backend limits the commit diff to this path (git show -- <file>),
-          // so one file no longer pays for the whole commit.
-          diffs = await ipc.diffCommit($currentRepo, commitSha, file, $diffPrefs.ignoreWs);
+          // so one file no longer pays for the whole commit. A renamed file
+          // also passes its old name, or the rename shows as an added file.
+          const oldFile = await oldNameInCommit($currentRepo, commitSha, file);
+          diffs = await ipc.diffCommit($currentRepo, commitSha, file, $diffPrefs.ignoreWs, oldFile);
         } else {
           diffs = staged
             ? await ipc.diffIndex($currentRepo, file, $diffPrefs.ignoreWs)
@@ -69,6 +72,12 @@
       else fileText = `// failed to read: ${e}`;
       logAppend("warn", `read ${file}: ${e}`);
     } finally { loading = false; }
+  }
+
+  /** The file's name before `sha` renamed it, or undefined. centerMode holds
+   *  only the new path, so the commit's own file list supplies the old one. */
+  async function oldNameInCommit(repo: string, sha: string, path: string): Promise<string | undefined> {
+    return renamedFromStats(await ipc.commitFiles(repo, sha), path);
   }
 
   async function stageThis() {

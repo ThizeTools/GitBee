@@ -11,7 +11,8 @@ export type CenterMode =
   | { kind: "commit-file"; sha: string; file: string }
   | { kind: "conflict"; file: string }
   | { kind: "history"; file: string }
-  | { kind: "blame"; file: string; rev?: string };
+  | { kind: "blame"; file: string; rev?: string }
+  | { kind: "pulls" };
 
 export const centerMode = writable<CenterMode>({ kind: "graph" });
 
@@ -33,4 +34,8 @@ export function showFileHistory(file: string) {
 /** Opens blame for one file, at `rev` when given, else in the working tree. */
 export function showFileBlame(file: string, rev?: string) {
   centerMode.set({ kind: "blame", file, rev });
+}
+/** Opens the pull-request list for the repo's origin on GitHub. See docs/specs/github-pull-requests.md. */
+export function showPullRequests() {
+  centerMode.set({ kind: "pulls" });
 }

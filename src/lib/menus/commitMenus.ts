@@ -5,12 +5,12 @@ import { ipc } from "$lib/ipc";
 import { notifySuccess, notifyError } from "$lib/stores/notifications";
 import { graph } from "$lib/stores/repo";
 import { get } from "svelte/store";
+import { shareCommitAsGist } from "$lib/github/gistShare";
 import { canStartRebaseFrom } from "$lib/rebase/range";
 import { openInteractiveRebase } from "$lib/rebase/open";
 import {
   repo,
   runAction,
-  stub,
   openWorktreeCreate,
   checkoutCommitItem,
   createBranchHereItem,
@@ -77,9 +77,9 @@ export function commitMenu(sha: string): MenuItem[] {
       onClick: () => createPatch(sha),
     },
     {
-      label: "Share commit as Cloud Patch",
+      label: "Share as Gist…",
       icon: "☁",
-      onClick: stub("Cloud Patch"),
+      onClick: () => shareCommitAsGist(sha),
     },
     { separator: true, label: "" },
     ...createTagHereItems(sha),

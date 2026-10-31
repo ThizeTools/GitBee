@@ -26,8 +26,9 @@ the user finish the operation inside the app:
 | `mark_resolved` | `path, file` | `git add -- <file>` (existing command). The frontend refuses it while markers remain. | Git failure. |
 
 `op_state` and `op_abort` are unchanged. `op_continue` passes `GIT_EDITOR=true`
-when it continues a rebase, so a squash step cannot open an editor in the hidden
-process. See `interactive-rebase.md`.
+for every op it continues (merge, rebase, cherry-pick, revert), so a message
+editor cannot open in the hidden process and hang it. Git keeps the message it
+prepared. See `interactive-rebase.md`.
 
 ### Frontend modules
 

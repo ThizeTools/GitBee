@@ -31,6 +31,16 @@ export function parseGitHubRepo(
   return null;
 }
 
+// The owner and repo of the `origin` remote when it points at github.com, else
+// null. The PR button and the PR view both key off this, so a repo whose
+// origin is GitLab or a self-hosted server never shows GitHub features.
+export function originGitHubRepo(
+  remotes: { name: string; url: string }[],
+): { owner: string; name: string } | null {
+  const origin = remotes.find((r) => r.name === "origin");
+  return origin ? parseGitHubRepo(origin.url) : null;
+}
+
 // Given a remote URL on github.com, build the "open PR creator" URL.
 // `branch` is the head (compare) branch. GitHub will auto-pick the base
 // branch (the repo's default), and `?expand=1` opens the create form

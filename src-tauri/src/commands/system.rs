@@ -63,12 +63,3 @@ pub async fn open_terminal(path: String) -> AppResult<()> {
     #[allow(unreachable_code)]
     Ok(())
 }
-
-#[tauri::command]
-pub async fn undo_last_commit(
-    path: String,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> AppResult<()> {
-    state.git.run(&PathBuf::from(&path), ["reset", "--soft", "HEAD@{1}"]).await?;
-    Ok(())
-}

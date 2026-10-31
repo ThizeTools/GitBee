@@ -42,7 +42,8 @@ opened from the staging file menu, the diff header, or the palette.
 ### IPC (`src/lib/ipc/index.ts`)
 - `fileHistory(path, file, limit?, skip?)`, `fileBlame(path, file, rev?)`, with
   the types `FileLogEntry`, `BlameLine`, `BlameCommit`, `BlameResult`.
-- `diffCommit(path, sha, file)` (unchanged) draws the selected commit's diff.
+- `diffCommit(path, sha, file, ignoreWs, oldFile?)` draws the selected commit's
+  diff. `oldFile` is set when the commit renamed the file (see commit-details.md).
 
 ### Center modes (`src/lib/stores/center.ts`)
 - `{ kind: "history", file }`, set by `showFileHistory(file)`.
@@ -57,8 +58,9 @@ opened from the staging file menu, the diff header, or the palette.
     for a non-modified file, short sha. A click selects. A right click or the `⋯`
     button opens the row menu.
   - Row menu and header buttons: "Show in graph", "Blame at this commit",
-    "Copy sha". The diff comes from `diffCommit(repo, sha, path_at_commit)`,
-    read-only (`DiffViewer mode="readonly"`).
+    "Copy sha". The diff comes from `diffCommit(repo, sha, path_at_commit, ignoreWs, oldFile)`,
+    read-only (`DiffViewer mode="readonly"`). `oldFile` is the name in the next
+    older row when this row is a rename (`R`), so the diff shows a rename.
 - `FileBlame.svelte`: code with syntax highlighting and a gutter per run of lines
   from one commit.
   - Gutter: short sha, author, relative date, and a 3px age bar. The bar is
@@ -110,9 +112,9 @@ opened from the staging file menu, the diff header, or the palette.
   not those that touched one line.
 - `--ignore-revs-file` and the `-w`, `-M` and `-C` blame options. Blame uses git's
   defaults.
-- Renames in the diff. `diff_commit` takes one path, so a rename commit's diff
-  shows the whole file as added. This is the same limit as commit-details.md.
-  Fixing it changes `diff_commit`'s contract for every caller.
+- Renames in the diff when the older row is not loaded. The old name comes from
+  the next older row, so a rename at the end of a loaded page shows as added
+  until the next page loads. Blame is not affected: it uses the name at the row.
 - Blame of a line across a rename at `sha^`. The `↶` action reuses the current
   file name, so a file renamed before that commit fails with git's error.
 - Files with more than about 1.8 million lines. The scroll height is one element,

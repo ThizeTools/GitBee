@@ -9,6 +9,7 @@ import { actionItems } from "$lib/palette/providers/actions";
 import { branchItems } from "$lib/palette/providers/branches";
 import { commitItems } from "$lib/palette/providers/commits";
 import { fileItems } from "$lib/palette/providers/files";
+import { lfsItems } from "$lib/palette/providers/lfs";
 import { repoItems } from "$lib/palette/providers/repos";
 import { themeItems } from "$lib/palette/providers/themes";
 
@@ -17,6 +18,7 @@ function allItems(text: string, src: PaletteSources): PaletteItem[] {
   const commits = isShaQuery(text) ? commitItems(text, src.commits) : [];
   return [
     ...actionItems(src),
+    ...lfsItems(),
     ...repoItems(src.recentRepos),
     ...branchItems(src.branches),
     ...fileItems(src.files),
@@ -28,7 +30,7 @@ function allItems(text: string, src: PaletteSources): PaletteItem[] {
 /** Every row the given mode can offer for its text, before ranking. */
 export function collectItems(input: PaletteInput, src: PaletteSources): PaletteItem[] {
   switch (input.mode) {
-    case "actions": return actionItems(src);
+    case "actions": return [...actionItems(src), ...lfsItems()];
     case "branches": return branchItems(src.branches);
     case "commits": return commitItems(input.text, src.commits);
     case "files": return fileItems(src.files);

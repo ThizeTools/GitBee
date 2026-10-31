@@ -9,6 +9,7 @@
   import { buildTree, listOrder, type SortMode, type ViewMode } from "$lib/commit/fileTree";
   import { commitDiffCache } from "$lib/commit/commitDiffs";
   import type { DiffKey } from "$lib/commit/diffCache";
+import { renamedFromStats } from "$lib/commit/renamedFrom";
   import { commitBody } from "$lib/commit/format";
   import { EXPAND_ALL_CAP, expandAllPaths, notRequested } from "$lib/commit/diffRequests";
   import CommitHeader from "./commit/CommitHeader.svelte";
@@ -180,7 +181,9 @@
   function fetchDiff(path: string): void {
     const repo = $currentRepo;
     if (!repo) return;
-    const key: DiffKey = { repo, sha, file: path, ignoreWs: $diffPrefs.ignoreWs };
+    const key: DiffKey = {
+      repo, sha, file: path, oldFile: renamedFromStats(files, path), ignoreWs: $diffPrefs.ignoreWs,
+    };
     pendingPaths[path] = true;
     commitDiffCache.get(key)
       .then((list) => {

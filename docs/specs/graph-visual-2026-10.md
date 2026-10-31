@@ -54,8 +54,9 @@ Color = lane color of the segment's lane.
 
 ### Backend lane assignment — `src-tauri/src/git/graph.rs`
 A merge's side parent that some lane already awaits reuses that lane
-(`parent_lanes[k]` = that lane). Otherwise unchanged (HEAD chain on lane
-0, first parent keeps the child's lane, compaction by first use).
+(`parent_lanes[k]` = that lane). Otherwise unchanged: the first-parent chain
+of the pinned ref, else HEAD, takes lane 0 (see [lane-pin.md](lane-pin.md));
+the first parent keeps the child's lane; compaction by first use.
 
 ## Visual constants (`src/lib/graph/layout.ts`)
 | constant | value | was |

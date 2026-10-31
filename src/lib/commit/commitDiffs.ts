@@ -5,6 +5,6 @@ import { ipc } from "$lib/ipc";
 import { DiffCache } from "./diffCache";
 
 export const commitDiffCache = new DiffCache(
-  (k) => ipc.diffCommit(k.repo, k.sha, k.file, k.ignoreWs),
+  (k) => ipc.diffCommit(k.repo, k.sha, k.file, k.ignoreWs, k.oldFile),
   200,
 );

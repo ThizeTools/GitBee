@@ -34,8 +34,9 @@ A prefix character typed while a mode is already set is ordinary search text.
 
 ### Row categories
 
-Action, Repo, Branch, File, Theme, Commit. The category is shown on the right
-of each row.
+Action, Repo, Branch, File, Theme, Commit, LFS. The category is shown on the
+right of each row. LFS rows appear only when git-lfs is installed and a repo is
+open; see [git-lfs.md](git-lfs.md).
 
 ### Actions
 

@@ -284,9 +284,129 @@ pub fn authed_clone_url(clone_url: &str, token: &str) -> String {
     }
 }
 
+/// Status code and parsed JSON body of one REST call. `body` is `Value::Null`
+/// when the response had no body (eg. 204).
+#[derive(Debug, Clone)]
+pub struct RestReply {
+    pub status: reqwest::StatusCode,
+    pub body: serde_json::Value,
+}
+
+/// The HTTP surface the pull-request and gist modules call. Production code
+/// uses `TokenApi`; tests use `github::fake_api::FakeGithubApi`, so no network
+/// is touched. The futures must be `Send` because Tauri runs commands on its
+/// async runtime.
+pub trait GithubApi: Sync {
+    fn rest(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> impl std::future::Future<Output = AppResult<RestReply>> + Send;
+
+    fn graphql(
+        &self,
+        body: &serde_json::Value,
+    ) -> impl std::future::Future<Output = AppResult<serde_json::Value>> + Send;
+}
+
+/// Production `GithubApi`: the user's token against api.github.com. The token
+/// is owned, so closures passed to `commands::github::with_api` need no
+/// lifetime. It is never logged.
+pub struct TokenApi {
+    pub token: String,
+}
+
+impl GithubApi for TokenApi {
+    async fn rest(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> AppResult<RestReply> {
+        let resp = self.request(method.clone(), path, body).send().await
+            .map_err(|e| AppError::GitHub(format!("{method} {path}: {e}")))?;
+        let status = resp.status();
+        let text = resp.text().await
+            .map_err(|e| AppError::GitHub(format!("{method} {path} body: {e}")))?;
+        let body = parse_reply_body(&method, path, &text)?;
+        Ok(RestReply { status, body })
+    }
+
+    async fn graphql(&self, body: &serde_json::Value) -> AppResult<serde_json::Value> {
+        post_graphql(&self.token, body).await
+    }
+}
+
+impl TokenApi {
+    /// The request with auth and the API version header. `X-GitHub-Api-Version`
+    /// pins the response shapes this file parses.
+    fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> reqwest::RequestBuilder {
+        let req = client()
+            .request(method, format!("{API_BASE}{path}"))
+            .bearer_auth(&self.token)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28");
+        match body {
+            Some(b) => req.json(b),
+            None => req,
+        }
+    }
+}
+
+/// Empty bodies (204) become `Null`; anything else must be JSON.
+fn parse_reply_body(method: &reqwest::Method, path: &str, text: &str) -> AppResult<serde_json::Value> {
+    if text.trim().is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+    serde_json::from_str(text)
+        .map_err(|e| AppError::GitHub(format!("{method} {path} returned non-JSON: {e}")))
+}
+
+/// Calls the REST API and returns the JSON body. A 401 gives the same
+/// "token unauthorized" error `fetch_user` gives. Other failures carry GitHub's
+/// own `message`, so the UI shows the real reason (eg. "Pull Request is not
+/// mergeable") instead of a bare status code.
+pub async fn rest_json<A: GithubApi>(
+    api: &A,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&serde_json::Value>,
+) -> AppResult<serde_json::Value> {
+    let reply = api.rest(method.clone(), path, body).await?;
+    ensure_success(&method, path, &reply)?;
+    Ok(reply.body)
+}
+
+/// Turns a non-2xx reply into an error that names the call and GitHub's message.
+pub fn ensure_success(method: &reqwest::Method, path: &str, reply: &RestReply) -> AppResult<()> {
+    if reply.status.is_success() {
+        return Ok(());
+    }
+    if reply.status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(AppError::GitHub("token unauthorized (401)".into()));
+    }
+    Err(AppError::GitHub(format!(
+        "{method} {path} returned {}: {}",
+        reply.status,
+        api_message(&reply.body),
+    )))
+}
+
+fn api_message(body: &serde_json::Value) -> String {
+    body["message"].as_str().map(String::from)
+        .unwrap_or_else(|| "no message in response".into())
+}
+
 /// Convert "2024-04-30T12:34:56Z" → unix seconds. Returns None on parse
 /// failure. Hand-rolled to avoid a chrono dep just for one timestamp.
-fn chrono_iso_to_unix(s: &str) -> Option<i64> {
+/// Shared with `pulls.rs` for `updated_at`.
+pub fn chrono_iso_to_unix(s: &str) -> Option<i64> {
     // Format: YYYY-MM-DDTHH:MM:SSZ
     if s.len() < 20 { return None; }
     let y: i32 = s[0..4].parse().ok()?;
@@ -307,4 +427,51 @@ fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
         + (d as i64) - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     (era as i64) * 146097 + doe - 719468
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::github::fake_api::FakeGithubApi;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn rest_json_returns_the_body_on_success() {
+        let api = FakeGithubApi::new().route("GET /x", 200, json!({"a": 1}));
+        let v = rest_json(&api, reqwest::Method::GET, "/x", None).await.unwrap();
+        assert_eq!(v["a"], 1);
+    }
+
+    #[tokio::test]
+    async fn rest_json_maps_401_to_the_unauthorized_error() {
+        let api = FakeGithubApi::new().route("GET /x", 401, json!({"message": "Bad credentials"}));
+        let err = rest_json(&api, reqwest::Method::GET, "/x", None).await.unwrap_err();
+        assert!(err.to_string().contains("token unauthorized (401)"));
+    }
+
+    #[tokio::test]
+    async fn rest_json_carries_github_message_and_status() {
+        let api = FakeGithubApi::new().route(
+            "PUT /repos/o/r/pulls/3/merge", 405,
+            json!({"message": "Pull Request is not mergeable"}),
+        );
+        let err = rest_json(&api, reqwest::Method::PUT, "/repos/o/r/pulls/3/merge", None)
+            .await.unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("Pull Request is not mergeable"), "{text}");
+        assert!(text.contains("405"), "{text}");
+        assert!(text.contains("/repos/o/r/pulls/3/merge"), "{text}");
+    }
+
+    #[test]
+    fn empty_body_parses_to_null() {
+        let v = parse_reply_body(&reqwest::Method::GET, "/x", "  ").unwrap();
+        assert!(v.is_null());
+    }
+
+    #[test]
+    fn non_json_body_names_the_path() {
+        let err = parse_reply_body(&reqwest::Method::GET, "/x", "<html>").unwrap_err();
+        assert!(err.to_string().contains("/x"));
+    }
 }

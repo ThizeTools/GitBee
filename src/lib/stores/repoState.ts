@@ -1,7 +1,7 @@
 import { writable, derived, get } from "svelte/store";
 import type {
   GraphPage, CommitRef, StatusEntry, StashEntry,
-  Remote, RecentRepoDto, OperationState, Worktree,
+  Remote, RecentRepoDto, OperationState, Worktree, Submodule,
 } from "$lib/ipc";
 import { hiddenRefs, soloRefs } from "$lib/stores/graphFilter";
 
@@ -15,6 +15,8 @@ export interface RepoTab {
   stashes: StashEntry[];
   remotes: Remote[];
   worktrees: Worktree[];
+  // Declared in .gitmodules; empty for repos without submodules. Refreshed on full loads only.
+  submodules: Submodule[];
   opState: OperationState | null;
   selectedSha: string | null;
 }
@@ -24,7 +26,7 @@ export const NEW_TAB_ID = "__newtab__";
 export function newTabStub(): RepoTab {
   return {
     id: NEW_TAB_ID, path: "", name: "New Tab", kind: "newtab",
-    graph: null, status: [], stashes: [], remotes: [], worktrees: [],
+    graph: null, status: [], stashes: [], remotes: [], worktrees: [], submodules: [],
     opState: null, selectedSha: null,
   };
 }
@@ -201,14 +203,6 @@ export function tabName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
 
-/** Key used to compare repo paths: slashes unified, trailing slashes dropped,
- * lowercased, so `C:\\Work\\App\\` and `c:/work/app` are the same repo. */
-export function normTabPath(p: string): string {
-  return p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-}
-
-/** True when two repo paths name the same folder (see `normTabPath`).
- * Example: `samePath(t.path, opened.path)` */
-export function samePath(a: string, b: string): boolean {
-  return normTabPath(a) === normTabPath(b);
-}
+// Path comparison lives in repoPath.ts (pure); re-exported so existing
+// `$lib/stores/repoState` imports keep working.
+export { normTabPath, samePath } from "$lib/stores/repoPath";

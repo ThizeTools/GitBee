@@ -40,13 +40,20 @@ loads with the list, as before.
     body. Before, it returned `--format=fuller` headers plus the full patch.
     Both callers (this panel's body, and the amend form's pre-fill in the
     staging box) read the text as the message, so both were wrong. See Invariants.
-- `diff_commit(path, sha, file?, ignore_ws?)` (`src-tauri/src/commands/diff.rs`)
+- `diff_commit(path, sha, file?, old_file?, ignore_ws?)` (`src-tauri/src/commands/diff.rs`)
   - Adds `--diff-merges=first-parent`. A merge is diffed against its first
     parent. The center diff panel gets the same base.
+  - `old_file` is the file's name in the parent when the commit renamed it.
+    With it the call adds `-M` and lists both paths after `--`, so git pairs
+    them and the change shows as a rename. Without it the rename would show as
+    an add, since git sees only the new path.
+  - Every file path is a `:(literal)` pathspec, so `[`, `*` and `?` in a name
+    are not read as globs. The shared helper is `push_file_paths`.
 
 ### IPC (`src/lib/ipc/index.ts`)
 - `commitFiles(path, sha): CommitFileStat[]`, `commitStats(path, shas): CommitStat[]`.
-- `commitShow(path, sha)` and `diffCommit(path, sha, file?, ignoreWs?)` keep their signatures.
+- `commitShow(path, sha)` keeps its signature. `diffCommit(path, sha, file?, ignoreWs?, oldFile?)`
+  adds `oldFile`, the rename's old name (see `diff_commit` above).
 
 ### Frontend
 - `CommitDetailsPanel.svelte` (the panel) loads `commitFiles` and `commitShow`
@@ -65,12 +72,16 @@ loads with the list, as before.
   - `fileStatus.ts`: status names and colors, count labels (`bin` for binary).
   - `diffCache.ts`: `DiffCache`, the cache with an injected loader.
   - `commitDiffs.ts`: the app-wide cache, bound to `ipc.diffCommit`.
+  - `renamedFrom.ts`: `renamedFromStats` finds a renamed file's old name in the
+    commit's file list. `renamedFromLog` does the same for a file history row.
   - `diffRequests.ts`: the 30-diff cap for "Show diffs".
   - `format.ts`: commit body and local date text.
 - The "Show diffs" checkbox requests the first 30 files of the visible order.
   Past 30, "Load all N diffs" requests the rest. Unchecking clears every request.
-- Expanding a row calls `diffCommit(repo, sha, file, ignoreWs)`. The result is
-  cached per `(repo, sha, ignoreWs, file)`.
+- Expanding a row calls `diffCommit(repo, sha, file, ignoreWs, oldFile)`, where
+  `oldFile` is `renamedFromStats(files, file)`. The result is cached per
+  `(repo, sha, ignoreWs, file, oldFile)`: the same new name with another old
+  name is another diff.
 
 ## Invariants
 - Selecting a commit runs at most three git processes, whatever its size:
@@ -103,14 +114,10 @@ loads with the list, as before.
 ## Out of scope
 - A combined (`-c` / `--cc`) diff for merges. A merge shows its first-parent
   diff only.
-- Rename-aware inline diffs. A per-file diff is requested with the new path
-  alone, so `git show -- <file>` sees no rename and shows the file as added.
-  The center diff has the same limit (see [graph-loading.md](graph-loading.md)).
-  Fixing it needs `diff_commit` to take the old path too, which changes its
-  contract for every caller. Left as a follow-up.
-- Glob characters in file names. `git show -- <file>` reads the name as a pathspec,
-  so `a[1].txt` can come back empty. A `:(literal)` prefix fixes it, but it sits
-  in the shared `push_file_path`, which the staging diffs also use. Follow-up.
+- Renames whose old name is not known. The center diff and the inline diff get
+  the old name from the commit's own file list, so both show a rename. A file
+  history row reads it from the next older row, so a rename at the end of a
+  loaded page still shows as an add until the next page loads.
 - Virtualizing the file list. A huge commit still renders every row. Only the
   diffs are lazy now.
 
