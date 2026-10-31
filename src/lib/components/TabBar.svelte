@@ -264,10 +264,13 @@
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
   /* #10 — close button hidden by default; visible on the active tab; visible
-     on inactive tabs only on hover. */
+     on inactive tabs only on hover. It sits in the tab's 25 px right padding,
+     against the right edge: in the flex flow it hugged the name and left the
+     padding empty after it. Out of the flow, showing it never shifts the name. */
   .close {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
     display: inline-flex; align-items: center; justify-content: center;
-    width: var(--h-row); height: var(--h-row); flex-shrink: 0;
+    width: var(--h-row); height: var(--h-row);
     border-radius: var(--radius-sm); color: var(--fg-muted);
     user-select: none; cursor: pointer;
     opacity: 0;

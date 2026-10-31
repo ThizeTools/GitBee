@@ -78,7 +78,8 @@ token (e.g. the canvas lane math in `src/lib/graph/layout.ts`).
 ### Regions (top → bottom, left → right)
 1. **Tab bar** (`--h-tabbar` 34): tabs `padding: 0 25px 0 20px`, max 300 px,
    top radius 4, 1 px divider between inactive tabs, active tab on the
-   elevated background with no divider; close icon 14 px shown on hover/active;
+   elevated background with no divider; close icon 14 px shown on hover/active,
+   placed in the 25 px right padding against the tab's right edge;
    "+" button 34×34.
 2. **Toolbar** (`--h-toolbar` 48):
    - Left: breadcrumb — two stacked labels ("repository" / "branch", `--fs-xs`
