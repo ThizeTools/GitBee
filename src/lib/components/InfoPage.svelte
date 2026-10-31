@@ -194,7 +194,7 @@
         { title: "Search older history: Ctrl+F finds commits beyond the loaded slice; Show loads up to the match", status: "done" },
         { title: "Conflict resolver: per-block Mine / Theirs / Both, custom edit, Save & mark resolved", status: "partial",
           note: "base section read-only; no three-pane editing" },
-        { title: "Submodule pane: list with state, update / init / sync, open as tab, add", status: "done" },
+        { title: "Submodule pane: list with state, update / init / sync, open as tab, add (sidebar or the command palette)", status: "done" },
         { title: "Git LFS: badge in staging and commit lists, pointer card in diffs, palette actions (pull, fetch, track, untrack, install hooks)", status: "partial", note: "no locking, migrate or prune" },
       ],
     },

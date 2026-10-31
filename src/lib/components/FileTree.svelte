@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { StatusEntry } from "$lib/ipc";
+  import type { LfsFlags } from "$lib/stores/lfs";
+  import LfsBadge from "$lib/components/lfs/LfsBadge.svelte";
 
   interface Props {
     files: StatusEntry[];
@@ -31,6 +33,9 @@
     /** Sort direction — folders always come first; only the alphabetical
      *  order inside each group flips. Defaults to ascending. */
     sortMode?: "asc" | "desc";
+    /** LFS flags keyed by path (see stores/lfs.ts). A true entry draws the LFS
+     *  badge on that file row. Optional: callers without LFS data omit it. */
+    lfsFlags?: LfsFlags;
   }
 
   let {
@@ -38,7 +43,7 @@
     onSelect, onClick,
     onAction, actionLabel,
     selectionSet, onFolderAction,
-    batchTargets, batchLabel,
+    batchTargets, batchLabel, lfsFlags,
     sortMode = "asc",
   }: Props = $props();
 
@@ -164,6 +169,7 @@
       >
         <span class="status {statusKind(node.file)}" title={statusTitle(node.file)}>{statusChar(node.file)}</span>
         <span class="name {statusKind(node.file)}">{node.name}</span>
+        {#if lfsFlags?.[node.file.path]}<LfsBadge />{/if}
       </button>
       {#if onAction && actionLabel}
         <button

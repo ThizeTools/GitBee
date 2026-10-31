@@ -42,7 +42,7 @@ open; see [git-lfs.md](git-lfs.md).
 
 Repo-bound actions appear only when a repo is open: Refresh repo, Fetch all
 remotes, Pull, Pull (rebase), Push, Stash all changes, Pop stash (asks first),
-New branch from HEAD.
+New branch from HEAD, Add submodule.
 
 Always present: Toggle light/dark, Undo and Redo (subtitle names the entry),
 Zoom in, Zoom out, Reset zoom, Show or Hide sidebar, Show or Hide right panel,

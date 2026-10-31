@@ -114,6 +114,7 @@ describe("actionItems", () => {
     const titles = actionItems(makeSources({ repoOpen: false })).map((a) => a.title);
     expect(titles).not.toContain("Fetch all remotes");
     expect(titles).not.toContain("Push");
+    expect(titles).not.toContain("Add submodule…");
     expect(titles).toContain("Toggle light/dark");
   });
 
@@ -122,11 +123,18 @@ describe("actionItems", () => {
     expect(ids).toEqual(expect.arrayContaining([
       "action:fetch", "action:pull", "action:pull-rebase", "action:push",
       "action:stash-create", "action:stash-pop", "action:branch-create",
+      "action:submodule-add",
     ]));
   });
 
   test("every action is in the Action category", () => {
     expect(actionItems(makeSources()).every((a) => a.category === "Action")).toBe(true);
+  });
+
+  test("Add submodule is offered as a repo action titled Add submodule…", () => {
+    const row = actionItems(makeSources()).find((a) => a.id === "action:submodule-add");
+    expect(row?.title).toBe("Add submodule…");
+    expect(row?.category).toBe("Action");
   });
 });
 

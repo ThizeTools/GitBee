@@ -265,7 +265,7 @@ reported.
 ## Files added
 
 ```
-src-tauri/src/github/create.rs        (POST /user/repos + /orgs/.../repos, push helper)
+src-tauri/src/github/create/        (mod.rs, remote.rs, push.rs, validate.rs; POST /user/repos + /orgs/.../repos, push helper)
 src/lib/components/CreateRepoModal.svelte
 src/lib/components/PublishGitHubButton.svelte  (toolbar entry point)
 ```
@@ -283,7 +283,7 @@ Files modified:
 
 ## Tests
 
-- `create.rs`: name regex matrix (valid, leading dot, leading dash,
+- `create/validate.rs`: name regex matrix (valid, leading dot, leading dash,
   too long, unicode); 422 → `NAME_TAKEN`; 422 with different message
   → `NAME_INVALID`; 401 → `INSUFFICIENT_SCOPES`.
 - `api.rs`: `list_create_owners` filters out orgs where the user is a

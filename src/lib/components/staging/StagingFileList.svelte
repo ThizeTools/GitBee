@@ -151,6 +151,7 @@
     onAction={onTreeAction} actionLabel={staged ? "unstage" : "stage"}
     onFolderAction={onTreeFolderAction}
     batchTargets={(p) => multiSelectionFor(selection, p)}
+    lfsFlags={lfsFlags}
     batchLabel={batchLabel} />
 {/snippet}
 

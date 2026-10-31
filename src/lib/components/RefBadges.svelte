@@ -93,11 +93,10 @@
     }
     const arr = Array.from(byKey.values());
     const pinned = $pinnedRef;
-    // Sort: HEAD first, then the pinned ref (one at a time), then
-    // branches (local/remote merged), then tags, then stashes. Pinning
-    // is a soft hint that affects only badge display order — it doesn't
-    // reposition the commit's lane in the graph (lane assignment lives
-    // in the Rust graph engine).
+    // Sort: HEAD first, then the pinned ref, then branches (local/remote
+    // merged), then tags, then stashes. Pinning also moves the pinned
+    // branch's first-parent chain to lane 0 (Rust assign_lanes, see
+    // docs/specs/lane-pin.md), so the pinned badge and its lane agree.
     arr.sort((a, b) => {
       if (a.isHead !== b.isHead) return a.isHead ? -1 : 1;
       const ap = pinned === a.full ? 0 : 1;

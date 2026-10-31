@@ -66,8 +66,9 @@ until `refreshLfs` runs.
 ### UI
 
 - **Badge.** An `LFS` tag sits beside the file name in the staging list (path
-  view) and the commit file list (path and tree views). The staging tree view
-  shows no badge (see Out of scope).
+  and tree views) and the commit file list (path and tree views). `FileTree`
+  takes an optional `lfsFlags` map and draws the tag on each file row, so the
+  staging tree reads the same flags as the path list.
 - **Pointer card.** When every side of a file's diff is an LFS pointer, the
   viewer shows one card in place of the hunks: `LFS object · <size> · oid
   <short>`. A changed file reads `old → new` for size and oid. A diff that is
@@ -102,8 +103,6 @@ until `refreshLfs` runs.
 - Downloading LFS objects for a single file. Pull and fetch act on the whole
   repo.
 - Showing the object itself. The card shows size and oid only.
-- Badges on the staging tree view. Its rows come from `FileTree`, which this
-  feature does not change.
 - Detecting LFS in subdirectory `.gitattributes`. `used` reads the repo root
   only, as the contract above says.
 
@@ -133,4 +132,5 @@ until `refreshLfs` runs.
   requests.
 - `src/lib/palette/providers/lfs.ts` the LFS palette rows.
 - `src/lib/components/lfs/LfsBadge.svelte` and
-  `src/lib/components/diff/LfsPointerCard.svelte`.
+  `src/lib/components/diff/LfsPointerCard.svelte`, plus `FileTree.svelte` for the
+  tree-row badge.

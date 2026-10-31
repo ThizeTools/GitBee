@@ -80,7 +80,10 @@ place this table lives.
 - Row menu: Update, Update (init), Sync URLs, Open in new tab, Open folder
   (`file_show_in_folder`), Copy path.
 - "Add submodule…" prompts for the URL, then for the folder, which defaults to
-  the URL's last segment.
+  the URL's last segment. It is offered in the section header menu and in the
+  command palette (Action category, repo-bound, id `action:submodule-add`). The
+  palette entry is the way to add the first submodule, since the section is
+  hidden while a repo has none.
 
 ## Invariants
 
@@ -124,14 +127,10 @@ place this table lives.
 - **A separate store keyed by tab id.** Keeping the list on `RepoTab` lets the
   existing `withChangedFields` comparison skip unchanged lists, and it is cleared
   with the tab. A parallel map would need its own cleanup on tab close.
-
-## Open question
-
-With the section hidden at zero submodules, "Add submodule…" is reachable only
-after a submodule exists. A repo with none has no entry point for the first add.
-Possible fixes, to decide: show the section with only the Add action when the
-repo has no submodules, or add the command to the command palette. Until then
-the first add happens from the terminal.
+- **An empty Submodules section that shows only "Add submodule…".** Most repos
+  have no submodules, so the section would take sidebar space in every one of
+  them to serve one first-add action. The palette entry reaches the same flow
+  without changing the sidebar.
 
 ## Tests
 
@@ -143,3 +142,5 @@ the first add happens from the terminal.
 - `src/lib/stores/submodules.test.ts`: short sha, separator-aware path join, the
   uninitialized refusal rule, default folder name.
 - `src/lib/components/sidebar/filter.test.ts`: the shared filter rule.
+- `src/lib/palette/providers/providers.test.ts`: the palette row exists only with
+  a repo open.

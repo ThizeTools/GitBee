@@ -10,6 +10,7 @@ import { pushUndo } from "$lib/stores/history";
 import { branchCreateUndo } from "$lib/stores/undoEntries";
 import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
 import { notifyError, notifyInfo, notifySuccess } from "$lib/stores/notifications";
+import { addSubmodule } from "$lib/stores/submodules";
 import { paletteAction } from "$lib/palette/providers/item";
 import type { PaletteItem } from "$lib/palette/types";
 
@@ -67,5 +68,6 @@ export function repoActionItems(): PaletteItem[] {
     paletteAction("stash-create", "Stash all changes", () => onRepo(stashAll)),
     paletteAction("stash-pop", "Pop stash", () => onRepo(popTopStash), "stash@{0}"),
     paletteAction("branch-create", "New branch from HEAD", () => onRepo(newBranchFromHead)),
+    paletteAction("submodule-add", "Add submodule…", () => onRepo(addSubmodule)),
   ];
 }
