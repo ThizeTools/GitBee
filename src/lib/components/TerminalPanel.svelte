@@ -1,119 +1,59 @@
 <script lang="ts">
-  import { onDestroy, tick } from "svelte";
+  // Bottom dock for embedded terminals: a tab strip plus one TerminalSurface per
+  // session. Every session's surface stays mounted (see TerminalSurface). Only
+  // the active tab of the open repo is shown. The dock belongs to a repo tab, so
+  // it stays hidden on the new-tab and info pages.
+  import { onMount } from "svelte";
   import { currentRepo } from "$lib/stores/repo";
   import { layout, setSize } from "$lib/stores/layout";
-  import { termText, termRunning, termSessionId,
-    startTerminal, stopTerminal, writeTerminal } from "$lib/stores/terminal";
-  import { logAppend } from "$lib/stores/logs";
+  import { showingInfo } from "$lib/stores/info";
+  import { showingNewTab } from "$lib/stores/newtab";
+  import {
+    terminalSessions, repoSessions, shownSessionId, ensureTerminalListeners,
+    openSession, closeSession, selectTerminal,
+  } from "$lib/stores/terminal";
   import ResizeHandle from "./ResizeHandle.svelte";
+  import TerminalSurface from "./TerminalSurface.svelte";
 
-  const CWD_MARK = "@@__GKP_CWD__@@";
-
-  let scrollEl: HTMLDivElement | null = $state(null);
-  let inputEl: HTMLInputElement | null = $state(null);
-  let cmd = $state("");
-  let history: string[] = [];
-  let histIdx = -1;
-  let cwd = $state<string>("");
-
-  // Filter the CWD-marker lines out of the visible buffer and update cwd.
-  let lastSeenLen = 0;
-  $effect(() => {
-    const text = $termText;
-    if (text.length < lastSeenLen) lastSeenLen = 0; // buffer was cleared/trimmed
-    if (text.length === lastSeenLen) return;
-    const fresh = text.slice(lastSeenLen);
-    lastSeenLen = text.length;
-    const lines = fresh.split(/\r?\n/);
-    for (const l of lines) {
-      const i = l.indexOf(CWD_MARK);
-      if (i >= 0) {
-        cwd = l.slice(i + CWD_MARK.length).trim();
-      }
-    }
-    tick().then(() => { if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight; });
-  });
-
-  async function ensureRunning() {
-    if (!$currentRepo) return;
-    if (!$termRunning) {
-      try {
-        await startTerminal($currentRepo);
-        cwd = $currentRepo;
-        // Ask the shell to emit the cwd marker once after startup.
-        await pingCwd();
-      } catch (e) { logAppend("error", `terminal start: ${e}`); }
-    }
-  }
-
-  // Track the panel's previous open state so we only spawn on the open
-  // edge (false → true). Without this, if the shell exits — which it can
-  // do at any moment on its own — the effect would re-fire on every
-  // termRunning change and respawn instantly, leading to an infinite
-  // spawn loop in release builds (observed with cmd.exe under no console).
-  let wasOpen = $state(false);
-  $effect(() => {
-    const open = $layout.terminalOpen;
-    if (open && !wasOpen && $currentRepo && !$termRunning) {
-      ensureRunning();
-    }
-    wasOpen = open;
-  });
-
-  async function pingCwd() {
-    // cmd.exe-friendly marker: `cd` alone prints the current directory.
-    if (isWindows()) {
-      await writeTerminal(`echo ${CWD_MARK}%CD%`);
-    } else {
-      await writeTerminal(`printf "%s%s\\n" "${CWD_MARK}" "$(pwd)"`);
-    }
-  }
-  function isWindows(): boolean {
-    return typeof navigator !== "undefined" &&
-      /win/i.test(navigator.platform || navigator.userAgent || "");
-  }
-
-  async function submit() {
-    const line = cmd;
-    if (!line.trim()) return;
-    history.push(line); histIdx = history.length;
-    cmd = "";
-    // Echo the prompt+command into the buffer so the user sees what they ran.
-    termText.update((t) => t + promptString() + line + "\n");
-    await writeTerminal(line);
-    // After every command, ask the shell to update cwd.
-    await pingCwd();
-  }
-  function onKey(e: KeyboardEvent) {
-    if (e.key === "Enter") { e.preventDefault(); submit(); }
-    else if (e.key === "ArrowUp") {
-      if (history.length === 0) return;
-      e.preventDefault();
-      histIdx = Math.max(0, histIdx - 1);
-      cmd = history[histIdx] ?? "";
-    } else if (e.key === "ArrowDown") {
-      if (history.length === 0) return;
-      e.preventDefault();
-      histIdx = Math.min(history.length, histIdx + 1);
-      cmd = history[histIdx] ?? "";
-    }
-  }
-  function close() { setSize("terminalOpen", false); stopTerminal(); }
-  function clear() { termText.set(""); lastSeenLen = 0; }
-
-  function promptString(): string {
-    return isWindows() ? `PS ${cwd || $currentRepo || ""}> ` : `${cwd || $currentRepo || ""}$ `;
-  }
-
-  // Visible text strips the marker lines.
-  const visibleText = $derived(
-    $termText.split(/\r?\n/).filter((l) => !l.includes(CWD_MARK)).join("\n")
+  const dockShown = $derived(
+    $layout.terminalOpen && $currentRepo !== null && !$showingInfo && !$showingNewTab,
   );
 
-  onDestroy(() => stopTerminal());
+  onMount(() => {
+    void ensureTerminalListeners();
+  });
+
+  // Opening the dock on a repo with no shell starts one. The effect reads only a
+  // boolean, so unrelated session updates (another repo's shell exiting) do not
+  // re-run it. A failed start is not retried until the dock is opened again.
+  const repoHasNoShell = $derived($repoSessions.length === 0);
+  $effect(() => {
+    const repo = $currentRepo;
+    if (dockShown && repo && repoHasNoShell) void openSession(repo);
+  });
+
+  function newTerminal(): void {
+    const repo = $currentRepo;
+    if (repo) void openSession(repo);
+  }
+
+  function select(id: number): void {
+    const repo = $currentRepo;
+    if (repo) selectTerminal(repo, id);
+  }
+
+  /** Closes a tab. Closing the repo's last tab also hides the dock. */
+  async function closeTab(id: number): Promise<void> {
+    await closeSession(id);
+    if ($repoSessions.length === 0) setSize("terminalOpen", false);
+  }
+
+  function hide(): void {
+    setSize("terminalOpen", false);
+  }
 </script>
 
-{#if $layout.terminalOpen}
+<div class="dock" class:closed={!dockShown} style:height="{$layout.terminalHeight}px">
   <ResizeHandle
     direction="h"
     invert
@@ -122,84 +62,91 @@
     max={600}
     onChange={(v) => setSize("terminalHeight", v)}
   />
-  <div class="term" style="height: {$layout.terminalHeight}px">
-    <header class="head">
-      <span class="title">▶_ Terminal</span>
-      <button class="ghost" onclick={clear} title="Clear">⌫</button>
-      <button class="ghost" onclick={close} title="Close terminal">×</button>
-    </header>
-    <div class="body" bind:this={scrollEl}>
-      <pre>{visibleText}</pre>
+  <header class="head">
+    <span class="title">▶_ Terminal</span>
+    <div class="tabs" role="tablist">
+      {#each $repoSessions as s (s.id)}
+        <div class="tab" class:active={s.id === $shownSessionId} class:exited={s.exited}>
+          <button
+            class="tab-label"
+            role="tab"
+            aria-selected={s.id === $shownSessionId}
+            onclick={() => select(s.id)}
+          >{s.title}{s.exited ? " (exited)" : ""}</button>
+          <button class="tab-close" title="Close terminal" onclick={() => closeTab(s.id)}>×</button>
+        </div>
+      {/each}
+      <button class="ghost" title="New terminal" onclick={newTerminal}>+</button>
     </div>
-    <div class="prompt">
-      <span class="pline">{promptString()}</span>
-      <input
-        bind:this={inputEl}
-        bind:value={cmd}
-        onkeydown={onKey}
-        spellcheck="false"
-        placeholder={$termRunning ? "" : "(starting shell…)"}
+    <button class="ghost" title="Hide terminal (Ctrl+`)" onclick={hide}>⌄</button>
+  </header>
+  <div class="surfaces">
+    {#each $terminalSessions.list as s (s.id)}
+      <TerminalSurface
+        id={s.id}
+        shown={dockShown && s.repo === $currentRepo && s.id === $shownSessionId}
       />
-    </div>
+    {/each}
   </div>
-{/if}
+</div>
 
 <style>
-  .term {
+  .dock {
     display: flex;
     flex-direction: column;
-    background: #050709;
+    background: var(--bg);
     border-top: 1px solid var(--border-strong);
     flex-shrink: 0;
-    min-height: 80px;
+    min-height: 0;
     overflow: hidden;
   }
+  .dock.closed { display: none; }
   .head {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 4px 10px;
+    padding: 2px 8px;
     background: var(--bg-elev);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     font-size: 11px;
   }
-  .title { font-weight: 600; flex: 1; }
+  .title { font-weight: 600; flex-shrink: 0; }
+  .tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    border-radius: 3px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
+  .tab.active { background: var(--border); color: var(--fg); }
+  .tab.exited .tab-label { font-style: italic; }
+  .tab-label {
+    background: transparent; border: 0; color: inherit; cursor: pointer;
+    font: inherit; padding: 2px 6px;
+  }
+  .tab-close {
+    background: transparent; border: 0; color: var(--fg-muted); cursor: pointer;
+    font-size: 12px; padding: 0 4px; border-radius: 3px;
+  }
+  .tab-close:hover { color: var(--fg); }
   .ghost {
     background: transparent; border: 0; color: var(--fg-muted);
     cursor: pointer; padding: 2px 8px; font-size: 13px; border-radius: 3px;
   }
   .ghost:hover { color: var(--fg); background: var(--border); }
-  .body { flex: 1; overflow: auto; padding: 8px 10px; }
-  pre {
-    margin: 0;
-    color: #d4d4d4;
-    font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 12px;
-    line-height: 1.45;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  .prompt {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    padding: 4px 10px 6px;
-    background: #050709;
-    flex-shrink: 0;
-    font-family: "Cascadia Code", Consolas, monospace;
-    font-size: 12px;
-  }
-  .pline {
-    color: #d4d4d4;
-    white-space: pre;
-  }
-  input {
+  .surfaces {
     flex: 1;
-    background: transparent;
-    color: #d4d4d4;
-    border: 0;
-    outline: none;
-    font: inherit;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 </style>

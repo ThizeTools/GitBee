@@ -1,4 +1,6 @@
 use crate::error::{AppError, AppResult};
+use crate::git::blame::{blame_args, parse_blame_porcelain, BlameResult};
+use crate::git::file_log::{file_log_args, parse_file_log, FileLogEntry, DEFAULT_LIMIT};
 use crate::git::{checked_ref, GitRunner};
 use crate::state::AppState;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -237,74 +239,34 @@ pub async fn file_write(path: String, file: String, content: String) -> AppResul
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
-pub struct FileHistoryRow { pub sha: String, pub subject: String, pub author: String, pub ts: i64 }
-
+/// Commits that touched `file`, following renames. `skip` passes over the
+/// commits an earlier page already showed. One git process per call.
+/// See docs/specs/file-history-blame.md.
 #[tauri::command]
 pub async fn file_history(
     path: String,
     file: String,
     limit: Option<usize>,
+    skip: Option<usize>,
     state: State<'_, AppState>,
-) -> AppResult<Vec<FileHistoryRow>> {
-    let n = limit.unwrap_or(100).min(2000);
-    let text = state.git.run_text_lossy(
-        &cwd(&path),
-        ["log", &format!("-n{n}"), "--format=%H%x09%an%x09%ct%x09%s", "--", &file],
-    ).await?;
-    let mut out = Vec::new();
-    for line in text.lines() {
-        let parts: Vec<&str> = line.splitn(4, '\t').collect();
-        if parts.len() < 4 { continue; }
-        let ts: i64 = parts[2].parse().unwrap_or(0);
-        out.push(FileHistoryRow {
-            sha: parts[0].into(),
-            author: parts[1].into(),
-            ts,
-            subject: parts[3].into(),
-        });
-    }
-    Ok(out)
+) -> AppResult<Vec<FileLogEntry>> {
+    let args = file_log_args(&file, limit.unwrap_or(DEFAULT_LIMIT), skip.unwrap_or(0))?;
+    let text = state.git.run_text_lossy(&cwd(&path), args).await?;
+    Ok(parse_file_log(&text))
 }
 
-#[derive(Debug, Serialize)]
-pub struct BlameRow { pub sha: String, pub author: String, pub ts: i64, pub line: String }
-
+/// Blame of `file` at `rev`, or in the working tree when `rev` is None. One
+/// git process per call. See docs/specs/file-history-blame.md.
 #[tauri::command]
 pub async fn file_blame(
     path: String,
     file: String,
+    rev: Option<String>,
     state: State<'_, AppState>,
-) -> AppResult<Vec<BlameRow>> {
-    // Use porcelain for stable parsing.
-    let text = state.git.run_text_lossy(&cwd(&path), ["blame", "--line-porcelain", &file]).await?;
-    let mut out = Vec::new();
-    let mut cur_sha = String::new();
-    let mut cur_author = String::new();
-    let mut cur_ts: i64 = 0;
-    for line in text.lines() {
-        if let Some(rest) = line.strip_prefix('\t') {
-            out.push(BlameRow {
-                sha: cur_sha.clone(),
-                author: cur_author.clone(),
-                ts: cur_ts,
-                line: rest.to_string(),
-            });
-        } else if let Some(v) = line.strip_prefix("author ") {
-            cur_author = v.to_string();
-        } else if let Some(v) = line.strip_prefix("author-time ") {
-            cur_ts = v.parse().unwrap_or(0);
-        } else {
-            // Commit header line: "<sha> <orig-lineno> <final-lineno> [count]".
-            // Take the full first token instead of hardcoding 40 hex chars, so
-            // SHA-256 repos (64-char object names) aren't truncated. (audit 2026-05)
-            let tok = line.split(' ').next().unwrap_or("");
-            if tok.len() >= 40 && tok.bytes().all(|b| b.is_ascii_hexdigit()) {
-                cur_sha = tok.to_string();
-            }
-        }
-    }
-    Ok(out)
+) -> AppResult<BlameResult> {
+    let args = blame_args(&file, rev.as_deref())?;
+    let text = state.git.run_text_lossy(&cwd(&path), args).await?;
+    Ok(parse_blame_porcelain(&text))
 }
 
 #[tauri::command]

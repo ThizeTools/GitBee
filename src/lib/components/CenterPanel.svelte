@@ -3,6 +3,8 @@
   import GraphCanvas from "./GraphCanvas.svelte";
   import DiffPanel from "./DiffPanel.svelte";
   import ConflictEditor from "./conflict/ConflictEditor.svelte";
+  import FileHistory from "./history/FileHistory.svelte";
+  import FileBlame from "./history/FileBlame.svelte";
 </script>
 
 <section class="center">
@@ -12,6 +14,10 @@
     <DiffPanel file={$centerMode.file} commitSha={$centerMode.sha} />
   {:else if $centerMode.kind === "conflict"}
     <ConflictEditor file={$centerMode.file} />
+  {:else if $centerMode.kind === "history"}
+    <FileHistory file={$centerMode.file} />
+  {:else if $centerMode.kind === "blame"}
+    <FileBlame file={$centerMode.file} rev={$centerMode.rev} />
   {:else}
     <GraphCanvas />
   {/if}

@@ -1,14 +1,20 @@
 //! Project-owned seam over the OS credential store (Windows Credential
 //! Manager, macOS Keychain, Linux Secret Service). Only this file names the
 //! `keyring` crate, so a different backend is a one-file change. Why the OS
-//! store at all: docs/specs/github-integration.md "Token storage".
+//! store at all: docs/specs/github-integration.md "Token storage". The
+//! Anthropic key uses the same store under its own account:
+//! docs/specs/ai-commit-message.md.
 
 use crate::error::{AppError, AppResult};
 
-/// Service and account of the GitHub token entry. Changing either orphans the
-/// token already stored on users' machines, so treat them as a storage format.
+/// Service shared by every GitBee entry in the OS store. Each secret differs
+/// by account. Changing it orphans the stored secrets, so treat it as a
+/// storage format.
 const SERVICE: &str = "GitBee";
-const ACCOUNT: &str = "github-token";
+
+/// Account of the GitHub token entry. Changing it orphans the token already
+/// stored on users' machines, so treat it as a storage format.
+pub const GITHUB_ACCOUNT: &str = "github-token";
 
 /// One secret, read and written whole. An unavailable store is `Err`, never
 /// `Ok(None)`: `Ok(None)` means "nothing stored", which triggers migration.
@@ -18,14 +24,29 @@ pub trait SecretStore {
     fn delete(&self) -> AppResult<()>;
 }
 
-/// The OS credential store. Stateless: each call opens the entry again, so a
-/// store that comes up after launch (Secret Service started late) is used
-/// without a restart.
-pub struct KeyringSecretStore;
+/// The OS credential store entry for one account. Stateless: each call opens
+/// the entry again, so a store that comes up after launch (Secret Service
+/// started late) is used without a restart.
+pub struct KeyringSecretStore {
+    account: &'static str,
+}
 
 impl KeyringSecretStore {
+    /// The entry for `account`. Accounts are compile-time constants so a
+    /// caller cannot build one from user input.
+    pub const fn new(account: &'static str) -> Self {
+        Self { account }
+    }
+
+    /// The GitHub token entry. Callers that predate the account choice use
+    /// this, and it keeps their behavior identical.
+    pub const fn github() -> Self {
+        Self::new(GITHUB_ACCOUNT)
+    }
+
     fn entry(&self) -> AppResult<keyring::Entry> {
-        keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| store_error("open", e))
+        keyring::Entry::new(SERVICE, self.account)
+            .map_err(|e| store_error("open", self.account, e))
     }
 }
 
@@ -34,26 +55,28 @@ impl SecretStore for KeyringSecretStore {
         match self.entry()?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(store_error("read", e)),
+            Err(e) => Err(store_error("read", self.account, e)),
         }
     }
 
     fn set(&self, value: &str) -> AppResult<()> {
-        self.entry()?.set_password(value).map_err(|e| store_error("write", e))
+        self.entry()?
+            .set_password(value)
+            .map_err(|e| store_error("write", self.account, e))
     }
 
     fn delete(&self) -> AppResult<()> {
         match self.entry()?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(store_error("delete", e)),
+            Err(e) => Err(store_error("delete", self.account, e)),
         }
     }
 }
 
 // Names the operation and the entry, so the log says which store call failed.
-fn store_error(op: &str, e: keyring::Error) -> AppError {
+fn store_error(op: &str, account: &str, e: keyring::Error) -> AppError {
     AppError::Other(format!(
-        "OS credential store {op} failed (service {SERVICE:?}, account {ACCOUNT:?}): {e}"
+        "OS credential store {op} failed (service {SERVICE:?}, account {account:?}): {e}"
     ))
 }
 
@@ -68,7 +91,8 @@ pub enum FakeMode {
     WritesFail,
 }
 
-/// In-memory `SecretStore` for tests of the token policy in `storage.rs`.
+/// In-memory `SecretStore` for tests of the token policy in `storage.rs` and
+/// the AI key policy in `ai/key.rs`.
 #[cfg(test)]
 pub struct FakeSecretStore {
     value: std::cell::RefCell<Option<String>>,
@@ -122,9 +146,26 @@ mod tests {
 
     #[test]
     fn store_error_names_the_operation_and_the_entry() {
-        let msg = store_error("read", keyring::Error::NoEntry).to_string();
+        let msg = store_error("read", GITHUB_ACCOUNT, keyring::Error::NoEntry).to_string();
         assert!(msg.contains("read"));
         assert!(msg.contains("GitBee"));
         assert!(msg.contains("github-token"));
+    }
+
+    #[test]
+    fn store_error_names_a_non_github_account() {
+        let msg = store_error("write", "anthropic-api-key", keyring::Error::NoEntry).to_string();
+        assert!(msg.contains("anthropic-api-key"));
+        assert!(!msg.contains("github-token"));
+    }
+
+    #[test]
+    fn github_store_uses_the_github_account() {
+        assert_eq!(KeyringSecretStore::github().account, GITHUB_ACCOUNT);
+    }
+
+    #[test]
+    fn new_store_keeps_the_account_it_was_given() {
+        assert_eq!(KeyringSecretStore::new("anthropic-api-key").account, "anthropic-api-key");
     }
 }

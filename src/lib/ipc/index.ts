@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { RebaseItem, RebaseOutcome } from "$lib/rebase/types";
 
 export interface OpenedRepo { id: number; path: string; }
 export interface RecentRepoDto { id: number; path: string; last_opened: number; }
@@ -79,6 +80,19 @@ export interface CommitStat { sha: string; files: number; additions: number; del
 /** Image bytes for the diff viewer: base64 payload plus the MIME type the backend chose. */
 export interface FileBytes { base64: string; mime: string; }
 
+/** One commit that touched a file. `path_at_commit` is the file's name in that commit. */
+export interface FileLogEntry {
+  sha: string; parents: string[]; author_name: string; author_email: string;
+  timestamp: number; subject: string; path_at_commit: string; status: string;
+}
+/** One blamed line. `final_line` is 1-based in the file being blamed. */
+export interface BlameLine { sha: string; orig_line: number; final_line: number; content: string; }
+/** Metadata of a commit that owns blamed lines. `author_time` is seconds since the epoch. */
+export interface BlameCommit {
+  author_name: string; author_email: string; author_time: number; summary: string;
+}
+export interface BlameResult { lines: BlameLine[]; commits: Record<string, BlameCommit>; }
+
 export interface StashEntry { index: number; message: string; sha: string; }
 export interface Remote { name: string; url: string; }
 export interface Worktree {
@@ -154,6 +168,17 @@ export const ipc = {
   commitCreate: (path: string, message: string, amend = false, sign = false) =>
     invoke("commit_create", { path, message, amend, sign }),
   commitShow: (path: string, sha: string) => invoke<string>("commit_show", { path, sha }),
+  // commit box: allow-listed config reads and the template file (docs/specs/commit-box.md)
+  gitConfigGet: (path: string, key: string) =>
+    invoke<string | null>("git_config_get", { path, key }),
+  commitTemplate: (path: string) => invoke<string | null>("commit_template", { path }),
+  // AI commit messages: docs/specs/ai-commit-message.md. The key never comes back.
+  aiCommitMessage: (path: string) => invoke<string>("ai_commit_message", { path }),
+  aiCommitMessageFromStat: (path: string) =>
+    invoke<string>("ai_commit_message_from_stat", { path }),
+  aiKeyStatus: () => invoke<boolean>("ai_key_status"),
+  aiKeySave: (key: string) => invoke<void>("ai_key_save", { key }),
+  aiKeyClear: () => invoke<void>("ai_key_clear"),
   commitFiles: (path: string, sha: string) => invoke<CommitFileStat[]>("commit_files", { path, sha }),
   // At most 200 shas per call (the backend refuses more).
   commitStats: (path: string, shas: string[]) => invoke<CommitStat[]>("commit_stats", { path, shas }),
@@ -207,6 +232,8 @@ export const ipc = {
     invoke("op_abort", { path, kind }),
   opContinue: (path: string, kind: "merge" | "rebase" | "cherry-pick" | "revert") =>
     invoke("op_continue", { path, kind }),
+  rebaseInteractive: (path: string, base: string, items: RebaseItem[]) =>
+    invoke<RebaseOutcome>("rebase_interactive", { path, base, items }),
   markResolved: (path: string, file: string) => invoke("mark_resolved", { path, file }),
   /** Rewrites a conflicted file from one side, then stages it. "ours" is the
    * rebase target during a rebase (see docs/specs/conflict-resolution.md). */
@@ -241,14 +268,12 @@ export const ipc = {
   fileEdit: (path: string, file: string) => invoke("file_edit", { path, file }),
   fileWrite: (path: string, file: string, content: string) =>
     invoke("file_write", { path, file, content }),
-  fileHistory: (path: string, file: string, limit?: number) =>
-    invoke<Array<{ sha: string; subject: string; author: string; ts: number }>>(
-      "file_history", { path, file, limit },
-    ),
-  fileBlame: (path: string, file: string) =>
-    invoke<Array<{ sha: string; author: string; ts: number; line: string }>>(
-      "file_blame", { path, file },
-    ),
+  /** One page of a file's commits, newest first. `skip` passes over earlier pages. */
+  fileHistory: (path: string, file: string, limit?: number, skip?: number) =>
+    invoke<FileLogEntry[]>("file_history", { path, file, limit, skip }),
+  /** Blame at `rev`, or in the working tree when `rev` is omitted. */
+  fileBlame: (path: string, file: string, rev?: string) =>
+    invoke<BlameResult>("file_blame", { path, file, rev }),
   ignoreAdd: (path: string, pattern: string) => invoke("ignore_add", { path, pattern }),
   stashFile: (path: string, file: string, message?: string) =>
     invoke("stash_file", { path, file, message }),
@@ -261,10 +286,14 @@ export const ipc = {
   repoClone: (url: string, dest: string) => invoke<string>("repo_clone", { url, dest }),
   repoCreate: (path: string) => invoke<string>("repo_create", { path }),
 
-  // terminal (line-mode subprocess; not a real PTY)
-  terminalSpawn: (cwd: string) => invoke<string>("terminal_spawn", { cwd }),
-  terminalWrite: (id: string, data: string) => invoke("terminal_write", { id, data }),
-  terminalKill: (id: string) => invoke("terminal_kill", { id }),
+  // embedded terminal: real PTY sessions (src-tauri/src/pty). Output arrives
+  // as terminal-output / terminal-exit events; see stores/terminal.ts.
+  terminalSpawn: (path: string, cols: number, rows: number) =>
+    invoke<number>("terminal_spawn", { path, cols, rows }),
+  terminalWrite: (id: number, data: string) => invoke("terminal_write", { id, data }),
+  terminalResize: (id: number, cols: number, rows: number) =>
+    invoke("terminal_resize", { id, cols, rows }),
+  terminalKill: (id: number) => invoke("terminal_kill", { id }),
 
   // worktrees
   worktreeList: (path: string) => invoke<Worktree[]>("worktree_list", { path }),

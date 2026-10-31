@@ -14,6 +14,7 @@
     author: "AUTHOR",
     date: "DATE",
     sha: "SHA",
+    changes: "CHANGES",
   };
 
   interface Props {

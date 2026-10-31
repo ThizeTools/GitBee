@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult};
+use crate::git::runner::NO_EDITOR_ENV;
 use crate::git::GitRunner;
 use crate::state::AppState;
 use serde::Serialize;
@@ -64,8 +65,21 @@ pub async fn op_continue(
         "revert" => "revert",
         _ => return Err(crate::error::AppError::Other(format!("unknown op {kind}"))),
     };
-    state.git.run(&cwd(&path), [sub, "--continue"]).await?;
+    let envs = continue_envs(&kind);
+    state.git.run_with_env(&cwd(&path), [sub, "--continue"], &envs).await?;
     Ok(())
+}
+
+/// Pure: env for `<op> --continue`. A rebase can reach a squash step that
+/// opens the message editor, and the process is hidden, so that editor would
+/// block forever. Only rebase gets it for now; merge, cherry-pick and revert
+/// keep git's default (docs/specs/interactive-rebase.md).
+fn continue_envs(kind: &str) -> Vec<(&'static str, &'static str)> {
+    if kind == "rebase" {
+        vec![NO_EDITOR_ENV]
+    } else {
+        Vec::new()
+    }
 }
 
 #[tauri::command]
@@ -140,6 +154,18 @@ mod tests {
     #[test]
     fn take_side_args_pass_the_file_after_double_dash() {
         assert_eq!(take_side_args("--ours", "-odd.txt"), ["checkout", "--ours", "--", "-odd.txt"]);
+    }
+
+    #[test]
+    fn continue_envs_stop_a_rebase_from_opening_an_editor() {
+        assert_eq!(continue_envs("rebase"), vec![("GIT_EDITOR", "true")]);
+    }
+
+    #[test]
+    fn continue_envs_leave_other_operations_as_git_runs_them() {
+        assert!(continue_envs("merge").is_empty());
+        assert!(continue_envs("cherry-pick").is_empty());
+        assert!(continue_envs("revert").is_empty());
     }
 
     #[test]

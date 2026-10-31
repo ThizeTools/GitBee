@@ -1,8 +1,10 @@
+pub mod ai;
 pub mod cache;
 pub mod commands;
 pub mod error;
 pub mod git;
 pub mod github;
+pub mod pty;
 pub mod state;
 pub mod tray;
 pub mod watcher;
@@ -88,6 +90,13 @@ pub fn run() {
             commands::commits::commit_revert,
             commands::commits::commit_reset,
             commands::commits::commit_format_patch,
+            commands::commits::git_config_get,
+            commands::commits::commit_template,
+            commands::ai::ai_commit_message,
+            commands::ai::ai_commit_message_from_stat,
+            commands::ai::ai_key_status,
+            commands::ai::ai_key_save,
+            commands::ai::ai_key_clear,
             commands::commits::patch_apply,
             commands::stash::stash_list,
             commands::stash::stash_create,
@@ -112,6 +121,7 @@ pub fn run() {
             commands::merge::op_continue,
             commands::merge::mark_resolved,
             commands::merge::conflict_take_side,
+            commands::rebase_interactive::rebase_interactive,
             commands::watcher_cmd::watcher_start,
             commands::watcher_cmd::watcher_stop,
             commands::system::open_terminal,
@@ -141,6 +151,7 @@ pub fn run() {
             commands::repo_extra::repo_create,
             commands::terminal::terminal_spawn,
             commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
             commands::terminal::terminal_kill,
             commands::github::github_status,
             commands::github::github_save_pat,
@@ -158,6 +169,12 @@ pub fn run() {
             commands::github::github_create_repo,
             commands::github::github_publish_local,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        // Embedded shells are GitBee's children: end them when the app exits.
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                commands::terminal::shutdown(app);
+            }
+        });
 }

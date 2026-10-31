@@ -5,8 +5,9 @@
   // reports clicks back through callbacks.
   import RefBadges from "../RefBadges.svelte";
   import Avatar from "../Avatar.svelte";
-  import type { CommitRef, GraphNode } from "$lib/ipc";
+  import type { CommitRef, CommitStat, GraphNode } from "$lib/ipc";
   import type { GraphCol } from "$lib/stores/layout";
+  import ChangesCell from "./ChangesCell.svelte";
   import { WIP_SHA } from "$lib/stores/repo";
   import { laneColor } from "$lib/graph/renderer";
   import { laneX, AVATAR_SIZE } from "$lib/graph/layout";
@@ -43,13 +44,15 @@
     // Merge dimming on/off, and the ref-hover highlight (null when inactive).
     dimMerges: boolean;
     highlightSet: ReadonlySet<string> | null;
+    // Changes-column stat: null is an empty cell (WIP, stash), undefined is loading.
+    stat: CommitStat | null | undefined;
   }
   let {
     row, node, top, isWip, order, gridTemplate, stashIndex,
     selectedSha, headRowSha, matchSet, currentMatchSha, isHovered,
     hasAvatar, wipChangeCount, wipBreakdown,
     refsFor, containingRefsFor, onSelect, onCheckout, onContextMenu,
-    nowMs, dimMerges, highlightSet,
+    nowMs, dimMerges, highlightSet, stat,
   }: Props = $props();
   // Dimmed rows: text and avatars fade; the canvas dims the lane itself.
   const dimmed = $derived(node !== null && isRowDimmed(node, dimMerges, highlightSet));
@@ -140,6 +143,8 @@
       <div class="cell-date" title={isWip ? "" : formatAbsoluteDate(node!.timestamp)}>
         <span class="cell-text">{isWip ? "" : formatRelativeDate(node!.timestamp, nowMs)}</span>
       </div>
+    {:else if col === "changes"}
+      <ChangesCell {stat} />
     {:else}
       <div class="cell-sha" title={isWip ? "" : node!.sha}>
         <span class="cell-text">{isWip ? "" : node!.sha.slice(0, 7)}</span>
@@ -298,6 +303,8 @@
   .row.dimmed .cell-msg, .row.dimmed .cell-refs,
   .row.dimmed .cell-author, .row.dimmed .cell-date, .row.dimmed .cell-sha { opacity: 0.4; }
   .row.dimmed .lane-avatar { opacity: 0.25; }
+  /* ChangesCell is its own component, so its root is reached with :global. */
+  .row.dimmed :global(.cell-changes) { opacity: 0.4; }
   /* gutter cells fall in the resize-handle slots — empty 6px column */
   .cell-gutter { height: 100%; }
 

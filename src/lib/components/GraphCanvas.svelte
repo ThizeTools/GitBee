@@ -15,6 +15,8 @@
   import { visibleCols, toggleHidden, COL_WIDTH_KEY, COL_MIN_WIDTH } from "$lib/graph/columns";
   import { hoveredRefSha, clearRefHover } from "$lib/stores/refHover";
   import { highlightFor } from "$lib/graph/reach";
+  import { visibleStatShas, changesStatFor } from "$lib/graph/changes";
+  import { requestVisibleStats, cancelStatsRequest, statsTick, statsLookup } from "$lib/stores/commitStatsCache";
   import ScrollMarkers from "./graph/ScrollMarkers.svelte";
   import { measureBadgeEnds } from "./graph/badgeEnds";
   // ClientX/Y and getBoundingClientRect return viewport coords post-zoom.
@@ -106,6 +108,8 @@
   const rangeStart = $derived(Math.max(0, Math.floor((scrollTop - TOP_PADDING) / ROW_HEIGHT)));
   const rangeEnd = $derived(Math.min(totalRows, Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT)));
   const visibleRange = $derived({ start: rangeStart, end: rangeEnd });
+  // Changes-column stats; the lookup is re-made per batch so the cells repaint.
+  const statsView = $derived(statsLookup($currentRepo, $statsTick));
 
   // Date cell clock: "3 h ago" must not go stale, so a 60 s tick repaints the
   // visible rows. It is not read by drawCanvas, so the canvas is not redrawn.
@@ -332,6 +336,17 @@
     return stashIndexMap.get(sha) ?? null;
   }
 
+  // Changes column: git runs only while the column is painted, and only for the
+  // rows in view (graph-columns spec). Hidden means nothing is requested.
+  $effect(() => {
+    const repo = $currentRepo;
+    if (repo === null || !visibleOrder.includes("changes")) {
+      cancelStatsRequest();
+      return;
+    }
+    requestVisibleStats(repo, visibleStatShas(nodes, visibleRange.start, visibleRange.end, wipVisible ? 1 : 0, stashIndexMap));
+  });
+
   // Marker-strip click: row 0 is the WIP row when it is shown (scroll to top);
   // any other row reuses the graph's scroll-to-sha path, which centers the row.
   function jumpToRow(row: number): void {
@@ -421,6 +436,7 @@
             {nowMs}
             {dimMerges}
             {highlightSet}
+            stat={changesStatFor(node, stashIndexMap, statsView)}
             matchSet={$matchSet}
             currentMatchSha={$matchShas[$currentMatchIdx]}
             isHovered={hoverRow === row}

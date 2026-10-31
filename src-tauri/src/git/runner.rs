@@ -5,6 +5,12 @@ use std::process::{ExitStatus, Stdio};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
+/// Env for git calls that may reach an editor (`rebase --continue`, the
+/// squash step). `GIT_EDITOR=true` accepts git's prepared message at once.
+/// WHY: the process is hidden, so an editor it started would block forever.
+/// See docs/specs/interactive-rebase.md.
+pub const NO_EDITOR_ENV: (&str, &str) = ("GIT_EDITOR", "true");
+
 #[derive(Debug, Clone)]
 pub struct GitRunner {
     git_exe: PathBuf,
@@ -49,12 +55,33 @@ impl GitRunner {
         cmd
     }
 
+    pub fn executable(&self) -> &Path {
+        &self.git_exe
+    }
+
     pub async fn run<I, S>(&self, cwd: &Path, args: I) -> AppResult<Vec<u8>>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<std::ffi::OsStr>,
     {
+        self.run_with_env(cwd, args, &[]).await
+    }
+
+    /// Like `run`, plus environment variables for this one call. A hidden
+    /// process must never reach an editor, so callers that may open one pass
+    /// `NO_EDITOR_ENV` (see docs/specs/interactive-rebase.md).
+    pub async fn run_with_env<I, S>(
+        &self,
+        cwd: &Path,
+        args: I,
+        envs: &[(&str, &str)],
+    ) -> AppResult<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
         let mut cmd = self.base_command(cwd, Stdio::null());
+        cmd.envs(envs.iter().copied());
         cmd.args(args);
         let output = cmd.output().await?;
 
@@ -315,6 +342,18 @@ mod tests {
             AppError::GitFailed { stderr, .. } => assert!(!stderr.is_empty()),
             other => panic!("expected GitFailed, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn run_with_env_passes_the_variable_to_git() {
+        // `git var GIT_EDITOR` prints the editor git would launch, so it shows
+        // whether the per-call env reached the git process.
+        let runner = GitRunner::discover().unwrap();
+        let out = runner
+            .run_with_env(Path::new("."), ["var", "GIT_EDITOR"], &[NO_EDITOR_ENV])
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out).trim(), "true");
     }
 
     #[tokio::test]

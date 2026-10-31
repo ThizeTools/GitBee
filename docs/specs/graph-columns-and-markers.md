@@ -2,21 +2,26 @@
 
 Neighbors: [graph-visual-2026-10.md](graph-visual-2026-10.md) (how rows and
 lanes are painted), [graph-loading.md](graph-loading.md) (what the graph
-holds and when it redraws).
+holds and when it redraws), [commit-details.md](commit-details.md) (the
+`commit_stats` contract the changes column reads).
 
 ## Purpose
 The graph showed only refs, lanes and subject. Users need the author, the
 age and the short sha on the same line, a way to hide columns they do not
 read, a way to see one branch's history without leaving the graph, and a
 way to see where HEAD, the selection, branches, stashes and search matches
-sit in a long history. This spec covers those four features. They share
+sit in a long history. A fifth, the changes column, shows each commit's
+files and line counts. This spec covers those five features. They share
 one rule: every cost is paid when data or layout changes, never per scroll.
+The changes column is the one place that pays a git cost, so it loads only
+the rows in view (see its own section).
 
 ## Public contract
 
 ### Columns (`src/lib/graph/columns.ts`)
-- `GraphCol = "refs" | "graph" | "msg" | "author" | "date" | "sha"`.
-- Default visible order: refs, graph, msg, author, date. `sha` is hidden.
+- `GraphCol = "refs" | "graph" | "msg" | "author" | "date" | "sha" | "changes"`.
+- Default visible order: refs, graph, msg, author, date. `sha` and `changes`
+  are hidden.
 - The last VISIBLE column takes the `1fr` track. With the defaults that is
   `date`, so the msg column keeps its stored width and date fills the rest.
 - Cells:
@@ -26,17 +31,64 @@ one rule: every cost is paid when data or layout changes, never per scroll.
     then `Mar 4` (current year) or `Mar 4, 2025`. Tooltip:
     `formatAbsoluteDate(timestamp)`, local date and time.
   - `sha`: first 7 chars, monospace.
+  - `changes`: see the Changes column section below.
   - The WIP row renders all three cells empty so the grid stays aligned.
 - Layout state (`src/lib/stores/layout.ts`, persisted):
   - `graphColOrder: GraphCol[]`: the full order, hidden columns included.
   - `hiddenCols: GraphCol[]`.
   - Widths: `graphRefsWidth`, `graphWidth`, `graphMsgWidth` (existing), plus
-    `graphAuthorWidth` 140, `graphDateWidth` 110, `graphShaWidth` 80.
-  - Minimum drag width: 50 for author, date, sha; 80 for the others.
-- Migration on load (`migrateColOrder`, `normalizeHidden`): a stored order
-  without author, date or sha gets them appended in default order. A missing
-  `hiddenCols` falls back to `["sha"]`. Unknown and duplicate ids are dropped,
+    `graphAuthorWidth` 140, `graphDateWidth` 110, `graphShaWidth` 80,
+    `graphChangesWidth` 120.
+  - Minimum drag width: 50 for author, date, sha; 70 for changes; 80 for the others.
+- Migration on load (`migrateColOrder`, `normalizeHidden`, `hideNewDefaults`):
+  a stored order without author, date, sha or changes gets them appended in
+  default order. A missing `hiddenCols` falls back to `["sha", "changes"]`.
+  A default-hidden column that the stored order lacks is added to
+  `hiddenCols`, so an upgrading user does not see changes appear with git work
+  they did not ask for. Unknown and duplicate ids are dropped,
   and `graph` and `msg` are removed from `hiddenCols` if stored there.
+
+### Changes column
+Files: `src/lib/components/graph/ChangesCell.svelte` (the cell),
+`src/lib/graph/changes.ts` (bar, labels, the request window),
+`src/lib/graph/commitStatsCore.ts` (the fetch queue, a class whose git call
+is injected), `src/lib/stores/commitStatsCache.ts` (the app-wide instance,
+wired to `ipc.commitStats`).
+
+- Cell: `+12 −3` as text, and under it a 3 px bar split green (additions) and
+  red (deletions). The bar's length is `log10(additions + deletions + 1) / 3`
+  of the cell width, capped at the full width, so 1 000 changed lines fill it.
+  The green share is `additions / total`. The tooltip is `N files` (`1 file`
+  for one).
+- Empty cell (`null`): the WIP row and stash rows. Nothing is requested for them.
+- Loading (`undefined`): a faint placeholder bar until the stat lands. A failed
+  request leaves it in place until the window changes.
+- Data: `ipc.commitStats(repo, shas)` (contract in `commit-details.md`). A
+  `commit_stats` call takes at most 200 shas, so larger requests are split.
+- Request window: the visible rows plus `CHANGES_OVERSCAN_ROWS` (20) on each
+  side. The request starts 120 ms (`STATS_DEBOUNCE_MS`) after the last change
+  to the visible row range. A later change replaces the pending request.
+- Only shas that are neither cached nor in flight are sent. Each sha is in
+  flight at most once per repo.
+- Cache: a `Map` per repo path, capped at 20 000 entries (`STATS_LRU_CAP`).
+  Visible shas are touched on each request, so eviction drops rows the user
+  scrolled away from. A stat never changes for a given sha, so there is no
+  invalidation; switching repos just selects another map.
+- The graph reads the cache through `statsLookup(repo, version)`. The version
+  is bumped when a batch lands, which repaints the cells. The graph does not
+  copy the cache on each batch.
+- Column hidden: the pending request is cancelled and nothing runs.
+- A failed batch is logged with `warn` and not thrown. Its shas leave the
+  in-flight set, so the next window change asks again.
+
+Why hidden by default: each stat is a `git log --numstat` over the commit's
+diff. That is real work for every visible row, and most users do not read the
+column, so it should not cost anything until they turn it on.
+
+Why it loads only the visible rows: the column is per commit, and a long
+history has tens of thousands of them. A request for all of them would cost
+the same whatever the user looks at. The window plus the debounce means a
+fling scroll sends one request, for where it stops.
 
 ### Header menu (`src/lib/components/graph/graphHeaderMenu.ts`)
 - Right-click on the header opens the existing context menu (`openMenu`).
@@ -107,9 +159,20 @@ one rule: every cost is paid when data or layout changes, never per scroll.
   the `void` list of the draw effect in `GraphCanvas.svelte`.
 - The date text refreshes once a minute (`nowMs` tick). The tick does not
   repaint the canvas.
+- Changes column: git runs only while the column is visible. The request
+  follows the visible row range (rows change, not pixels), so a scroll that
+  stays inside one row does not ask again.
+- A commit's stats are requested at most once per repo while cached, and
+  never for the WIP or stash rows.
+- Every `commit_stats` call carries at most 200 shas.
 
 ## Out of scope
 - Per-column filters and column-specific sorting.
+- Filling the changes column for rows scrolled past the overscan. A fast
+  scroll shows placeholders for a moment.
+- Keeping stats across app restarts, or capping how many repos stay in memory.
+  Each repo keeps its own map for the session.
+- Retrying a failed batch without a window change.
 - Dimming the canvas node or lane for merge commits (text only).
 - Highlight for the containing-branch ghost badges.
 - Markers for remote branch tips, tags or the WIP row's breakdown.
@@ -133,3 +196,12 @@ one rule: every cost is paid when data or layout changes, never per scroll.
 - **Marker hit-testing through per-marker DOM elements.** A search for a
   common word can mark thousands of rows; one canvas and one click handler
   stays cheap.
+- **Loading stats for every commit at graph load.** The cost grows with the
+  history length, and the user sees a few dozen rows at a time. The window
+  pays for what is shown.
+- **Computing line counts from the loaded nodes.** The graph's node data
+  carries no per-commit line counts; it would need the same git call.
+- **Invalidating the stats cache on refresh.** A commit's stats are fixed by
+  its sha, so a refresh has nothing to invalidate. Only eviction removes entries.
+- **Overscan of zero.** A short scroll would show placeholders on every
+  step. Twenty rows on each side covers a normal wheel flick.

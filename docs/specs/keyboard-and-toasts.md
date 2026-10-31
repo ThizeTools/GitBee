@@ -27,7 +27,7 @@ A change to any handler changes its row in the same PR.
 | Keys | Action |
 |---|---|
 | Ctrl+T | New tab page |
-| Ctrl+W | Close current tab |
+| Ctrl+W | Close current tab (not while the terminal has focus: it goes to the shell) |
 | Ctrl+Shift+T | Reopen last closed tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
 | Ctrl+1 … Ctrl+8 | Jump to tab N |
@@ -40,14 +40,15 @@ A change to any handler changes its row in the same PR.
 |---|---|
 | Ctrl+P | Command palette |
 | Ctrl+L | Logs panel |
-| Ctrl+` | Open a terminal in the current repo |
+| Ctrl+` | Show or hide the embedded terminal dock for the repo (first open starts a shell) |
+| Ctrl+Shift+` | Open the system terminal at the repo |
 | Ctrl+B | Toggle left sidebar |
 | Ctrl+Alt+B | Toggle right panel |
 | Ctrl+Alt+F | Focus the sidebar filter |
 | Esc | Close the topmost menu, palette, dialog or search; from a diff or file view, back to the graph |
 | Palette: ↑ / ↓, Enter | Move through commands, run the highlighted one |
 | Ctrl+Enter | Submit the edit-message, set-upstream and new-worktree dialogs |
-| Terminal: Enter, ↑ / ↓ | Run command; previous / next command from history |
+| Terminal: Ctrl+Shift+C / Ctrl+Shift+V | Copy the selection / paste from the clipboard (keys go to the terminal; plain Ctrl+C still sends SIGINT) |
 | GitHub login: Enter | Submit the access token |
 | Theme picker: Enter / Space | Apply theme (double-click a theme to edit it) |
 | Hover a notice | Pause its auto-dismiss timer |
@@ -145,6 +146,9 @@ A window 800 px tall moves 17 rows per page.
 - Ctrl/Meta combos for tabs, panels and zoom still fire everywhere, as before.
   They carry no text meaning, so they do not clash with editing. This is a
   deliberate exception to "shortcuts never fire in text inputs".
+- While the embedded terminal has focus, its xterm helper is a `<textarea>`, so
+  the graph keys and undo stay off (see embedded-terminal.md). Escape inside the
+  terminal goes to the shell and does not switch the center view.
 - Graph keys select only rows that are visible after the hide/solo filter.
   A target that has no row shows a toast, and nothing is selected silently.
 - `Home`, `End`, `PageUp` and `PageDown` never land on the WIP row. Only `Up`

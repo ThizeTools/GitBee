@@ -3,10 +3,11 @@
 // See docs/specs/graph-columns-and-markers.md for why the stored order keeps
 // hidden columns and why graph and msg can never be hidden.
 
-export type GraphCol = "refs" | "graph" | "msg" | "author" | "date" | "sha";
+export type GraphCol = "refs" | "graph" | "msg" | "author" | "date" | "sha" | "changes";
 
-export const DEFAULT_COL_ORDER: readonly GraphCol[] = ["refs", "graph", "msg", "author", "date", "sha"];
-export const DEFAULT_HIDDEN_COLS: readonly GraphCol[] = ["sha"];
+export const DEFAULT_COL_ORDER: readonly GraphCol[] = ["refs", "graph", "msg", "author", "date", "sha", "changes"];
+// changes is hidden because it costs git work (commit_stats) for every visible row.
+export const DEFAULT_HIDDEN_COLS: readonly GraphCol[] = ["sha", "changes"];
 
 // Lanes and subjects are the point of the graph; hiding them would leave
 // nothing to read, so they are always visible.
@@ -15,12 +16,12 @@ const LOCKED_COLS: readonly GraphCol[] = ["graph", "msg"];
 // Minimum width a user can drag a column to. Graph keeps its own larger floor
 // so lanes never clip; the new text columns can shrink further.
 export const COL_MIN_WIDTH: Record<GraphCol, number> = {
-  refs: 80, graph: 80, msg: 80, author: 50, date: 50, sha: 50,
+  refs: 80, graph: 80, msg: 80, author: 50, date: 50, sha: 50, changes: 70,
 };
 
 export type ColWidthKey =
   | "graphRefsWidth" | "graphWidth" | "graphMsgWidth"
-  | "graphAuthorWidth" | "graphDateWidth" | "graphShaWidth";
+  | "graphAuthorWidth" | "graphDateWidth" | "graphShaWidth" | "graphChangesWidth";
 
 // Width key in LayoutState for each column; keeps the header/row code free of
 // per-column switch statements.
@@ -31,6 +32,7 @@ export const COL_WIDTH_KEY: Record<GraphCol, ColWidthKey> = {
   author: "graphAuthorWidth",
   date: "graphDateWidth",
   sha: "graphShaWidth",
+  changes: "graphChangesWidth",
 };
 
 export function isGraphCol(value: unknown): value is GraphCol {
@@ -43,7 +45,8 @@ export function isLockedCol(col: GraphCol): boolean {
 
 // A stored order written before a column existed lacks it. Missing columns are
 // appended in default order, so an upgraded user sees author/date after msg
-// and sha at the end (hidden by default). Unknown and duplicate ids are dropped.
+// and sha and changes at the end (sha and changes hidden by default). Unknown
+// and duplicate ids are dropped.
 export function migrateColOrder(stored: unknown): GraphCol[] {
   if (!Array.isArray(stored)) return [...DEFAULT_COL_ORDER];
   const out: GraphCol[] = [];
@@ -66,6 +69,19 @@ export function normalizeHidden(stored: unknown): GraphCol[] {
     if (isGraphCol(value) && !LOCKED_COLS.includes(value) && !out.includes(value)) {
       out.push(value);
     }
+  }
+  return out;
+}
+
+// A default-hidden column that the stored order lacks is new to this install.
+// The stored hidden list was written before it existed, so it does not mention
+// the column, and without this step the new column would show up for upgraders.
+// Callers pass the raw stored order, before migrateColOrder fills it in.
+export function hideNewDefaults(hidden: readonly GraphCol[], storedOrder: unknown): GraphCol[] {
+  if (!Array.isArray(storedOrder)) return [...hidden];
+  const out: GraphCol[] = [...hidden];
+  for (const col of DEFAULT_HIDDEN_COLS) {
+    if (!storedOrder.includes(col) && !out.includes(col)) out.push(col);
   }
   return out;
 }

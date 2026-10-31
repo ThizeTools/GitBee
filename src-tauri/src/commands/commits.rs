@@ -2,7 +2,7 @@ use crate::error::{AppError, AppResult};
 use crate::git::checked_ref;
 use crate::git::numstat::{file_stats, parse_commit_stats, CommitFileStat, CommitStat};
 use crate::state::AppState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 fn cwd(path: &str) -> PathBuf { PathBuf::from(path) }
@@ -228,6 +228,109 @@ fn check_stats_cap(count: usize) -> AppResult<()> {
     )))
 }
 
+/// The only config keys the commit box may read. WHY an allow-list: the
+/// frontend asks by key name, and an open read would expose any setting,
+/// including credential helpers and URL rewrites. Add a key here only when the
+/// commit box uses it (docs/specs/commit-box.md "Config reads").
+const READABLE_CONFIG_KEYS: [&str; 6] = [
+    "commit.gpgsign",
+    "commit.template",
+    "user.name",
+    "user.email",
+    "gpg.format",
+    "user.signingkey",
+];
+
+/// One allow-listed config value in this repo, or None when it is unset.
+/// Values come back as git prints them; the frontend reads booleans.
+#[tauri::command]
+pub async fn git_config_get(
+    path: String,
+    key: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<String>> {
+    check_readable_config_key(&key)?;
+    read_config(&state, &cwd(&path), &key).await
+}
+
+/// Refuses a key outside `READABLE_CONFIG_KEYS`. Case is ignored because git
+/// config keys are case-insensitive, so `COMMIT.GPGSIGN` is the same key.
+fn check_readable_config_key(key: &str) -> AppResult<()> {
+    let lower = key.to_ascii_lowercase();
+    if READABLE_CONFIG_KEYS.contains(&lower.as_str()) {
+        return Ok(());
+    }
+    Err(AppError::Other(format!(
+        "git config key {key:?} is not readable from the commit box; allowed keys: {}",
+        READABLE_CONFIG_KEYS.join(", ")
+    )))
+}
+
+/// `git config --get`. Exit status 1 means "not set" and is not an error, so
+/// the caller can tell an unset key from a failed read.
+async fn read_config(state: &AppState, repo: &Path, key: &str) -> AppResult<Option<String>> {
+    match state.git.run_text_lossy(repo, ["config", "--get", key]).await {
+        Ok(text) => Ok(Some(text.trim().to_string())),
+        Err(AppError::GitFailed { status: Some(1), .. }) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Text of the file named by `commit.template`, or None when the key is unset
+/// or the file cannot be read. WHY best effort: the box pre-fills from the
+/// template, and a missing template must not block typing. `git commit` reads
+/// the same file itself, so a broken path still surfaces there.
+#[tauri::command]
+pub async fn commit_template(
+    path: String,
+    state: State<'_, AppState>,
+) -> AppResult<Option<String>> {
+    let repo = cwd(&path);
+    let Some(raw) = read_config(&state, &repo, "commit.template").await? else {
+        return Ok(None);
+    };
+    let root = repo_root(&state, &repo).await?;
+    let file = resolve_template_path(&raw, &root, dirs::home_dir());
+    match std::fs::read(&file) {
+        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+        Err(e) => {
+            tracing::warn!(path = %file.display(), error = %e, "commit template unreadable");
+            Ok(None)
+        }
+    }
+}
+
+async fn repo_root(state: &AppState, repo: &Path) -> AppResult<PathBuf> {
+    let root = state.git.run_text_lossy(repo, ["rev-parse", "--show-toplevel"]).await?;
+    Ok(PathBuf::from(root.trim()))
+}
+
+/// Where `commit.template` points. A leading `~` expands to the home directory,
+/// a relative path is taken from the repo root (as git documents for
+/// commit.template), and an absolute path is used as is. The home directory is
+/// a parameter so the tests do not depend on the machine they run on.
+fn resolve_template_path(raw: &str, repo_root: &Path, home: Option<PathBuf>) -> PathBuf {
+    if let Some(path) = home_relative(raw, home) {
+        return path;
+    }
+    let path = Path::new(raw);
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    repo_root.join(path)
+}
+
+/// `~` or `~/rest` (or `~\rest` on Windows) under `home`. None when `raw` is
+/// not a home path or no home directory is known.
+fn home_relative(raw: &str, home: Option<PathBuf>) -> Option<PathBuf> {
+    let home = home?;
+    if raw == "~" {
+        return Some(home);
+    }
+    let rest = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\"))?;
+    Some(home.join(rest))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +394,65 @@ mod tests {
     #[test]
     fn commit_stats_args_refuse_an_option_like_sha() {
         assert!(commit_stats_args(&["--all".to_string()]).is_err());
+    }
+
+    #[test]
+    fn every_commit_box_key_is_readable() {
+        for key in READABLE_CONFIG_KEYS {
+            assert!(check_readable_config_key(key).is_ok(), "{key} should be readable");
+        }
+    }
+
+    #[test]
+    fn config_key_check_ignores_case() {
+        assert!(check_readable_config_key("COMMIT.GPGSIGN").is_ok());
+    }
+
+    #[test]
+    fn config_key_check_refuses_keys_outside_the_list() {
+        for key in ["core.sshCommand", "url.x.insteadOf", "--get", "credential.helper"] {
+            assert!(check_readable_config_key(key).is_err(), "{key} must be refused");
+        }
+    }
+
+    #[test]
+    fn refused_config_key_message_names_the_key_and_the_allowed_list() {
+        let msg = check_readable_config_key("core.editor").unwrap_err().to_string();
+        assert!(msg.contains("core.editor"));
+        assert!(msg.contains("commit.template"));
+    }
+
+    #[test]
+    fn template_path_is_relative_to_the_repo_root() {
+        let root = Path::new("/repo");
+        let got = resolve_template_path("tpl/msg.txt", root, None);
+        assert_eq!(got, root.join("tpl/msg.txt"));
+    }
+
+    #[test]
+    fn template_path_expands_a_leading_tilde_to_home() {
+        let home = PathBuf::from("/home/u");
+        let got = resolve_template_path("~/msg.txt", Path::new("/repo"), Some(home.clone()));
+        assert_eq!(got, home.join("msg.txt"));
+    }
+
+    #[test]
+    fn template_path_tilde_alone_is_home() {
+        let home = PathBuf::from("/home/u");
+        let got = resolve_template_path("~", Path::new("/repo"), Some(home.clone()));
+        assert_eq!(got, home);
+    }
+
+    #[test]
+    fn template_path_keeps_an_absolute_path() {
+        let abs = std::env::temp_dir().join("msg.txt");
+        let got = resolve_template_path(&abs.to_string_lossy(), Path::new("/repo"), None);
+        assert_eq!(got, abs);
+    }
+
+    #[test]
+    fn template_tilde_without_a_home_dir_falls_back_to_the_repo_root() {
+        let got = resolve_template_path("~/msg.txt", Path::new("/repo"), None);
+        assert_eq!(got, Path::new("/repo").join("~/msg.txt"));
     }
 }

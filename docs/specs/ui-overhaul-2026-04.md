@@ -57,8 +57,8 @@ everywhere, persistent layout, contextual menus, and a status bar.
 ## Out of scope
 - Real PTY (Windows ConPTY): the integrated terminal launches a
   shell with piped stdin/stdout. Good enough for non-interactive
-  commands and basic git work; no curses apps. A real PTY can come
-  later behind the same component.
+  commands and basic git work; no curses apps. (Superseded 2026-10:
+  the terminal is now a real PTY, see embedded-terminal.md.)
 - File History / Blame as full features: menu wiring + IPC stub
   only; viewers come later.
 - Redo across sessions: the redo stack is in-memory per session.

@@ -27,6 +27,11 @@ pub enum AppError {
     #[error("github: {0}")]
     GitHub(String),
 
+    /// AI commit message errors. The text is shown to the user as is, so it
+    /// carries no prefix (docs/specs/ai-commit-message.md "Errors").
+    #[error("{0}")]
+    Ai(String),
+
     #[error("other: {0}")]
     Other(String),
 }

@@ -84,6 +84,13 @@ export function resetUndo(
   };
 }
 
+/** Undo of an interactive rebase: a hard reset back to the HEAD it started
+ * from. Redo hard-resets to the rebased HEAD. The rebase runs only on a clean
+ * worktree, so no backup is needed. Spec: docs/specs/interactive-rebase.md. */
+export function interactiveRebaseUndo(repo: string, before: string, after: string): UndoEntry {
+  return { ...resetUndo(repo, "hard", before, after), label: "Interactive rebase" };
+}
+
 /** Resets the worktree to `target` after keeping its changes in a backup
  * commit. If the reset fails, the changes are restored and the error is
  * rethrown. Returns the backup sha, or null when there were no changes.
@@ -121,17 +128,20 @@ export function hardResetUndo(
 /** Undo soft-resets to `before`, which keeps the new commit's tree staged.
  * Redo commits again with the same message (`amend` for an amend). Uses the
  * captured HEAD, not HEAD@{1}, so stacked undos still find the right commit. */
+/** Redo passes `sign` on, so a signed commit is signed again. Without it a
+ * redo would silently drop the signature (docs/specs/commit-box.md "Signing"). */
 export function commitUndo(
   repo: string,
   before: string,
   subject: string,
   message: string,
   amend: boolean,
+  sign = false,
 ): UndoEntry {
   return {
     label: `Commit ${subject}`,
     undo: async () => { await ipc.reset(repo, before, "soft"); },
-    redo: async () => { await ipc.commitCreate(repo, message, amend, false); },
+    redo: async () => { await ipc.commitCreate(repo, message, amend, sign); },
   };
 }
 

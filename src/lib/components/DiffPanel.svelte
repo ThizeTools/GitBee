@@ -1,6 +1,6 @@
 <script lang="ts">
   import { currentRepo, graph, withBusy, worktreeTick } from "$lib/stores/repo";
-  import { showGraph, centerMode } from "$lib/stores/center";
+  import { showGraph, centerMode, showFileHistory, showFileBlame } from "$lib/stores/center";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
   import type { FileDiff } from "$lib/ipc";
@@ -135,6 +135,9 @@
       <span class="stat del">−{deletions}</span>
     </div>
     <div class="right">
+      <button class="btn" title="Commit history of this file" onclick={() => showFileHistory(file)}>History</button>
+      <!-- Commit mode blames the file as that commit has it; otherwise the working tree. -->
+      <button class="btn" title="Blame this file" onclick={() => showFileBlame(file, commitSha)}>Blame</button>
       {#if isCommitMode}
         <span class="sha-pill" title="commit">@{commitSha!.slice(0, 7)}</span>
       {:else if staged}

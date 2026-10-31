@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod branches;
 pub mod commits;
 pub mod diff;
@@ -7,6 +8,8 @@ pub mod github;
 pub mod graph;
 pub mod merge;
 pub mod patch;
+pub mod rebase_interactive;
+pub mod rebase_todo;
 pub mod remotes;
 pub mod repo;
 pub mod repo_extra;

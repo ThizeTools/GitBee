@@ -1,29 +1,24 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import {
-    currentRepo, errorMessage, busyVisible, refreshRecent, restoreTabs,
+    currentRepo, errorMessage, refreshRecent, restoreTabs,
     tabs, activeTabId, activateTab, closeTab, reopenLastClosedTab,
   } from "$lib/stores/repo";
   import { showingNewTab } from "$lib/stores/newtab";
   import { showingInfo } from "$lib/stores/info";
-  import InfoPage from "$lib/components/InfoPage.svelte";
   import { paletteOpen, themePickerOpen } from "$lib/stores/ui";
   import { showGraph, centerMode, showCommitFile } from "$lib/stores/center";
   import { showChanges } from "$lib/stores/rightpanel";
   import { layout, setSize, zoomIn, zoomOut, setZoom } from "$lib/stores/layout";
   import { logsPanelOpen, logAppend } from "$lib/stores/logs";
-  import Sidebar from "$lib/components/Sidebar.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import TopBar from "$lib/components/TopBar.svelte";
-  import CenterPanel from "$lib/components/CenterPanel.svelte";
-  import RightPanel from "$lib/components/RightPanel.svelte";
-  import NewTabPage from "$lib/components/NewTabPage.svelte";
+  import MainArea from "$lib/components/MainArea.svelte";
   import CommandPalette from "$lib/components/CommandPalette.svelte";
   import ThemePicker from "$lib/components/ThemePicker.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import LogsPanel from "$lib/components/LogsPanel.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
-  import ResizeHandle from "$lib/components/ResizeHandle.svelte";
   import Toaster from "$lib/components/Toaster.svelte";
   import AppDialog from "$lib/components/AppDialog.svelte";
   import EditCommitMessageModal from "$lib/components/EditCommitMessageModal.svelte";
@@ -43,6 +38,7 @@
   import { runGraphKeyAction } from "$lib/stores/graphKeyActions";
   import { graphKeyAction, undoKeyAction, isEditableTarget } from "$lib/stores/graphKeys";
   import { undoLast, redoLast } from "$lib/stores/history";
+  import { isBacktick, isTerminalTarget } from "$lib/terminal/keys";
 
   // Graph jumps (h, Shift+H, Home/End, PageUp/PageDown) and undo/redo.
   // Returns true when the key was consumed. Graph keys share the arrow-key
@@ -248,7 +244,9 @@
       if (ctrl && e.key === "0") {
         e.preventDefault(); setZoom(1.2); return;
       }
-      if (e.key === "Escape" && $centerMode.kind !== "graph") {
+      // Escape typed into the terminal belongs to the shell (vim, less), not the center view.
+      const inTerminal = isTerminalTarget(e.target as HTMLElement | null);
+      if (e.key === "Escape" && $centerMode.kind !== "graph" && !inTerminal) {
         e.preventDefault();
         showGraph();
       } else if (ctrl && e.key.toLowerCase() === "p") {
@@ -265,12 +263,18 @@
           e.preventDefault();
           import("$lib/stores/graphSearch").then(({ openSearch }) => openSearch());
         }
-      } else if (ctrl && e.key === "`") {
+      } else if (ctrl && isBacktick(e)) {
+        // Ctrl+` shows or hides the embedded terminal; Ctrl+Shift+` opens the
+        // system terminal at the repo, which is where Ctrl+` used to go.
         e.preventDefault();
-        if ($currentRepo) {
+        if (!e.shiftKey) {
+          setSize("terminalOpen", !$layout.terminalOpen);
+        } else if ($currentRepo) {
           import("$lib/ipc").then(({ ipc }) => ipc.openTerminal($currentRepo!).catch(() => {}));
         }
-      } else if (ctrl && e.key.toLowerCase() === "w") {
+      } else if (ctrl && e.key.toLowerCase() === "w" && !inTerminal) {
+        // Not while the terminal has focus: Ctrl+W is delete-word in the shell,
+        // and closing the tab would end that repo's shells.
         // #1 round 7: if the "+" tab page is showing, dismiss it and
         // fall back to the active real tab. When no real tabs exist,
         // there's nothing to fall back to — keep New Tab visible (and
@@ -339,45 +343,7 @@
     </div>
   {/if}
 
-  <main class="row">
-    {#if $showingInfo}
-      <InfoPage />
-    {:else if $showingNewTab || !$currentRepo}
-      <NewTabPage />
-    {:else}
-      {#if $layout.sidebarCollapsed}
-        <button class="rail" title="Expand sidebar"
-          onclick={() => setSize("sidebarCollapsed", false)}>›</button>
-      {:else}
-        <aside class="left-pane" style:width="{$layout.sidebarWidth}px">
-          <Sidebar />
-          {#if $busyVisible}
-            <!-- Lock the sidebar during git operations so the user can't
-                 stack actions while one is running. The overlay catches
-                 pointer events and shows a centered spinner.
-                 Shown only after a 250 ms delay (busyVisible), so background
-                 refreshes and fast operations never cover the sidebar. -->
-            <div class="busy-veil" aria-hidden="true">
-              <div class="spinner"></div>
-              <div class="lbl">Working…</div>
-            </div>
-          {/if}
-        </aside>
-        <ResizeHandle direction="v" value={$layout.sidebarWidth} min={180} max={500}
-          onChange={(v) => setSize("sidebarWidth", v)} />
-      {/if}
-      <div class="center-wrap">
-        <CenterPanel />
-      </div>
-      {#if !$layout.rightPanelCollapsed}
-        <ResizeHandle direction="v" invert value={$layout.rightPanelWidth} min={280} max={720}
-          onChange={(v) => setSize("rightPanelWidth", v)} />
-        <aside class="right-pane" style:width="{$layout.rightPanelWidth}px">
-          <RightPanel />
-        </aside>
-      {/if}
-    {/if}
-  </main>
+  <MainArea />
 
   <StatusBar />
 
@@ -411,70 +377,6 @@
     height: calc(100vh / var(--ui-scale, 1));
     width: calc(100vw / var(--ui-scale, 1));
     overflow: hidden;
-  }
-  .row {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    min-height: 0;
-  }
-  .left-pane {
-    flex-shrink: 0;
-    overflow: hidden;
-    display: flex;
-    position: relative; /* anchor for .busy-veil */
-  }
-  .busy-veil {
-    position: absolute; inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(1px);
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 12px;
-    z-index: 50;
-    color: var(--fg);
-    cursor: progress;
-  }
-  .busy-veil .lbl {
-    font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.6px;
-    color: var(--fg-muted);
-  }
-  .spinner {
-    width: 28px; height: 28px;
-    border: 3px solid rgba(255, 255, 255, 0.12);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  .rail {
-    width: 22px;
-    flex-shrink: 0;
-    background: var(--bg-elev);
-    border: 0;
-    border-right: 1px solid var(--border-strong);
-    color: var(--fg-muted);
-    cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
-    padding: 0;
-  }
-  .rail:hover { background: var(--border); color: var(--fg); }
-  .center-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    overflow: hidden;
-  }
-  .right-pane {
-    flex-shrink: 0;
-    overflow: hidden;
-    display: flex;
   }
   .error-bar {
     background: color-mix(in srgb, var(--del) 22%, transparent);

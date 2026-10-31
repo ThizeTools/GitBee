@@ -34,7 +34,7 @@ loads with the list, as before.
   - One `git log --no-walk=unsorted --format=%x01%H --numstat -z -M --diff-merges=first-parent <shas>`
     process. An empty list runs nothing. More than 200 shas is an error that
     names the count.
-  - No UI uses it yet. It feeds the graph's changes column later.
+  - Read by the graph's changes column (see graph-columns-and-markers.md).
 - `commit_show(path, sha) -> string`
   - The commit message only: `git show -s --format=%B`. Subject, blank line,
     body. Before, it returned `--format=fuller` headers plus the full patch.
@@ -111,7 +111,6 @@ loads with the list, as before.
 - Glob characters in file names. `git show -- <file>` reads the name as a pathspec,
   so `a[1].txt` can come back empty. A `:(literal)` prefix fixes it, but it sits
   in the shared `push_file_path`, which the staging diffs also use. Follow-up.
-- A UI for `commit_stats` (the graph changes column).
 - Virtualizing the file list. A huge commit still renders every row. Only the
   diffs are lazy now.
 

@@ -40,15 +40,15 @@ impl LegacyBlobStore for CacheStore {
 }
 
 pub fn save_token(cache: &CacheStore, token: &str) -> AppResult<()> {
-    save_with(&KeyringSecretStore, cache, token)
+    save_with(&KeyringSecretStore::github(), cache, token)
 }
 
 pub fn load_token(cache: &CacheStore) -> AppResult<Option<String>> {
-    load_with(&KeyringSecretStore, cache)
+    load_with(&KeyringSecretStore::github(), cache)
 }
 
 pub fn clear_token(cache: &CacheStore) -> AppResult<()> {
-    clear_with(&KeyringSecretStore, cache)
+    clear_with(&KeyringSecretStore::github(), cache)
 }
 
 /// Writes to the OS store. If that fails, the token goes to the SQLite row so

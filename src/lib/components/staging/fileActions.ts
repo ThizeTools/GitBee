@@ -2,7 +2,8 @@ import { get } from "svelte/store";
 import { ipc } from "$lib/ipc";
 import { currentRepo, withBusy } from "$lib/stores/repo";
 import { logAppend } from "$lib/stores/logs";
-import { alertDialog, confirmDialog, promptDialog } from "$lib/stores/dialog";
+import { confirmDialog, promptDialog } from "$lib/stores/dialog";
+import { showFileBlame, showFileHistory } from "$lib/stores/center";
 import { pushUndo } from "$lib/stores/history";
 import { notifyError } from "$lib/stores/notifications";
 import { discardAllUndo, discardFileUndo } from "$lib/stores/undoEntries";
@@ -101,32 +102,14 @@ export async function stashOneFile(f: string): Promise<void> {
   await withBusy(() => ipc.stashFile(repo, f, typed || undefined));
 }
 
-/** Show the last 50 commits touching a file in an alert dialog. */
-export async function fileHistory(f: string): Promise<void> {
-  const repo = get(currentRepo);
-  if (!repo) return;
-  try {
-    const rows = await ipc.fileHistory(repo, f, 50);
-    logAppend("info", `History for ${f}: ${rows.length} commits`);
-    await alertDialog({
-      title: `History: ${f}`,
-      message: rows.map((r) => `${r.sha.slice(0,7)} ${r.subject}`).join("\n") || "(no history)",
-    });
-  } catch (e) { logAppend("error", `history: ${e}`); }
+/** Opens the commit history of a file in the center pane. */
+export function fileHistory(f: string): void {
+  showFileHistory(f);
 }
 
-/** Show the first 40 blame lines of a file in an alert dialog. */
-export async function fileBlame(f: string): Promise<void> {
-  const repo = get(currentRepo);
-  if (!repo) return;
-  try {
-    const rows = await ipc.fileBlame(repo, f);
-    logAppend("info", `Blame ${f}: ${rows.length} lines`);
-    await alertDialog({
-      title: `Blame: ${f}`,
-      message: rows.slice(0, 40).map((r) => `${r.sha.slice(0,7)} ${r.author}: ${r.line}`).join("\n"),
-    });
-  } catch (e) { logAppend("error", `blame: ${e}`); }
+/** Opens blame for a file in the center pane, for the working tree. */
+export function fileBlame(f: string): void {
+  showFileBlame(f);
 }
 
 /** Reveal a file in the OS file manager. */

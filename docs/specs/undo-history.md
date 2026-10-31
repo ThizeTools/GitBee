@@ -17,7 +17,7 @@ entry does; the entry is recorded only after the action succeeded.
 
 | Action (where it starts) | Undo | Redo |
 |---|---|---|
-| Commit (`CommitBox`) | soft reset to the HEAD the commit sat on | commit again, same message (amend stays amend) |
+| Commit (`CommitBox`) | soft reset to the HEAD the commit sat on | commit again, same message (amend stays amend, signed stays signed; see commit-box.md "Undo") |
 | Checkout of a branch or commit (`graphscroll.ts`: menus, double-click, detail panel, top bar) | checkout the HEAD it replaced (branch name, or sha when detached) | checkout the target again |
 | Create branch (branch menu, palette, top bar "New branch") | `git branch -d` the branch | create it again at the same sha |
 | Delete local branch (branch menu) | create it at the tip sha it had | `git branch -d` again |
@@ -29,10 +29,13 @@ entry does; the entry is recorded only after the action succeeded.
 | Discard a hunk or picked lines (diff viewer, `hunk-staging.md`) | write the file's backed-up bytes back | back it up again, apply the same discard patch |
 | Discard all changes (staging panel) | apply the discard-all backup commit | discard all again, keep the new backup |
 | Drop stash (graph row, sidebar, stash panel) | put the stash commit back on the stash list | find its index by sha, drop it |
+| Interactive rebase (commit menu, `interactive-rebase.md`; only when it finished) | hard reset to the HEAD it started from | hard reset to the rebased HEAD |
 
 Not recorded: push, fetch, pull and fast-forward (remote side effects), merge,
-rebase, cherry-pick, revert, stash create, pop and apply, rename, patch
-apply, worktrees, and changes made outside GitBee.
+rebase (plain, from the branch menu), cherry-pick, revert, stash create, pop
+and apply, rename, patch apply, worktrees, and changes made outside GitBee.
+An interactive rebase that stops on a conflict is not recorded either: the
+conflict flow owns it.
 
 ## Public contract
 

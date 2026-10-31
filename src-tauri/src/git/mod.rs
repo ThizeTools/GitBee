@@ -1,4 +1,6 @@
+pub mod blame;
 pub mod diff;
+pub mod file_log;
 pub mod graph;
 pub mod log_parser;
 pub mod numstat;

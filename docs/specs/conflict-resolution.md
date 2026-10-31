@@ -25,7 +25,9 @@ the user finish the operation inside the app:
 | `file_write` | `path, file, content` | Writes UTF-8 to the worktree file. Used by the editor, then followed by `mark_resolved`. | Absolute path, `..`, missing parent, or a real location (symlinks resolved) outside the repo. |
 | `mark_resolved` | `path, file` | `git add -- <file>` (existing command). The frontend refuses it while markers remain. | Git failure. |
 
-`op_state`, `op_abort` and `op_continue` are unchanged.
+`op_state` and `op_abort` are unchanged. `op_continue` passes `GIT_EDITOR=true`
+when it continues a rebase, so a squash step cannot open an editor in the hidden
+process. See `interactive-rebase.md`.
 
 ### Frontend modules
 

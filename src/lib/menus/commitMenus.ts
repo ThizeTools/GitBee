@@ -3,6 +3,10 @@
 import type { MenuItem } from "$lib/stores/contextmenu";
 import { ipc } from "$lib/ipc";
 import { notifySuccess, notifyError } from "$lib/stores/notifications";
+import { graph } from "$lib/stores/repo";
+import { get } from "svelte/store";
+import { canStartRebaseFrom } from "$lib/rebase/range";
+import { openInteractiveRebase } from "$lib/rebase/open";
 import {
   repo,
   runAction,
@@ -37,6 +41,18 @@ async function createPatch(sha: string): Promise<void> {
   else notifyError("Create patch failed", res.error);
 }
 
+// Offered only for an ancestor of HEAD. The editor's list is base..HEAD, so
+// there must be commits above this one, and HEAD itself has none.
+function interactiveRebaseItems(sha: string): MenuItem[] {
+  const g = get(graph);
+  if (!g || !canStartRebaseFrom(sha, g.head_sha, g.nodes)) return [];
+  return [{
+    label: "Interactive rebase from here…",
+    icon: "⇅",
+    onClick: () => openInteractiveRebase(sha),
+  }];
+}
+
 export function commitMenu(sha: string): MenuItem[] {
   return [
     checkoutCommitItem(sha, "Checkout this commit"),
@@ -50,6 +66,7 @@ export function commitMenu(sha: string): MenuItem[] {
     createBranchHereItem(sha),
     cherryPickCommitItem(sha),
     resetToCommitItem(sha),
+    ...interactiveRebaseItems(sha),
     revertCommitItem(sha),
     { separator: true, label: "" },
     copyCommitShaItem(sha),

@@ -6,15 +6,23 @@
   import { notifySuccess } from "$lib/stores/notifications";
   import { pushUndo } from "$lib/stores/history";
   import { commitUndo } from "$lib/stores/undoEntries";
+  import { confirmDialog } from "$lib/stores/dialog";
   import { tick } from "svelte";
   import {
     SUMMARY_LIMIT, amendFields, composeMessage, isStaged,
     summaryColor, summaryPercent,
   } from "./stagingHelpers";
+  import { gitBool, readSignChoice, resolveSign, writeSignChoice } from "$lib/commitMsg/signing";
+  import { claimFirstTemplateRead, splitTemplate } from "$lib/commitMsg/template";
+  import { addCoAuthor, parseCoAuthors, removeCoAuthor, type CoAuthor } from "$lib/commitMsg/trailers";
+  import { distinctAuthors, type Identity } from "$lib/commitMsg/coAuthors";
+  import SignToggle from "./commit/SignToggle.svelte";
+  import CoAuthorPicker from "./commit/CoAuthorPicker.svelte";
+  import AiGenerateButton from "./commit/AiGenerateButton.svelte";
 
-  // The commit message form: summary, description, amend and the commit
-  // action. Self-contained so future commit features (signing, templates,
-  // co-authors, AI message) land here.
+  // The commit message form: summary, description, amend, sign, co-authors,
+  // AI draft and the commit action. Self-contained so commit features land
+  // here; the pure logic sits in $lib/commitMsg. Spec: docs/specs/commit-box.md.
   interface Props {
     /** Called after a successful commit so the parent can clear list selections. */
     onCommitted?: () => void;
@@ -25,6 +33,13 @@
   let description = $state("");
   let amend = $state(false);
 
+  // Sign: the repo's commit.gpgsign is the default, and a user toggle per repo
+  // wins over it (signing.ts). Both are loaded when the repo changes.
+  let signDefault = $state(false);
+  let signChoice = $state<boolean | null>(null);
+  const signed = $derived(resolveSign(signDefault, signChoice));
+  let identity = $state<Identity>({ name: "", email: "" });
+
   // For #16 — preserve user typing when toggling amend.
   let savedSummary = "";
   let savedDescription = "";
@@ -34,6 +49,34 @@
   let descriptionEl: HTMLTextAreaElement | null = $state(null);
 
   const stagedCount = $derived($status.filter(isStaged).length);
+  const authors = $derived(distinctAuthors($graph?.nodes ?? [], identity));
+  const coAuthors = $derived(parseCoAuthors(description));
+
+  $effect(() => {
+    const repo = $currentRepo;
+    if (!repo) return;
+    signChoice = readSignChoice(repo);
+    void loadRepoConfig(repo);
+  });
+
+  // Reads the three config values the box uses. A reply that arrives after the
+  // user switched repos is dropped, so one repo's settings never leak into another.
+  async function loadRepoConfig(repo: string): Promise<void> {
+    const values = await Promise.all([
+      ipc.gitConfigGet(repo, "commit.gpgsign"),
+      ipc.gitConfigGet(repo, "user.name"),
+      ipc.gitConfigGet(repo, "user.email"),
+    ]).catch((): [null, null, null] => [null, null, null]);
+    if ($currentRepo !== repo) return;
+    const [gpgsign, name, email] = values;
+    signDefault = gitBool(gpgsign) ?? false;
+    identity = { name: name ?? "", email: email ?? "" };
+  }
+
+  function clearFields(): void {
+    summary = ""; description = ""; amend = false;
+    savedSummary = ""; savedDescription = "";
+  }
 
   async function commit() {
     const repo = $currentRepo;
@@ -41,23 +84,36 @@
     if (stagedCount === 0 && !amend) return;
     const msg = composeMessage(summary, description);
     const before = $graph?.head_sha ?? null;
-    // Tauri serializes Rust `()` returns as JSON null, so the previous
-    // `ok !== null` gate falsely treated success as failure and the input
-    // was never cleared. Use a local success flag instead.
+    // Captured before the await: the toggle may change during the commit, but
+    // the undo redo must re-sign exactly what this commit did.
+    const shouldSign = signed;
+    if (await createCommit(repo, msg, shouldSign)) {
+      afterCommit(repo, msg, before, shouldSign);
+    }
+  }
+
+  // Tauri serializes Rust `()` returns as JSON null, so the previous
+  // `ok !== null` gate falsely treated success as failure and the input
+  // was never cleared. Use a local success flag instead. A failed signing
+  // attempt surfaces git's own stderr through withBusy's error banner, which
+  // is where gpg and ssh explain a missing key.
+  async function createCommit(repo: string, msg: string, sign: boolean): Promise<boolean> {
     let ok = false;
     await withBusy(async () => {
-      await ipc.commitCreate(repo, msg, amend, false);
+      await ipc.commitCreate(repo, msg, amend, sign);
       ok = true;
     });
-    if (!ok) return;
+    return ok;
+  }
+
+  function afterCommit(repo: string, msg: string, before: string | null, sign: boolean): void {
     const subject = msg.split("\n")[0];
     // withBusy has refreshed the graph, so HEAD is the new commit here.
     const created = $graph?.head_sha ?? "";
     // Undo needs the HEAD this commit sat on. A first commit has none.
-    if (before) pushUndo(commitUndo(repo, before, subject, msg, amend));
+    if (before) pushUndo(commitUndo(repo, before, subject, msg, amend, sign));
     notifySuccess("Committed", `${created.slice(0, 7)}: ${subject}`);
-    summary = ""; description = ""; amend = false;
-    savedSummary = ""; savedDescription = "";
+    clearFields();
     onCommitted?.();
     logAppend("info", `committed: ${subject}`);
     // Drop user back on the graph after a successful commit so the new
@@ -111,8 +167,52 @@
     }
   }
 
-  // #7 — description expands to fill the commit area; user resizes the whole
-  // commit area instead of the textarea individually.
+  function hasDraftText(): boolean {
+    return summary.trim() !== "" || description.trim() !== "";
+  }
+
+  // The first focus of the summary in each repo fills an empty box from
+  // commit.template. A non-empty box is left alone (docs/specs/commit-box.md).
+  async function onSummaryFocus(): Promise<void> {
+    const repo = $currentRepo;
+    if (!repo || !claimFirstTemplateRead(repo) || hasDraftText()) return;
+    const raw = await ipc.commitTemplate(repo).catch(() => null);
+    if (raw === null || hasDraftText() || $currentRepo !== repo) return;
+    const fields = splitTemplate(raw);
+    summary = fields.summary;
+    description = fields.description;
+  }
+
+  function onSignToggle(value: boolean): void {
+    signChoice = value;
+    const repo = $currentRepo;
+    if (repo) writeSignChoice(repo, value);
+  }
+
+  function addPerson(person: CoAuthor): void {
+    description = addCoAuthor(description, person);
+  }
+
+  function removePerson(email: string): void {
+    description = removeCoAuthor(description, email);
+  }
+
+  // Puts an AI draft into the fields. Asks first when there is text, and keeps
+  // the co-author trailers, which are the user's choice rather than the draft's.
+  async function applyDraft(text: string): Promise<void> {
+    if (hasDraftText()) {
+      const ok = await confirmDialog({
+        title: "Replace the commit message?",
+        message: "The summary and description will be replaced by the generated message.",
+        confirmLabel: "Replace",
+      });
+      if (!ok) return;
+    }
+    const fields = amendFields(text);
+    const people = parseCoAuthors(description);
+    summary = fields.summary;
+    description = people.reduce((d, p) => addCoAuthor(d, p), fields.description);
+  }
 </script>
 
 <div class="commit-body">
@@ -123,6 +223,7 @@
       placeholder="Commit summary"
       bind:value={summary}
       onkeydown={onSummaryKey}
+      onfocus={onSummaryFocus}
     />
     <span class="counter" style="color: {summaryColor(summary.length)}">
       {summary.length}/{SUMMARY_LIMIT}
@@ -138,10 +239,24 @@
     bind:value={description}
     onkeydown={onCommitFieldKey}
   ></textarea>
-  <label class="amend">
-    <input type="checkbox" bind:checked={amend} />
-    Amend previous commit
-  </label>
+  <CoAuthorPicker
+    {authors}
+    {coAuthors}
+    onAdd={addPerson}
+    onRemove={removePerson}
+  />
+  <div class="options">
+    <label class="amend">
+      <input type="checkbox" bind:checked={amend} />
+      Amend previous commit
+    </label>
+    <SignToggle signed={signed} onToggle={onSignToggle} />
+    <span class="spacer"></span>
+    {#if $currentRepo}
+      {@const repo = $currentRepo}
+      <AiGenerateButton {repo} canGenerate={stagedCount > 0} onDraft={applyDraft} />
+    {/if}
+  </div>
   <button
     class="commit-btn"
     onclick={commit}
@@ -183,6 +298,10 @@
     min-height: 50px;
   }
   .description:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .options {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+  .spacer { flex: 1; }
   .amend {
     font-size: 11px; color: var(--fg-muted);
     display: flex; gap: 6px; align-items: center;

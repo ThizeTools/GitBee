@@ -11,6 +11,7 @@ export const COL_MENU_LABEL: Record<GraphCol, string> = {
   author: "Author",
   date: "Date",
   sha: "SHA",
+  changes: "Changes",
 };
 
 export interface ColumnMenuOptions {

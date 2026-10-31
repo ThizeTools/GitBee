@@ -3,12 +3,15 @@ import { writable } from "svelte/store";
 // Center is graph, working-dir file, commit-file (file at a past commit), or
 // conflict (the block-by-block resolver for a conflicted worktree file).
 // Commit/stash details still live in the right panel; commit-file is the
-// child view that opens when the user clicks a file in those details.
+// child view that opens when the user clicks a file in those details. History
+// lists a file's commits; blame shows who last changed each line.
 export type CenterMode =
   | { kind: "graph" }
   | { kind: "file"; file: string; staged: boolean }
   | { kind: "commit-file"; sha: string; file: string }
-  | { kind: "conflict"; file: string };
+  | { kind: "conflict"; file: string }
+  | { kind: "history"; file: string }
+  | { kind: "blame"; file: string; rev?: string };
 
 export const centerMode = writable<CenterMode>({ kind: "graph" });
 
@@ -22,4 +25,12 @@ export function showCommitFile(sha: string, file: string) {
 /** Opens the conflict editor for one conflicted file. See docs/specs/conflict-resolution.md. */
 export function showConflict(file: string) {
   centerMode.set({ kind: "conflict", file });
+}
+/** Opens the commit history of one file. See docs/specs/file-history-blame.md. */
+export function showFileHistory(file: string) {
+  centerMode.set({ kind: "history", file });
+}
+/** Opens blame for one file, at `rev` when given, else in the working tree. */
+export function showFileBlame(file: string, rev?: string) {
+  centerMode.set({ kind: "blame", file, rev });
 }

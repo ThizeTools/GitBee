@@ -1,7 +1,7 @@
 import { writable, get } from "svelte/store";
 import type { GraphCol } from "$lib/graph/columns";
 import {
-  DEFAULT_COL_ORDER, DEFAULT_HIDDEN_COLS, migrateColOrder, normalizeHidden,
+  DEFAULT_COL_ORDER, DEFAULT_HIDDEN_COLS, hideNewDefaults, migrateColOrder, normalizeHidden,
 } from "$lib/graph/columns";
 
 export type { GraphCol };
@@ -28,6 +28,7 @@ export interface LayoutState {
   graphAuthorWidth: number;
   graphDateWidth: number;
   graphShaWidth: number;
+  graphChangesWidth: number;
   // Full column order, hidden ones included, so a re-shown column returns to its slot.
   graphColOrder: GraphCol[];
   hiddenCols: GraphCol[];
@@ -52,6 +53,7 @@ const DEFAULTS: LayoutState = {
   graphAuthorWidth: 140,
   graphDateWidth: 110,
   graphShaWidth: 80,
+  graphChangesWidth: 120,
   graphColOrder: [...DEFAULT_COL_ORDER],
   hiddenCols: [...DEFAULT_HIDDEN_COLS],
   dimMergeCommits: false,
@@ -72,10 +74,12 @@ function load(): LayoutState {
     const raw = localStorage.getItem(KEY);
     if (!raw) return DEFAULTS;
     const merged = { ...DEFAULTS, ...JSON.parse(raw) };
-    // Stored graph columns predate author/date/sha: append the missing ones
-    // and drop hidden entries that no longer make sense (see graph/columns.ts).
-    merged.graphColOrder = migrateColOrder(merged.graphColOrder);
-    merged.hiddenCols = normalizeHidden(merged.hiddenCols);
+    // Stored graph columns predate author/date/sha/changes: append the missing
+    // ones and drop hidden entries that no longer make sense (see graph/columns.ts).
+    // A column the stored order lacks is new, so its default-hidden state applies.
+    const storedOrder: unknown = merged.graphColOrder;
+    merged.graphColOrder = migrateColOrder(storedOrder);
+    merged.hiddenCols = hideNewDefaults(normalizeHidden(merged.hiddenCols), storedOrder);
     // One-time migration: anyone whose stored scale matches the previous
     // default (1.0) gets bumped to the new default (1.2). Users who'd
     // explicitly picked 1.0 lose that, which is acceptable — the old 1.0
