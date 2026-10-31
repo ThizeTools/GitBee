@@ -1,16 +1,25 @@
+<script module lang="ts">
+  import { TabScrollMemory } from "$lib/graph/tabScroll";
+  // Module level, not per instance: CenterPanel mounts one GraphCanvas per tab
+  // (and remounts it when a diff or history view closes), so per-tab offsets
+  // and the last shown tab must outlive the instance.
+  const scrollMemory = new TabScrollMemory();
+</script>
+
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount } from "svelte";
   import {
     graph, selectedSha, refsByCommit, containingByCommit,
     status, currentRepo, stashes, WIP_SHA, visibleGraphNodes,
-    loadMoreCommits,
+    loadMoreCommits, activeTabId, tabs,
   } from "$lib/stores/repo";
   import GraphSearchBar from "./GraphSearchBar.svelte";
   import SoloBanner from "./SoloBanner.svelte";
   import { searchOpen, matchSet, currentMatchIdx, matchShas } from "$lib/stores/graphSearch";
   import { soloRefs } from "$lib/stores/graphFilter";
   import type { CommitRef } from "$lib/ipc";
-  import { showCommit, showStash, showChanges, clearSelection } from "$lib/stores/rightpanel";
+  import { toggleRowSelection } from "./graph/graphRowSelect";
+  import { rightPanelRowView } from "./graph/graphRowSelectView";
   import { layout, setSize, type GraphCol } from "$lib/stores/layout";
   import { visibleCols, toggleHidden, COL_WIDTH_KEY, COL_MIN_WIDTH } from "$lib/graph/columns";
   import { hoveredRefSha, clearRefHover } from "$lib/stores/refHover";
@@ -130,6 +139,7 @@
   }
 
   onMount(() => {
+    restoreTabView();
     const ro = new ResizeObserver(() => {
       if (!scrollEl) return;
       // A height change can clamp scrollTop too, so it is re-read here.
@@ -159,24 +169,19 @@
     requestAnimationFrame(resyncViewport);
   });
 
-  // GraphCanvas stays mounted across repo tabs, so per-repo view state would
-  // leak. lastRepo is a plain variable: the mount run is not a change.
-  let lastRepo: string | null | undefined;
-  $effect(() => {
-    const repo = $currentRepo;
-    if (lastRepo !== undefined && lastRepo !== repo) untrack(resetViewForRepo);
-    lastRepo = repo;
-  });
-  // Each field here is per-repo. hiddenStashes is keyed by stash INDEX, which
-  // names a different stash in another repo; a queued scroll jump is a sha of the old one.
-  function resetViewForRepo(): void {
-    if (scrollEl) scrollEl.scrollTop = 0;
-    scrollTop = 0;
-    hoverRow = null; graphScrollTarget.set(null);
-    hiddenStashes = new Set();
-    badgeEndsByRow = new Map();
-    clearRefHover();
-    scheduleDraw();
+  // Instance state (hover, hidden stashes, badge ends) starts fresh per mount.
+  // Store-level state does not: after a tab switch, a queued scroll jump is a
+  // sha of the old repo and a ref hover points at its badge. Same-tab remounts
+  // (closing a diff view) keep both. The tab reopens where it was left.
+  function restoreTabView(): void {
+    const { top, tabChanged } = scrollMemory.enter($activeTabId, $tabs.map((t) => t.id));
+    if (tabChanged) {
+      graphScrollTarget.set(null);
+      clearRefHover();
+    }
+    if (!scrollEl) return;
+    scrollEl.scrollTop = top;
+    scrollTop = scrollEl.scrollTop;
   }
 
   // drawCanvas runs inside the rAF callback, where reads are not tracked by
@@ -268,6 +273,7 @@
     clearRefHover();
     if (!scrollEl) return;
     scrollTop = scrollEl.scrollTop;
+    scrollMemory.remember($activeTabId, scrollTop);
     // loadMoreCommits de-duplicates itself, so firing on every scroll event
     // inside this band is cheap.
     if ($graph?.has_more && scrollTop + viewHeight > totalHeight - LOAD_MORE_OFFSET_PX) void loadMoreCommits();
@@ -283,35 +289,13 @@
   function onMouseLeave() { hoverRow = null; }
 
   // Only the first click of a double-click selects; the second used to toggle the selection back off before the dblclick checkout ran.
+  // Click-toggle rules live in graph/graphRowSelect.ts.
   function selectRow(row: number) {
-    // Click-toggle: clicking the already-selected row deselects it and
-    // collapses the right panel. Clicking a new row selects it and expands
-    // the right panel back open.
-    const wipShiftRow = wipVisible ? 1 : 0;
-    if (wipVisible && row === 0) {
-      if ($selectedSha === WIP_SHA) {
-        selectedSha.set(null);
-        clearSelection();
-        setSize("rightPanelCollapsed", true);
-      } else {
-        selectedSha.set(WIP_SHA);
-        showChanges();
-        setSize("rightPanelCollapsed", false);
-      }
-    } else if (nodes[row - wipShiftRow]) {
-      const sha = nodes[row - wipShiftRow].sha;
-      if ($selectedSha === sha) {
-        selectedSha.set(null);
-        clearSelection();
-        setSize("rightPanelCollapsed", true);
-        return;
-      }
-      selectedSha.set(sha);
-      const stashIdx = stashIndexBySha(sha);
-      if (stashIdx !== null) showStash(stashIdx);
-      else showCommit(sha);
-      setSize("rightPanelCollapsed", false);
-    }
+    const isWip = wipVisible && row === 0;
+    const sha = isWip ? WIP_SHA : nodes[row - (wipVisible ? 1 : 0)]?.sha;
+    if (!sha) return;
+    const stashIndex = isWip ? null : stashIndexBySha(sha);
+    toggleRowSelection({ sha, isWip, stashIndex }, $selectedSha, rightPanelRowView);
   }
 
   function refsAt(sha: string): CommitRef[] {

@@ -44,3 +44,38 @@ export function clearRefHover(): void {
   pendingSha = null;
   hoveredRefSha.set(null);
 }
+
+/** The two refHover calls a badge makes, injectable so tests use a fake. */
+export interface RefHoverPort {
+  schedule(sha: string): void;
+  release(sha: string): void;
+}
+
+const storePort: RefHoverPort = { schedule: scheduleRefHover, release: releaseRefHover };
+
+// One badge's claim on the highlight. The badge keeps the sha it armed as a
+// plain value and releases exactly that one. WHY: RefBadges used to release
+// `primary.target_sha` in onDestroy, reading a $derived during teardown. On a
+// direct switch between repo tabs the rows are destroyed after the stores
+// moved to the new repo, so the badge's refs re-derived empty, `primary` was
+// undefined, and the TypeError aborted Svelte's flush mid-update: a half-drawn
+// graph, and after a few switches a blank one (2026-11, macOS report).
+/** Example: `const claim = new RefHoverClaim(); claim.arm(sha); onDestroy(() => claim.release())` */
+export class RefHoverClaim {
+  private sha: string | null = null;
+
+  constructor(private readonly port: RefHoverPort = storePort) {}
+
+  /** Arms the highlight for `sha` on behalf of this badge. */
+  arm(sha: string): void {
+    this.sha = sha;
+    this.port.schedule(sha);
+  }
+
+  /** Drops this badge's highlight, if it armed one. Safe to call twice. */
+  release(): void {
+    if (this.sha === null) return;
+    this.port.release(this.sha);
+    this.sha = null;
+  }
+}

@@ -7,7 +7,7 @@
   import { localBranchMenu, remoteBranchMenu, tagMenu } from "$lib/menus/refMenus";
   import { pinnedRef } from "$lib/stores/graphFilter";
   import { onDestroy } from "svelte";
-  import { scheduleRefHover, releaseRefHover } from "$lib/stores/refHover";
+  import { RefHoverClaim } from "$lib/stores/refHover";
   import { dragRefOf, type DragRef } from "$lib/menus/dragOptions";
   import Icon from "$lib/icons/Icon.svelte";
   import {
@@ -116,6 +116,7 @@
   let popoverMinW = $state(0);
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
   let primary = $derived(items[0]);
+  const hoverClaim = new RefHoverClaim();
   let extras = $derived(items.slice(1));
 
   // Popover anchors at the badge's top-left and grows downward, with the
@@ -126,7 +127,7 @@
   function onEnter(e: MouseEvent) {
     // Ghost badges preview containing branches on a row with no refs of its own;
     // they must not dim the graph (graph-columns-and-markers spec).
-    if (!ghost && primary.target_sha) scheduleRefHover(primary.target_sha);
+    if (!ghost && primary?.target_sha) hoverClaim.arm(primary.target_sha);
     // #2 round 10: ghost (containing-branches preview on hovered commit row)
     // never opens a popover — only real refs at the row do.
     if (ghost) return;
@@ -150,16 +151,15 @@
   }
   // Leaving the badge ends the dwell and drops any highlight this badge set.
   function onLeave(): void {
-    if (primary.target_sha) releaseRefHover(primary.target_sha);
+    hoverClaim.release();
     scheduleClose();
   }
-  // Row unmounted while hovered (scroll or data refresh): drop only our own highlight.
-  onDestroy(() => {
-    if (primary.target_sha) releaseRefHover(primary.target_sha);
-  });
-  // GraphCanvas keeps its rows mounted across repo tabs, so this badge can
-  // outlive the repo or refs it was hovered for. The open popover was placed
-  // from the old rect, so a repo switch or a changed ref set closes it.
+  // Row unmounted while hovered (scroll, data refresh, tab switch): drop only
+  // our own highlight. Never read `primary` here: refHover.ts says why.
+  onDestroy(() => hoverClaim.release());
+  // A mounted badge can outlive the refs it was hovered for (a refresh moves
+  // or deletes them). The open popover was placed from the old rect, so a
+  // repo switch or a changed ref set closes it.
   const refsKey = $derived(refs.map((r) => `${r.kind}:${r.name}:${r.target_sha}`).join("|"));
   $effect(() => {
     void $currentRepo;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { centerMode } from "$lib/stores/center";
+  import { activeTabId } from "$lib/stores/repo";
   import GraphCanvas from "./GraphCanvas.svelte";
   import DiffPanel from "./DiffPanel.svelte";
   import ConflictEditor from "./conflict/ConflictEditor.svelte";
@@ -22,7 +23,12 @@
   {:else if $centerMode.kind === "pulls"}
     <PullRequestsView />
   {:else}
-    <GraphCanvas />
+    <!-- One instance per tab: a mounted canvas kept per-repo view state across
+         repo switches and drew the new repo wrong until remounted (spec
+         graph-loading.md, "Repo switch and stale scroll"). -->
+    {#key $activeTabId}
+      <GraphCanvas />
+    {/key}
   {/if}
 </section>
 

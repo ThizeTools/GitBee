@@ -14,7 +14,7 @@
     {
       title: "Repository tabs & navigation",
       items: [
-        { title: "Multiple repo tabs (drag to reorder)", status: "done" },
+        { title: "Multiple repo tabs (drag to reorder); each tab keeps its own graph scroll position", status: "done" },
         { title: "+ button opens New Tab page (Open / Clone / Create)", status: "done" },
         { title: "Recent repos on New Tab page", status: "done" },
         { title: "Tab right-click: close / close others / close right / reopen closed", status: "done" },

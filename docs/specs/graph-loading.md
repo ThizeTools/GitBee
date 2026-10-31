@@ -77,11 +77,25 @@ fall back to an empty graph; see the QoL backlog.
   Maps built once per data change.
 
 ### Repo switch and stale scroll (2026-11, macOS report)
-- `GraphCanvas` is not remounted per tab. On an actual `$currentRepo` change
-  it resets scroll to 0, hover, badge measurements, the local hidden-stash
-  set (keyed by stash index, so meaningless in another repo), the ref hover
-  and any pending `graphScrollTarget` (a jump queued in the previous repo),
-  then schedules a draw. Ref badge hover popovers close on the same change.
+- `CenterPanel` mounts one `GraphCanvas` per tab (`{#key $activeTabId}`), so
+  hover, badge measurements and the hidden-stash set (keyed by stash index,
+  meaningless in another repo) start fresh in each tab. On mount after a tab
+  switch it also clears the store-level ref hover and any pending
+  `graphScrollTarget` (a jump queued in the previous repo); a remount in the
+  same tab (closing a diff or history view) keeps them.
+- Root cause of the half-drawn / blank graph after a direct switch between
+  repo tabs (entering a repo from the New Tab page always worked): the old
+  rows are torn down after the stores already hold the new repo. `RefBadges`
+  read `primary.target_sha` (a `$derived` of its refs) in `onDestroy`; the
+  refs re-derived empty, `primary` was undefined, and the `TypeError` aborted
+  Svelte's flush mid-update. From the New Tab page no rows were mounted, so
+  nothing threw. Fix: a badge keeps the sha it armed in a `RefHoverClaim`
+  (`src/lib/stores/refHover.ts`) and teardown never reads deriveds. Found by
+  driving the dev build (mock IPC) in Playwright WebKit.
+- Each tab's scroll offset is kept in a module-level `TabScrollMemory`
+  (`src/lib/graph/tabScroll.ts`) and restored on mount: switching tabs, or
+  coming back from a diff view, reopens the graph where it was left (a tab
+  never scrolled opens at the top). Offsets of closed tabs are dropped.
 - WebKit can clamp `scrollTop` when the spacer shrinks without firing
   `scroll`; the virtual window then started a few rows too low (top rows
   missing, canvas lines still drawn). After `nodes`/`totalHeight` change and
@@ -97,6 +111,9 @@ fall back to an empty graph; see the QoL backlog.
   never re-colors or re-lanes rows already on screen differently than a
   fresh load of the same size would.
 - At most one canvas draw per animation frame.
+- Switching tabs never carries one tab's scroll offset into another.
+- Component teardown (`onDestroy`, effect cleanups) never reads a `$derived`
+  or store: it may run after the stores moved to another repo.
 
 ## Out of scope
 - True incremental log (`git log <new>..` merged into the old set).
@@ -104,6 +121,12 @@ fall back to an empty graph; see the QoL backlog.
   first and each diff on expand, see [commit-details.md](commit-details.md).
 
 ## Rejected alternatives
+- **Keep one `GraphCanvas` mounted across tabs and reset per-repo state on
+  switch.** Each fix had to list one more per-repo field to reset (scroll,
+  hover, hidden stashes, badge ends, queued jumps). A new instance per tab
+  removes that list; the rebuild is cheap because a repo switch recomputes
+  every derived row set anyway. (The remount alone did not fix the broken
+  graph: that was the `RefBadges` teardown error above.)
 - **Append-only paging (`git log --skip=N`).** Lanes of the new page
   depend on branches open at the page boundary; stitching pages needs
   the full lane state anyway. Re-running with a larger limit keeps one
