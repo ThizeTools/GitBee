@@ -37,6 +37,7 @@
       title: "Graph",
       items: [
         { title: "Virtualized canvas + HTML rows (28px per row)", status: "done" },
+        { title: "Loads 2000 commits, more as you scroll near the end", status: "done" },
         { title: "GitKraken-style lanes: straight lines, rounded corners on the commit line, 10-color palette, avatar nodes", status: "done" },
         { title: "Merge into a branch that kept going joins its line (no duplicate parallel lines)", status: "done" },
         { title: "WIP row inline with branch HEAD", status: "done" },
@@ -51,6 +52,7 @@
         { title: "Pin = single ref, switching unpins previous", status: "done" },
         { title: "Auto-fetch every 5min + on window focus (rate-limited 30s)", status: "done" },
         { title: "Background refresh: coalesced, skips gitignored files, no loading veil; watcher paused while the window is unfocused", status: "done" },
+        { title: "File edits refresh only the changes list; the graph reloads only when a branch, tag, HEAD or stash moved", status: "done" },
       ],
     },
     {
@@ -100,6 +102,7 @@
       title: "Diff / file view (center pane)",
       items: [
         { title: "Diff viewer (hunks, +/- counts)", status: "done" },
+        { title: "Huge file diffs show the first 5000 lines (rest counted, not rendered)", status: "done" },
         { title: "File View — full file contents", status: "done" },
         { title: "Stage / Unstage / Discard from header", status: "done" },
         { title: "Blame / History viewers", status: "partial",

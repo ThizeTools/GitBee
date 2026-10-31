@@ -23,6 +23,12 @@ export interface GraphPage {
   refs: CommitRef[];
   head_sha: string | null;
   head_branch: string | null;
+  // Hash of the inputs that decide the graph; pass it back as known_fingerprint.
+  fingerprint: string;
+  // True when known_fingerprint matched: nodes and refs are empty, keep the old graph.
+  unchanged: boolean;
+  // git log returned `limit` commits, so older commits may exist.
+  has_more: boolean;
 }
 
 export type FileStatus =
@@ -55,6 +61,8 @@ export interface FileDiff {
   new_path: string;
   hunks: Hunk[];
   binary: boolean;
+  // Lines past the backend cap (MAX_FILE_DIFF_LINES), not sent to the viewer.
+  omitted_lines: number;
 }
 
 export interface StashEntry { index: number; message: string; sha: string; }
@@ -76,9 +84,9 @@ export const ipc = {
   repoForget: (path: string) => invoke("repo_forget", { path }),
 
   // graph
-  graphLoad: (path: string, limit = 10000, allBranches = true) =>
+  graphLoad: (path: string, limit = 2000, knownFingerprint: string | null = null, allBranches = true) =>
     invoke<GraphPage>("graph_load", {
-      opts: { path, limit, all_branches: allBranches },
+      opts: { path, limit, all_branches: allBranches, known_fingerprint: knownFingerprint },
     }),
 
   // branches
@@ -109,7 +117,8 @@ export const ipc = {
   discardAllChanges: (path: string) => invoke("discard_all_changes", { path }),
 
   // diff
-  diffCommit: (path: string, sha: string) => invoke<FileDiff[]>("diff_commit", { path, sha }),
+  diffCommit: (path: string, sha: string, file?: string) =>
+    invoke<FileDiff[]>("diff_commit", { path, sha, file }),
   diffStash: (path: string, index: number) => invoke<FileDiff[]>("diff_stash", { path, index }),
   diffWorkdir: (path: string, file?: string) => invoke<FileDiff[]>("diff_workdir", { path, file }),
   diffIndex: (path: string, file?: string) => invoke<FileDiff[]>("diff_index", { path, file }),

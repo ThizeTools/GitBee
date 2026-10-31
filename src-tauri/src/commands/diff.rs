@@ -7,19 +7,29 @@ use tauri::State;
 
 fn cwd(path: &str) -> PathBuf { PathBuf::from(path) }
 
+/// With `file`, only that path is diffed: the center diff panel passes it,
+/// the commit details panel does not. A renamed file then shows as added,
+/// because rename detection only sees that path. Accepted, see
+/// docs/specs/graph-loading.md.
 #[tauri::command]
 pub async fn diff_commit(
     path: String,
     sha: String,
+    file: Option<String>,
     state: State<'_, AppState>,
 ) -> AppResult<Vec<FileDiff>> {
-    let text = state
-        .git
-        .run_text_lossy(
-            &cwd(&path),
-            ["show", "--format=", "--no-color", "-U3", checked_ref(&sha)?],
-        )
-        .await?;
+    let mut args: Vec<String> = vec![
+        "show".into(),
+        "--format=".into(),
+        "--no-color".into(),
+        "-U3".into(),
+        checked_ref(&sha)?.into(),
+    ];
+    if let Some(f) = file {
+        args.push("--".into());
+        args.push(f);
+    }
+    let text = state.git.run_text_lossy(&cwd(&path), args).await?;
     Ok(parse_unified(&text))
 }
 

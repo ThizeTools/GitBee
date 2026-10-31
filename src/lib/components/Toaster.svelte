@@ -1,21 +1,10 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { notices, dismiss, type Notice } from "$lib/stores/notifications";
 
-  // We re-render the progress bars at ~30fps via a requestAnimationFrame loop
-  // so the countdown is smooth without each Notice owning a timer.
-  let now = $state(performance.now());
-  let raf: number;
-  onMount(() => {
-    const tick = () => { now = performance.now(); raf = requestAnimationFrame(tick); };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  });
-
-  function pct(n: Notice): number {
-    const elapsed = now - n.startedAt;
-    return Math.max(0, Math.min(100, 100 - (elapsed / n.ttlMs) * 100));
-  }
+  // The progress bar drains with a CSS animation lasting the toast's TTL. A
+  // rAF loop used to re-render this component every frame forever, even with
+  // no toasts. Each toast mounts once (keyed by id), so an animation started
+  // at mount matches its TTL without any per-frame work.
 
   function icon(k: Notice["kind"]): string {
     switch (k) {
@@ -39,7 +28,7 @@
         </div>
       </div>
       <div class="bar">
-        <div class="bar-fill" style="width: {pct(n)}%"></div>
+        <div class="bar-fill" style="animation-duration: {n.ttlMs}ms"></div>
       </div>
     </div>
   {/each}
@@ -114,10 +103,19 @@
     height: 3px;
     background: rgba(255,255,255,0.06);
   }
+  /* Width is driven by toast-drain, started at mount and lasting the toast's
+     TTL (set inline on each bar). No transition: the animation is the timer. */
   .bar-fill {
     height: 100%;
+    width: 100%;
     background: currentColor;
-    transition: width 60ms linear;
+    animation-name: toast-drain;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+  @keyframes toast-drain {
+    from { width: 100%; }
+    to   { width: 0%; }
   }
   .toast.info    .bar-fill { background: var(--renamed); }
   .toast.success .bar-fill { background: var(--accent); }

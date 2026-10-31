@@ -1,6 +1,6 @@
 import { get } from "svelte/store";
 import { ipc } from "$lib/ipc";
-import { activeTab, refreshActive } from "$lib/stores/repo";
+import { activeTab, busy, refreshActive } from "$lib/stores/repo";
 
 // Periodic background `git fetch --all --prune` so remote-tracking refs
 // (e.g. origin/gh-pages updated by external tools like the `gh-pages` npm
@@ -22,6 +22,9 @@ let inFlight = false;
 
 async function tick(): Promise<void> {
   if (inFlight) return;
+  // A background fetch must not race a user's pull/push/commit for refs or
+  // index.lock; it runs on the next tick instead. See docs/specs/repo-refresh.md.
+  if (get(busy)) return;
   const t = get(activeTab);
   if (!t || t.kind === "newtab" || !t.path) return;
   inFlight = true;

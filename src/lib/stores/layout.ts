@@ -68,6 +68,28 @@ function load(): LayoutState {
 
 export const layout = writable<LayoutState>(load());
 
+// Column/panel resize drags write the layout on every pointermove; writing
+// localStorage each time was measurable jank. The save is trailing-debounced,
+// and flushed on unload so the last drag position is not lost.
+const LAYOUT_SAVE_DELAY_MS = 250;
+let pendingSave: LayoutState | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSave(s: LayoutState): void {
+  pendingSave = s;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, LAYOUT_SAVE_DELAY_MS);
+}
+
+function flushSave(): void {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (!pendingSave || typeof localStorage === "undefined") return;
+  localStorage.setItem(KEY, JSON.stringify(pendingSave));
+  pendingSave = null;
+}
+
+if (typeof window !== "undefined") window.addEventListener("beforeunload", flushSave);
+
 layout.subscribe((s) => {
   if (typeof document !== "undefined") {
     document.documentElement.style.setProperty("--ui-scale", String(s.uiScale));
@@ -81,7 +103,7 @@ layout.subscribe((s) => {
     document.body.style.zoom = "";
   }
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(s));
+  scheduleSave(s);
 });
 
 // Real zoom multipliers — fed straight into CSS `zoom`. We multiply the old

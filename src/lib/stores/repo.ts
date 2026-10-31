@@ -8,6 +8,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { hiddenRefs, soloRefs } from "$lib/stores/graphFilter";
 import { showingNewTab } from "$lib/stores/newtab";
 import { showingInfo } from "$lib/stores/info";
+import { mergeScope, parseScope, type RefreshScope } from "$lib/stores/refreshScope";
 
 export interface RepoTab {
   id: string;
@@ -42,6 +43,21 @@ export const activeTabId = writable<string | null>(null);
 export const recent = writable<RecentRepoDto[]>([]);
 export const errorMessage = writable<string | null>(null);
 export const busy = writable<boolean>(false);
+
+// Bumped after every completed refresh, even when the status list is identical.
+// An already-modified file edited again keeps the same status entry, so the
+// working-tree diff panel keys on this instead of `status`. See docs/specs/repo-refresh.md.
+export const worktreeTick = writable<number>(0);
+
+// Commits per graph page; each "load more" grows a tab's limit by this much.
+// See docs/specs/graph-loading.md.
+export const GRAPH_PAGE = 2000;
+// Tab id -> commit limit. Tabs without an entry use GRAPH_PAGE.
+const graphLimits = new Map<string, number>();
+
+function graphLimitFor(tabId: string): number {
+  return graphLimits.get(tabId) ?? GRAPH_PAGE;
+}
 
 // Debounced/smoothed view of `busy` for UI overlays. Rising edges are
 // delayed by BUSY_SHOW_DELAY so fast operations never flash the veil over
@@ -238,27 +254,34 @@ function tabName(path: string): string {
 // caller asked for silent), so a caller awaiting this after an action
 // always sees data loaded after its call. Overlapping watcher / focus /
 // action refreshes used to run 10 git processes each, in parallel.
+// `scope` decides how much is reloaded: "status" only `git status`, "full"
+// everything. Coalesced callers merge to the widest scope any of them asked for.
 let refreshRunning: Promise<void> | null = null;
 let refreshFollowUp: Promise<void> | null = null;
 let followUpSilent = true;
+let followUpScope: RefreshScope = "status";
 
-export function refreshActive(opts: { silent?: boolean } = {}): Promise<void> {
+export function refreshActive(opts: { silent?: boolean; scope?: RefreshScope } = {}): Promise<void> {
   const silent = opts.silent === true;
-  if (!refreshRunning) return startRefresh(silent);
+  const scope = opts.scope ?? "full";
+  if (!refreshRunning) return startRefresh(silent, scope);
   followUpSilent = followUpSilent && silent;
+  followUpScope = mergeScope(followUpScope, scope);
   if (!refreshFollowUp) {
     refreshFollowUp = refreshRunning.then(() => {
       const s = followUpSilent;
+      const sc = followUpScope;
       refreshFollowUp = null;
       followUpSilent = true;
-      return startRefresh(s);
+      followUpScope = "status";
+      return startRefresh(s, sc);
     });
   }
   return refreshFollowUp;
 }
 
-function startRefresh(silent: boolean): Promise<void> {
-  const run: Promise<void> = loadActiveTab(silent).finally(() => {
+function startRefresh(silent: boolean, scope: RefreshScope): Promise<void> {
+  const run: Promise<void> = loadActiveTab(silent, scope).finally(() => {
     if (refreshRunning === run) refreshRunning = null;
   });
   refreshRunning = run;
@@ -267,40 +290,102 @@ function startRefresh(silent: boolean): Promise<void> {
 
 type TabSnapshot = Pick<RepoTab, "graph" | "status" | "stashes" | "remotes" | "worktrees" | "opState">;
 
+/** Whether one snapshot field differs from the stored value. The graph is
+ * compared by fingerprint: the fingerprint decides the graph, and stringifying
+ * 2000+ nodes on every refresh was the main idle cost. Other keys keep the
+ * JSON compare. */
+function fieldChanged(key: keyof TabSnapshot, a: unknown, b: unknown): boolean {
+  if (key === "graph") return graphChanged(a as GraphPage | null, b as GraphPage | null);
+  return JSON.stringify(a) !== JSON.stringify(b);
+}
+
+function graphChanged(a: GraphPage | null, b: GraphPage | null): boolean {
+  if ((a === null) !== (b === null)) return true;
+  return a?.fingerprint !== b?.fingerprint;
+}
+
 /** Returns `cur` itself when nothing changed, else a copy with only the
  * changed fields replaced, so an idle refresh doesn't touch the stores.
  * Example: `const next = withChangedFields(tab, fresh); if (next !== tab) ...` */
 function withChangedFields(cur: RepoTab, next: TabSnapshot): RepoTab {
   const changed: Partial<TabSnapshot> = {};
   for (const key of Object.keys(next) as (keyof TabSnapshot)[]) {
-    if (JSON.stringify(cur[key]) !== JSON.stringify(next[key])) changed[key] = next[key] as never;
+    if (fieldChanged(key, cur[key], next[key])) changed[key] = next[key] as never;
   }
   return Object.keys(changed).length ? { ...cur, ...changed } : cur;
 }
 
-async function loadActiveTab(silent: boolean): Promise<void> {
+/** Loads everything a full refresh shows for `t`. When the graph fingerprint
+ * is unchanged the backend skipped `git log`, so the caller keeps `t.graph`. */
+async function fetchFullSnapshot(t: RepoTab): Promise<TabSnapshot> {
+  const [g, st, sl, rl, wt, op] = await Promise.all([
+    ipc.graphLoad(t.path, graphLimitFor(t.id), t.graph?.fingerprint ?? null),
+    ipc.statusLoad(t.path).catch(() => []),
+    ipc.stashList(t.path).catch(() => []),
+    ipc.remoteList(t.path).catch(() => []),
+    ipc.worktreeList(t.path).catch(() => []),
+    ipc.opState(t.path).catch(() => null),
+  ]);
+  return {
+    graph: g.unchanged ? t.graph : g,
+    status: st, stashes: sl, remotes: rl, worktrees: wt, opState: op,
+  };
+}
+
+/** Reloads only `git status` for `t`. Returns false when that call fails,
+ * leaving the tab untouched. */
+async function loadStatusOnly(t: RepoTab): Promise<boolean> {
+  const st = await ipc.statusLoad(t.path).catch(() => null);
+  if (st === null) return false;
+  const cur = get(tabs).find((x) => x.id === t.id);
+  if (cur && fieldChanged("status", cur.status, st)) {
+    updateTab(t.id, (x) => ({ ...x, status: st }));
+  }
+  return true;
+}
+
+async function loadFullTab(t: RepoTab): Promise<void> {
+  const snapshot = await fetchFullSnapshot(t);
+  const cur = get(tabs).find((x) => x.id === t.id);
+  if (!cur) return;
+  const next = withChangedFields(cur, snapshot);
+  if (next !== cur) updateTab(t.id, () => next);
+}
+
+async function loadActiveTab(silent: boolean, scope: RefreshScope): Promise<void> {
   const t = get(activeTab);
   if (!t || t.kind === "newtab" || !t.path) return;
+  if (scope === "status") {
+    if (await loadStatusOnly(t)) worktreeTick.update((n) => n + 1);
+    return;
+  }
   if (!silent) busy.set(true);
   try {
-    const [g, st, sl, rl, wt, op] = await Promise.all([
-      ipc.graphLoad(t.path),
-      ipc.statusLoad(t.path).catch(() => []),
-      ipc.stashList(t.path).catch(() => []),
-      ipc.remoteList(t.path).catch(() => []),
-      ipc.worktreeList(t.path).catch(() => []),
-      ipc.opState(t.path).catch(() => null),
-    ]);
-    const cur = get(tabs).find((x) => x.id === t.id);
-    const next = cur && withChangedFields(cur, {
-      graph: g, status: st, stashes: sl, remotes: rl, worktrees: wt, opState: op,
-    });
-    if (cur && next && next !== cur) updateTab(t.id, () => next);
+    await loadFullTab(t);
     errorMessage.set(null);
+    worktreeTick.update((n) => n + 1);
   } catch (e) {
     errorMessage.set(String(e));
   } finally {
     if (!silent) busy.set(false);
+  }
+}
+
+// Set while a load-more is pending, so repeated scroll events don't stack limits.
+let loadMorePending = false;
+
+/** Grows the active tab's commit limit by one page and refreshes silently.
+ * No-op while a previous load is pending or the graph has no older commits.
+ * Example: `onScroll → if near bottom: void loadMoreCommits()` */
+export async function loadMoreCommits(): Promise<void> {
+  const t = get(activeTab);
+  if (loadMorePending || t?.kind === "newtab" || !t?.graph?.has_more) return;
+  loadMorePending = true;
+  try {
+    graphLimits.set(t.id, graphLimitFor(t.id) + GRAPH_PAGE);
+    await refreshActive({ silent: true });
+  } finally {
+    loadMorePending = false;
   }
 }
 
@@ -311,7 +396,11 @@ async function attachWatcher(path: string) {
   watcherPaused = false;
   if (unlistenChange) { unlistenChange(); unlistenChange = null; }
   await ipc.watcherStart(path);
-  unlistenChange = await listen("repo-changed", () => { refreshActive({ silent: true }); });
+  // The backend says whether git status alone is enough; a "full" burst
+  // (refs, HEAD, stashes changed) needs the graph too.
+  unlistenChange = await listen("repo-changed", (e) => {
+    refreshActive({ silent: true, scope: parseScope(e.payload) });
+  });
 }
 
 /** Stops the backend watcher but keeps the event listener, releasing the
@@ -457,6 +546,7 @@ export async function closeTab(id: string) {
     closedStack.push(closed.path);
     if (closedStack.length > CLOSED_LIMIT) closedStack.shift();
   }
+  graphLimits.delete(id);
   const remaining = list.filter((t) => t.id !== id);
   tabs.set(remaining);
   if (remaining.length === 0) {

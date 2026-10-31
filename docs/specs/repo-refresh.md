@@ -1,7 +1,8 @@
 # Repo refresh, watcher and checkout (2026-10)
 
 Neighbors: [graph-visual-2026-04.md](graph-visual-2026-04.md),
-[ui-overhaul-2026-04.md](ui-overhaul-2026-04.md).
+[ui-overhaul-2026-04.md](ui-overhaul-2026-04.md),
+[graph-loading.md](graph-loading.md) (what a full refresh costs).
 
 ## Purpose
 Keep the UI in sync with the repository without getting in the user's
@@ -38,7 +39,12 @@ way. Three reported problems drove this spec:
 
 ### Backend: `repo-changed` event (`src-tauri/src/watcher.rs`)
 - Input: `watcher_start(path)` / `watcher_stop()` (unchanged).
-- Output: event `repo-changed { path }`, emitted at most once per burst.
+- Output: event `repo-changed { path, scope }`, emitted at most once per
+  burst. `scope` is `"full"` when a meaningful `.git` path other than
+  `index` changed or the path cap overflowed; `"status"` when only
+  `.git/index` and/or non-ignored working-tree paths changed. Editing,
+  staging and unstaging files are by far the most common bursts and
+  need only `git status`, not the 10-process full refresh.
 - A burst ends after `QUIET` (300 ms) without events, or `MAX_WAIT`
   (2 s) after its first event, whichever comes first (trailing edge).
 - A burst emits only if at least one of:
@@ -58,6 +64,14 @@ Every git process gets `GIT_OPTIONAL_LOCKS=0`. Only optional locks are
 affected (the stat refresh of `git status`); commands that must write
 the index still lock it.
 
+Every git process also gets `GIT_TERMINAL_PROMPT=0` and
+`-c http.lowSpeedLimit=1 -c http.lowSpeedTime=60`. Without a terminal
+git could wait forever on a username prompt, and a stalled HTTP
+transfer never ended, so a background fetch hung and kept the auto-fetch
+`inFlight` guard set for the rest of the session. Callers that pass
+their own `-c http.lowSpeed*` (initial push of a new repo) override
+these, because later `-c` values win.
+
 ### Frontend: `refreshActive(opts)` (`src/lib/stores/repo.ts`)
 - At most one refresh runs at a time. Calls during a run coalesce into
   one follow-up run, which starts after the current one. The follow-up
@@ -70,6 +84,16 @@ the index still lock it.
   and user actions (`withBusy`, `runAction`, checkout).
 - Background refreshes (watcher, auto-fetch, focus, tab re-activation)
   are silent.
+- `opts.scope`: `"status"` loads only `git status`; `"full"` (default)
+  loads everything and passes the current graph `fingerprint` so an
+  unchanged graph skips `git log` (see graph-loading.md). Coalesced
+  callers merge to `"full"` if any of them asked for it.
+- Every completed refresh bumps `worktreeTick`, even when nothing in the
+  status list changed. The working-tree diff panel reloads on it: an
+  already-modified file edited again keeps an identical status entry, so
+  keying on `status` showed a stale diff.
+- Auto-fetch skips a tick while `busy` is set, so a background
+  `fetch` never races a user's pull/push/commit for refs or locks.
 
 ### Frontend: busy veil (`busyVisible`)
 Rising edge delayed by 250 ms, falling edge by 350 ms. Fast operations
@@ -105,7 +129,10 @@ checkout). Errors surface as "Checkout failed" toasts with git's stderr.
 
 ## Out of scope
 - Replacing the watcher with polling.
-- Incremental graph loading (still `git log -n 2000` per refresh).
+- Incremental graph loading (a full refresh with moved refs still runs
+  `git log -n <limit>`; see graph-loading.md for paging).
+- Timeouts on local git commands (a slow `log` on a huge repo is not a
+  hang). Network stalls are bounded by the low-speed limit above.
 - Single-click checkout.
 
 ## Rejected alternatives
@@ -122,3 +149,7 @@ checkout). Errors surface as "Checkout failed" toasts with git's stderr.
   and can miss the final state.
 - **`--no-optional-locks` per command.** Easy to forget on new
   commands; the env var on the runner covers all of them.
+- **Finer scopes (refs-only, stash-only, remotes-only).** Each extra
+  scope is another code path to keep in sync; with the graph
+  fingerprint a "full" refresh whose graph did not change already skips
+  the expensive part. Two scopes cover the common bursts.

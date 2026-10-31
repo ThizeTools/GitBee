@@ -23,10 +23,19 @@ impl GitRunner {
     // not rewrite .git/index or take index.lock. The rewrite re-triggered
     // the repo watcher in a loop, and the lock made the user's own git
     // commands in other tools fail. See docs/specs/repo-refresh.md.
+    //
+    // GIT_TERMINAL_PROMPT=0 and the low-speed limit: without a terminal git
+    // can wait forever on a credential prompt, and a stalled HTTP transfer
+    // never ends, which kept the auto-fetch in-flight guard set. Callers
+    // passing their own `-c http.lowSpeed*` (github/create.rs push_initial)
+    // override these, because later `-c` values win. See
+    // docs/specs/repo-refresh.md.
     fn base_command(&self, cwd: &Path, stdin: Stdio) -> Command {
         let mut cmd = Command::new(&self.git_exe);
+        cmd.args(["-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=60"]);
         cmd.current_dir(cwd)
             .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(stdin)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -163,4 +172,34 @@ pub fn checked_ref(value: &str) -> AppResult<&str> {
         )));
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    fn env_value(cmd: &Command, key: &str) -> Option<String> {
+        cmd.as_std()
+            .get_envs()
+            .find(|(k, _)| *k == OsStr::new(key))
+            .and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()))
+    }
+
+    #[test]
+    fn base_command_sets_low_speed_args_and_noninteractive_env() {
+        let cmd = GitRunner::with_executable(PathBuf::from("git"))
+            .base_command(Path::new("."), Stdio::null());
+        let args: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &args[..4],
+            &["-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=60"]
+        );
+        assert_eq!(env_value(&cmd, "GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
+        assert_eq!(env_value(&cmd, "GIT_OPTIONAL_LOCKS").as_deref(), Some("0"));
+    }
 }

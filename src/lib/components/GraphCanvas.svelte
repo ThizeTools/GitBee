@@ -3,6 +3,7 @@
   import {
     graph, selectedSha, refsByCommit, containingByCommit,
     status, currentRepo, withBusy, stashes, WIP_SHA, visibleGraphNodes,
+    loadMoreCommits,
   } from "$lib/stores/repo";
   import GraphSearchBar from "./GraphSearchBar.svelte";
   import SoloBanner from "./SoloBanner.svelte";
@@ -187,11 +188,12 @@
   }
 
   // ------- viewport / virtualization -------
-  const visibleRange = $derived.by(() => {
-    const start = Math.max(0, Math.floor((scrollTop - TOP_PADDING) / ROW_HEIGHT));
-    const end = Math.min(totalRows, Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT));
-    return { start, end };
-  });
+  // Start and end are separate primitive deriveds: a primitive only notifies
+  // when its value changes, so visibleRows and the badge re-measure below run
+  // when a row enters or leaves the window, not on every scroll pixel.
+  const rangeStart = $derived(Math.max(0, Math.floor((scrollTop - TOP_PADDING) / ROW_HEIGHT)));
+  const rangeEnd = $derived(Math.min(totalRows, Math.ceil((scrollTop + viewHeight - TOP_PADDING) / ROW_HEIGHT)));
+  const visibleRange = $derived({ start: rangeStart, end: rangeEnd });
 
   const visibleRows = $derived.by(() => {
     const list: { row: number; node: GraphNode | null; top: number; isWip: boolean }[] = [];
@@ -208,20 +210,39 @@
     return list;
   });
 
+  // One draw per animation frame. Scroll, hover, and resize can each request
+  // a draw within the same frame; only the first one schedules work.
+  let drawRaf = 0;
+  function scheduleDraw(): void {
+    if (drawRaf) return;
+    drawRaf = requestAnimationFrame(() => {
+      drawRaf = 0;
+      drawCanvas();
+    });
+  }
+
   onMount(() => {
     const ro = new ResizeObserver(() => {
       if (!scrollEl) return;
       viewHeight = scrollEl.clientHeight;
-      drawCanvas();
+      scheduleDraw();
     });
     if (scrollEl) ro.observe(scrollEl);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(drawRaf);
+    };
   });
 
+  // drawCanvas runs inside the rAF callback, where reads are not tracked by
+  // this effect. Every reactive value it reads must therefore be listed here,
+  // or the canvas silently goes stale when that value changes.
   $effect(() => {
-    void nodes; void scrollTop; void viewHeight; void $selectedSha; void hoverRow; void wipChangeCount;
-    void graphW; void avatarRows; void stashRows; void rowSegments;
-    drawCanvas();
+    void nodes; void shaToRow; void rowSegments; void scrollTop; void viewHeight;
+    void $selectedSha; void hoverRow; void wipVisible; void headRowSha; void rowsWithRefs;
+    void avatarRows; void stashRows; void badgeEndsByRow; void wipChangeCount;
+    void canvas; void scrollEl; void graphW; void stubBleed;
+    scheduleDraw();
   });
 
   // #14 — scroll the graph to a target sha when something asks (e.g., tag click).
@@ -300,10 +321,17 @@
     const dpr = window.devicePixelRatio || 1;
     const bleed = stubBleed;
     const width = graphW + bleed;
-    canvas.width = width * dpr;
-    canvas.height = viewHeight * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${viewHeight}px`;
+    // Assigning width/height reallocates and clears the backing store, so it
+    // is done only on an actual size change. The renderer clears with clearRect
+    // inside save/restore on every frame.
+    const backingWidth = Math.floor(width * dpr);
+    const backingHeight = Math.floor(viewHeight * dpr);
+    if (canvas.width !== backingWidth) canvas.width = backingWidth;
+    if (canvas.height !== backingHeight) canvas.height = backingHeight;
+    const cssWidth = `${width}px`;
+    const cssHeight = `${viewHeight}px`;
+    if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
+    if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     // The renderer's row 0 = nodes[0]. HTML row 0 = WIP when wipVisible,
@@ -328,7 +356,15 @@
     });
   }
 
-  function onScroll() { if (scrollEl) scrollTop = scrollEl.scrollTop; }
+  // Same threshold as GitKraken's lazy-load offset; spec graph-loading.md.
+  const LOAD_MORE_OFFSET_PX = 1400;
+  function onScroll() {
+    if (!scrollEl) return;
+    scrollTop = scrollEl.scrollTop;
+    // loadMoreCommits de-duplicates itself, so firing on every scroll event
+    // inside this band is cheap.
+    if ($graph?.has_more && scrollTop + viewHeight > totalHeight - LOAD_MORE_OFFSET_PX) void loadMoreCommits();
+  }
   function onMouseMove(e: MouseEvent) {
     if (!scrollEl) return;
     const rect = scrollEl.getBoundingClientRect();
@@ -412,23 +448,35 @@
 
   // #10 — synthesize fake CommitRef[] from the containing-branches set so
   // RefBadges can render them with the same look (just ghosted).
+  // Built once per graph load. containingRefs runs per hovered row, and a
+  // linear refs.find per containing branch name was O(refs) each time. Keeps
+  // the first ref seen per name, matching the old find() semantics.
+  const branchKindByName = $derived.by(() => {
+    const m = new Map<string, CommitRef["kind"]>();
+    for (const r of $graph?.refs ?? []) {
+      if (r.kind !== "localbranch" && r.kind !== "remotebranch") continue;
+      if (!m.has(r.name)) m.set(r.name, r.kind);
+    }
+    return m;
+  });
   function containingRefs(sha: string) {
     const names = $containingByCommit.get(sha);
     if (!names || names.size === 0) return [];
     const out = [];
     for (const n of names) {
-      // Find original ref to determine kind (local vs remote vs branch).
-      const orig = $graph?.refs.find(
-        (r) => r.name === n && (r.kind === "localbranch" || r.kind === "remotebranch"),
-      );
-      if (!orig) continue;
-      out.push({ name: n, kind: orig.kind, target_sha: sha });
+      // Kind (local vs remote) of the branch ref with this name; names with
+      // no branch ref are skipped.
+      const kind = branchKindByName.get(n);
+      if (!kind) continue;
+      out.push({ name: n, kind, target_sha: sha });
     }
     return out;
   }
+  // Built once per stash change. Called 3-4 times per visible row, so each
+  // lookup has to be O(1) rather than a scan of $stashes.
+  const stashIndexMap = $derived(new Map($stashes.map((s) => [s.sha, s.index] as const)));
   function stashIndexBySha(sha: string): number | null {
-    const found = $stashes.find((s) => s.sha === sha);
-    return found?.index ?? null;
+    return stashIndexMap.get(sha) ?? null;
   }
 
   // ------- stash context menu (#3 stash menu in graph) -------

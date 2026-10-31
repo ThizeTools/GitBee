@@ -63,6 +63,9 @@ fn is_meaningful_git_path(rel: &Path) -> bool {
 #[derive(Debug, PartialEq)]
 enum PathClass {
     GitMeaningful,
+    // `.git/index` alone means only `git status` is stale, so it gets its
+    // own class instead of forcing a full refresh.
+    GitIndex,
     GitNoise,
     WorkTree(String),
     Outside,
@@ -72,6 +75,9 @@ enum PathClass {
 /// forward slashes, the form `git check-ignore --stdin` expects and echoes.
 fn classify(repo: &Path, git_dir: &Path, path: &Path) -> PathClass {
     if let Ok(rel) = path.strip_prefix(git_dir) {
+        if rel == Path::new("index") {
+            return PathClass::GitIndex;
+        }
         return if is_meaningful_git_path(rel) {
             PathClass::GitMeaningful
         } else {
@@ -86,9 +92,20 @@ fn classify(repo: &Path, git_dir: &Path, path: &Path) -> PathClass {
     }
 }
 
+/// How much of the UI a burst invalidates. Status = only `git status`
+/// needs reloading (working tree or index changed); Full = refs, HEAD,
+/// stash, config etc. changed, so the whole graph may be stale too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RefreshScope {
+    Status,
+    Full,
+}
+
 #[derive(Default)]
 struct PendingBurst {
     git_changed: bool,
+    index_changed: bool,
     overflow: bool,
     worktree: HashSet<String>,
     first_at: Option<Instant>,
@@ -101,6 +118,7 @@ impl PendingBurst {
     fn record(&mut self, class: PathClass) -> bool {
         match class {
             PathClass::GitMeaningful => self.git_changed = true,
+            PathClass::GitIndex => self.index_changed = true,
             PathClass::WorkTree(rel) if self.worktree.len() < MAX_TRACKED_PATHS => {
                 self.worktree.insert(rel);
             }
@@ -132,6 +150,7 @@ struct WatchContext {
 #[derive(Debug, Clone, Serialize)]
 pub struct RepoChangedEvent {
     pub path: String,
+    pub scope: RefreshScope,
 }
 
 fn record_event(ctx: &Arc<WatchContext>, paths: &[PathBuf]) {
@@ -165,26 +184,41 @@ async fn flush_when_quiet(ctx: Arc<WatchContext>) {
     if !ctx.alive.load(Ordering::Relaxed) {
         return;
     }
-    if !burst_needs_refresh(&ctx, &burst).await {
+    let Some(scope) = burst_scope(&ctx, &burst).await else {
         return;
-    }
+    };
     if !ctx.alive.load(Ordering::Relaxed) {
         return;
     }
     let path = ctx.repo.to_string_lossy().to_string();
-    let _ = ctx.app.emit("repo-changed", RepoChangedEvent { path });
+    let _ = ctx.app.emit("repo-changed", RepoChangedEvent { path, scope });
 }
 
-async fn burst_needs_refresh(ctx: &WatchContext, burst: &PendingBurst) -> bool {
+/// Decides from the burst alone when it can; only a working-tree-only burst
+/// needs the `check-ignore` round-trip.
+fn quick_scope(burst: &PendingBurst) -> Option<RefreshScope> {
     if burst.git_changed || burst.overflow {
-        return true;
+        return Some(RefreshScope::Full);
+    }
+    if burst.index_changed {
+        return Some(RefreshScope::Status);
+    }
+    None
+}
+
+async fn burst_scope(ctx: &WatchContext, burst: &PendingBurst) -> Option<RefreshScope> {
+    if let Some(scope) = quick_scope(burst) {
+        return Some(scope);
     }
     if burst.worktree.is_empty() {
-        return false;
+        return None;
     }
     let state = ctx.app.state::<AppState>();
     let ignored = ignored_paths(&state.git, &ctx.repo, &burst.worktree).await;
-    burst.worktree.iter().any(|p| !ignored.contains(p))
+    if burst.worktree.iter().any(|p| !ignored.contains(p)) {
+        return Some(RefreshScope::Status);
+    }
+    None
 }
 
 /// Asks git which of `paths` are ignored, in one process for the whole
@@ -288,14 +322,14 @@ mod tests {
     }
 
     #[test]
-    fn git_refs_and_index_are_meaningful() {
+    fn git_refs_are_meaningful_and_index_is_its_own_class() {
         assert_eq!(
             classify(&repo(), &git(), &git().join("HEAD")),
             PathClass::GitMeaningful
         );
         assert_eq!(
             classify(&repo(), &git(), &git().join("index")),
-            PathClass::GitMeaningful
+            PathClass::GitIndex
         );
         assert_eq!(
             classify(
@@ -357,6 +391,41 @@ mod tests {
         }
         assert!(b.overflow);
         assert_eq!(b.worktree.len(), MAX_TRACKED_PATHS);
+    }
+
+    #[test]
+    fn quick_scope_is_full_for_git_changes_and_overflow() {
+        let mut git_burst = PendingBurst::default();
+        git_burst.record(PathClass::GitMeaningful);
+        assert_eq!(quick_scope(&git_burst), Some(RefreshScope::Full));
+
+        let mut overflow_burst = PendingBurst::default();
+        overflow_burst.overflow = true;
+        assert_eq!(quick_scope(&overflow_burst), Some(RefreshScope::Full));
+    }
+
+    #[test]
+    fn quick_scope_is_status_for_index_only() {
+        let mut b = PendingBurst::default();
+        b.record(PathClass::GitIndex);
+        assert_eq!(quick_scope(&b), Some(RefreshScope::Status));
+    }
+
+    #[test]
+    fn quick_scope_is_none_for_default_and_worktree_only_bursts() {
+        assert_eq!(quick_scope(&PendingBurst::default()), None);
+        let mut b = PendingBurst::default();
+        b.record(PathClass::WorkTree("src/main.rs".into()));
+        assert_eq!(quick_scope(&b), None);
+    }
+
+    #[test]
+    fn refresh_scope_serializes_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&RefreshScope::Status).unwrap(),
+            "\"status\""
+        );
+        assert_eq!(serde_json::to_string(&RefreshScope::Full).unwrap(), "\"full\"");
     }
 
     #[test]

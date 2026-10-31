@@ -48,6 +48,9 @@
                 {/each}
               </div>
             {/each}
+            {#if f.omitted_lines > 0}
+              <div class="omitted">{f.omitted_lines.toLocaleString()} more lines not shown (diff too large)</div>
+            {/if}
           {/if}
         </div>
       {/if}
@@ -83,7 +86,7 @@
   .path { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stats { font-size: 11px; color: var(--fg-muted); }
   .hunks { padding: 0; }
-  .binary { padding: 12px; color: var(--fg-muted); font-style: italic; }
+  .binary, .omitted { padding: 12px; color: var(--fg-muted); font-style: italic; }
   .hunk-header {
     background: color-mix(in srgb, var(--renamed) 12%, transparent);
     color: var(--renamed);

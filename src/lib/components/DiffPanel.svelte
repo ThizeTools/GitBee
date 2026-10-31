@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentRepo, graph, withBusy, status } from "$lib/stores/repo";
+  import { currentRepo, graph, withBusy, worktreeTick } from "$lib/stores/repo";
   import { showGraph, centerMode } from "$lib/stores/center";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
@@ -23,8 +23,13 @@
   let loading = $state(false);
   let toolTab = $state<"diff" | "file">("diff");
 
+  // Commit diffs never change, so they load once per file/commit/tab. Working-
+  // tree diffs reload on every refresh tick: an edited-again file keeps an
+  // identical status entry, so a status-only dependency would miss it (spec
+  // repo-refresh.md).
   $effect(() => {
-    void file; void staged; void commitSha; void $status; void toolTab;
+    void file; void staged; void commitSha; void toolTab;
+    if (!commitSha) void $worktreeTick;
     if ($currentRepo) load();
   });
 
@@ -34,9 +39,9 @@
     try {
       if (toolTab === "diff") {
         if (commitSha) {
-          // diff_commit returns every file in the commit; filter to ours.
-          const all = await ipc.diffCommit($currentRepo, commitSha);
-          diffs = all.filter((d) => (d.new_path || d.old_path) === file);
+          // Backend limits the commit diff to this path (git show -- <file>),
+          // so one file no longer pays for the whole commit.
+          diffs = await ipc.diffCommit($currentRepo, commitSha, file);
         } else {
           diffs = staged
             ? await ipc.diffIndex($currentRepo, file)
