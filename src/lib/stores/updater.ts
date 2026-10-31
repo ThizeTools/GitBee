@@ -18,7 +18,6 @@
 
 import { writable, get } from "svelte/store";
 import { logAppend } from "./logs";
-import { isMacOS } from "$lib/platform";
 
 export type UpdateState =
   | { kind: "idle" }
@@ -47,10 +46,8 @@ let bootStarted = false;
 export async function bootUpdater(): Promise<void> {
   if (bootStarted) return;
   bootStarted = true;
-  // macOS builds are local and unsigned, and latest.json only lists
-  // windows-x86_64 — check() would fail on every launch and pin a
-  // permanent "Update check failed" pill. See docs/specs/macos-support.md.
-  if (isMacOS()) return;
+  // macOS checks too since v0.4.1: the release workflow publishes a
+  // darwin-aarch64 entry in latest.json (docs/specs/release-and-updates.md).
   try {
     await loadModules();
     updateState.set({ kind: "checking" });

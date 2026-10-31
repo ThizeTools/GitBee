@@ -157,17 +157,25 @@ bun install
 # dev (hot reload)
 bun run tauri dev
 
-# Windows: build all 3 distributables → release/
-bun run release
-
 # macOS: unsigned .app + .dmg → src-tauri/target/release/bundle/
 bun run build:mac
 ```
 
-The release script wraps `tauri build --bundles msi,nsis` and copies the three
-artifacts into `release/` with consistent names. See
-[`scripts/release.mjs`](scripts/release.mjs). It is Windows-only; macOS
-settings live in
+### Releasing
+
+Releases are built, signed and published by GitHub Actions
+([`release.yml`](.github/workflows/release.yml)) when a `v*` tag is pushed:
+
+```bash
+bun run bump          # 0.4.1 → 0.4.2 in package.json, Cargo.toml, Cargo.lock
+git commit -am "Release v0.4.2"
+git tag v0.4.2 && git push origin main v0.4.2
+```
+
+Windows (NSIS/MSI) and macOS (.dmg + updater bundle) are attached to the
+release with a `latest.json` that installed apps auto-update from. See
+[`docs/specs/release-and-updates.md`](docs/specs/release-and-updates.md).
+macOS settings live in
 [`src-tauri/tauri.macos.conf.json`](src-tauri/tauri.macos.conf.json), which
 Tauri merges automatically on macOS.
 
@@ -201,7 +209,7 @@ src-tauri/                 # Rust backend
     cache/store.rs         # SQLite cache (recents, etc.)
     watcher.rs             # File watcher → repo-changed event
 docs/specs/                # One spec per feature (spec-driven, see CLAUDE.md)
-scripts/release.mjs        # Build + collect artifacts
+scripts/bump-version.ts    # Version bump before tagging a release
 ```
 
 ## Spec-driven

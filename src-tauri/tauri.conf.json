@@ -42,7 +42,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENGNzIyQzYzNTNGQkJFNTcKUldSWHZ2dFRZeXh5ejV1a1B0YnBzajhDcTJ6ZDdyRzZFc2NkT3pEKzZ6akQ2UFdpRmN1enU0bzkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyNkQzNjdBRDEwOTIyMzQKUldRMElnblJlalp0TWc3bXo3aFR0dXlGK2t5TTViNDJpcUV1UTRMS1VGem1jUUhZNUorWmh2VnAK",
       "endpoints": [
         "https://github.com/ThizeTools/GitBee/releases/latest/download/latest.json"
       ]

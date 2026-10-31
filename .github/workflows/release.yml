@@ -1,0 +1,95 @@
+# Builds, signs and publishes a release when a version tag is pushed.
+# Spec: docs/specs/release-and-updates.md
+#
+#   bun run bump 0.4.1 && git commit -am "Release v0.4.1"
+#   git tag v0.4.1 && git push origin main v0.4.1
+#
+# Secrets: TAURI_SIGNING_PRIVATE_KEY (content of the minisign private key),
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD (optional; the current key has none).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.draft.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      # A tag that disagrees with the built version would ship a latest.json
+      # whose version never matches what the installed app reports.
+      - name: Check tag matches package.json and Cargo.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(jq -r .version package.json)
+          cargo=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          if [ "$tag" != "$pkg" ] || [ "$tag" != "$cargo" ]; then
+            echo "tag v$tag, package.json $pkg, Cargo.toml $cargo: expected all equal (run bun run bump $tag)"
+            exit 1
+          fi
+      # Draft until every platform uploaded: releases/latest skips drafts, so
+      # no installed app sees a latest.json missing its platform.
+      - id: draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --generate-notes \
+            --title "GitBee $GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: true
+      # One at a time: each job merges its platform into the release's
+      # latest.json, and two concurrent merges would drop one entry.
+      max-parallel: 1
+      matrix:
+        include:
+          - platform: windows-latest
+            args: "--bundles msi,nsis"
+          - platform: macos-latest
+            # tauri.updater.conf.json turns on the .app.tar.gz updater bundle,
+            # kept off for local `bun run build:mac` so it needs no key.
+            args: "--bundles app,dmg --config src-tauri/tauri.updater.conf.json"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+      - run: bun install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tauriScript: bun tauri
+          args: ${{ matrix.args }}
+          includeUpdaterJson: true
+          # The NSIS installer updates in place without the MSI repair UI.
+          updaterJsonPreferNsis: true
+
+  publish:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/${{ needs.create-release.outputs.release_id }}" \
+            -F draft=false -f make_latest=true

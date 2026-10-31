@@ -2,13 +2,12 @@
 
 ## Purpose
 
-Make GitBee build and run on macOS (Apple Silicon and Intel) for a developer
-who builds it on their own Mac. Distribution to other Macs is explicitly not a
-goal yet: the build is unsigned and that is acceptable.
+Make GitBee build and run on macOS (Apple Silicon and Intel). Since v0.4.1
+Apple Silicon builds are also released from CI with auto-update; they are
+ad-hoc signed, not notarized, and that is acceptable for now.
 
-Windows remains the primary, released platform. Neighbors:
-[repo-refresh.md](repo-refresh.md) (watcher), and the auto-update flow
-described in `src/lib/stores/updater.ts`.
+Neighbors: [repo-refresh.md](repo-refresh.md) (watcher),
+[release-and-updates.md](release-and-updates.md) (CI release, auto-update).
 
 ## Public contract
 
@@ -22,7 +21,8 @@ described in `src/lib/stores/updater.ts`.
 - `src-tauri/tauri.macos.conf.json` is merged by the Tauri CLI on macOS only.
   It sets:
   - `bundle.macOS.signingIdentity = "-"` → ad-hoc code signature.
-  - `bundle.createUpdaterArtifacts = false` → no minisign key needed.
+  - `bundle.createUpdaterArtifacts = false` → no minisign key needed locally.
+    CI turns it back on with `--config src-tauri/tauri.updater.conf.json`.
 - Errors: missing Xcode Command Line Tools or `cargo` not on `PATH` fail the
   Tauri CLI before compiling; nothing project-specific is added.
 
@@ -32,8 +32,8 @@ described in `src/lib/stores/updater.ts`.
   Windows). Clicking the Dock icon fires `RunEvent::Reopen`, which
   `tray::handle_run_event` answers by showing, unminimizing and focusing the
   `main` window. On other OSes `handle_run_event` is a no-op.
-- **Auto-update off.** `bootUpdater()` returns immediately when
-  `isMacOS()` is true; the status-bar pill stays `idle`.
+- **Auto-update on** (since v0.4.1), from the `darwin-aarch64` entry of
+  `latest.json`; see [release-and-updates.md](release-and-updates.md).
 - **Shortcuts.** Every keyboard handler accepts `metaKey` alongside
   `ctrlKey`, so `Cmd` works wherever `Ctrl` is documented.
 - **Shell integration.** External terminal → `open -a Terminal <repo>`;
@@ -57,8 +57,7 @@ exists so tests inject a fake navigator.
 ## Out of scope
 
 - Developer ID signing, notarization, stapling.
-- A macOS update channel (`darwin-*` entries in `latest.json`).
-- `scripts/release.mjs` producing macOS artifacts.
+- Intel macOS (`darwin-x86_64`) release artifacts.
 - Native macOS menu customization beyond Tauri's default app menu.
 - Linux packaging (code paths exist but are untested).
 
@@ -71,9 +70,9 @@ exists so tests inject a fake navigator.
 - **Pass `--config '{…}'` inline in the `build:mac` script.** Works, but
   `tauri dev` would not see it, and JSON-in-shell quoting differs between
   shells. The platform config file is the documented Tauri mechanism.
-- **Keep the updater on and let it fail.** `latest.json` lists only
-  `windows-x86_64`, so every launch would end in a permanent
-  "Update check failed" warning — noise for a state the user cannot fix.
+- **Skip the update check on macOS** (until v0.4.1). Right while
+  `latest.json` listed only `windows-x86_64`; the CI release now publishes a
+  macOS entry, so the check runs on every OS.
 - **Quit on window close (native macOS for single-window apps).** Diverges
   from Windows behavior and kills the background watcher/auto-fetch the tray
   mode exists for. Reopen-from-Dock gives the macOS feel without that cost.

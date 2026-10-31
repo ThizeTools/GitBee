@@ -26,7 +26,7 @@ export function isWindows(nav = currentNavigator()): boolean {
 
 /**
  * True when running on macOS.
- * Usage: `if (isMacOS()) return; // no macOS update channel`
+ * Usage: `const mod = isMacOS() ? "Cmd" : "Ctrl";`
  */
 export function isMacOS(nav = currentNavigator()): boolean {
   return /mac/i.test(platformString(nav));
