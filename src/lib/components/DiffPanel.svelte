@@ -5,6 +5,7 @@
   import DiffViewer from "./DiffViewer.svelte";
   import type { FileDiff } from "$lib/ipc";
   import { logAppend } from "$lib/stores/logs";
+  import { confirmDialog } from "$lib/stores/dialog";
 
   interface Props {
     file: string;
@@ -71,7 +72,12 @@
   }
   async function discardThis() {
     if (!$currentRepo) return;
-    if (!confirm(`Discard changes in ${file}?`)) return;
+    const ok = await confirmDialog({
+      title: `Discard changes in ${file}?`,
+      confirmLabel: "Discard",
+      danger: true,
+    });
+    if (!ok) return;
     await withBusy(() => ipc.discardFile($currentRepo!, file));
     showGraph();
   }

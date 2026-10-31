@@ -13,6 +13,7 @@
   import DiffViewer from "./DiffViewer.svelte";
   import Avatar from "./Avatar.svelte";
   import { showCommitFile } from "$lib/stores/center";
+  import { confirmDialog, promptDialog } from "$lib/stores/dialog";
   import type { FileDiff, GraphNode } from "$lib/ipc";
 
   interface Props { index: number; onClose: () => void; }
@@ -72,13 +73,15 @@
     onClose();
   }
   async function drop() {
-    if (!$currentRepo || !confirm(`Drop stash@{${index}}?`)) return;
+    if (!$currentRepo) return;
+    const ok = await confirmDialog({ title: `Drop stash@{${index}}?`, confirmLabel: "Drop", danger: true });
+    if (!ok) return;
     await withBusy(() => ipc.stashDrop($currentRepo!, index));
     onClose();
   }
   async function editMsg() {
     if (!$currentRepo || !entry) return;
-    const m = prompt("Edit stash message:", entry.message);
+    const m = await promptDialog({ title: "Edit stash message:", initial: entry.message, confirmLabel: "Save" });
     if (m === null) return;
     await withBusy(() => ipc.stashEditMessage($currentRepo!, index, m));
   }

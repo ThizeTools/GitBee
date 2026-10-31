@@ -1,12 +1,15 @@
 <script lang="ts">
   import { currentRepo, opState, withBusy } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
+  import { confirmDialog } from "$lib/stores/dialog";
 
   // Shown while a merge, rebase, cherry-pick or revert is in progress.
   type OpKind = "merge" | "rebase" | "cherry-pick" | "revert";
 
   async function abortOp(kind: OpKind) {
-    if (!$currentRepo || !confirm(`Abort ${kind}?`)) return;
+    if (!$currentRepo) return;
+    const ok = await confirmDialog({ title: `Abort ${kind}?`, confirmLabel: "Abort", danger: true });
+    if (!ok) return;
     await withBusy(() => ipc.opAbort($currentRepo!, kind));
   }
   async function continueOp(kind: OpKind) {

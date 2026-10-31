@@ -17,6 +17,9 @@ import {
 import { logAppend, logAction, type ActionResult } from "$lib/stores/logs";
 import { notifyError, notifyInfo } from "$lib/stores/notifications";
 import { checkoutShaAutoStash, scrollGraphTo } from "$lib/stores/graphscroll";
+import {
+  choiceDialog, confirmDialog, promptDialog, requireName,
+} from "$lib/stores/dialog";
 import { get } from "svelte/store";
 import { openModal } from "$lib/stores/modals";
 import { commitWebUrl } from "$lib/github/url";
@@ -125,7 +128,7 @@ export function viewFilterItems(qualifiedName: string, refLabel: string): MenuIt
 export async function createBranchAt(sha: string): Promise<void> {
   const r = repo();
   if (!r) return;
-  const name = prompt("New branch name:");
+  const name = await promptDialog({ title: "New branch name:", validate: requireName });
   if (!name) return;
   await withBusy(() => ipc.branchCreate(r, name, sha));
   scrollGraphTo(sha);
@@ -134,36 +137,49 @@ export async function createBranchAt(sha: string): Promise<void> {
 export async function createTag(sha: string, annotated: boolean): Promise<void> {
   const r = repo();
   if (!r) return;
-  const name = prompt("Tag name:");
+  const name = await promptDialog({ title: "Tag name:", validate: requireName });
   if (!name) return;
+  // Kept from the native prompt: cancelling the annotation message still
+  // creates the tag, as a lightweight one. Changing that is a behavior change.
   const message = annotated
-    ? prompt("Annotation message:") || undefined
+    ? (await promptDialog({ title: "Annotation message:" })) || undefined
     : undefined;
   await withBusy(() => ipc.tagCreate(r, name, sha, message));
+}
+
+export type ResetMode = "soft" | "mixed" | "hard";
+
+// A choice list instead of typing soft/mixed/hard: a typo used to be
+// rejected only after the prompt closed. Mixed is first so Enter keeps the
+// old default.
+async function pickResetMode(sha: string): Promise<ResetMode | null> {
+  return choiceDialog<ResetMode>({
+    title: "Reset mode",
+    message: `Target: ${sha.slice(0, 7)}`,
+    choices: [
+      { label: "Mixed", value: "mixed", description: "keep changes unstaged" },
+      { label: "Soft", value: "soft", description: "keep changes staged" },
+      { label: "Hard", value: "hard", description: "discard all changes", danger: true },
+    ],
+  });
+}
+
+function confirmHardReset(sha: string): Promise<boolean> {
+  return confirmDialog({
+    title: `Reset --hard to ${sha.slice(0, 7)}?`,
+    message: "This discards working-tree changes.",
+    confirmLabel: "Reset",
+    danger: true,
+  });
 }
 
 export async function resetMenu(sha: string): Promise<void> {
   const r = repo();
   if (!r) return;
-  // Lightweight three-choice via prompt — full submenu would be ideal but
-  // openMenu doesn't nest deeply enough for our needs here.
-  const mode = prompt(
-    `Reset mode? Type one of: soft, mixed, hard\n(target: ${sha.slice(0, 7)})`,
-    "mixed",
-  );
-  if (!mode) return;
-  if (!["soft", "mixed", "hard"].includes(mode)) {
-    logAppend("warn", `unknown reset mode "${mode}"`);
-    return;
-  }
-  if (
-    mode === "hard" &&
-    !confirm(
-      `Reset --hard to ${sha.slice(0, 7)}?\nThis discards working-tree changes.`,
-    )
-  )
-    return;
-  await withBusy(() => ipc.reset(r, sha, mode as "soft" | "mixed" | "hard"));
+  const mode = await pickResetMode(sha);
+  if (mode === null) return;
+  if (mode === "hard" && !(await confirmHardReset(sha))) return;
+  await withBusy(() => ipc.reset(r, sha, mode));
 }
 
 // Resolve a remote URL by name from the loaded remotes list. Defaults to
@@ -191,10 +207,11 @@ export function revertCommitItem(sha: string): MenuItem {
   return {
     label: "Revert commit",
     icon: "↶",
-    onClick: () => {
+    onClick: async () => {
       const r = repo();
-      if (r && confirm(`Revert ${sha.slice(0, 7)}?`))
-        withBusy(() => ipc.revert(r, sha, true));
+      if (!r) return;
+      const ok = await confirmDialog({ title: `Revert ${sha.slice(0, 7)}?`, confirmLabel: "Revert" });
+      if (ok) withBusy(() => ipc.revert(r, sha, true));
     },
   };
 }
@@ -203,10 +220,11 @@ export function cherryPickCommitItem(sha: string): MenuItem {
   return {
     label: "Cherry pick commit",
     icon: "⤴",
-    onClick: () => {
+    onClick: async () => {
       const r = repo();
-      if (r && confirm(`Cherry-pick ${sha.slice(0, 7)}?`))
-        withBusy(() => ipc.cherryPick(r, sha));
+      if (!r) return;
+      const ok = await confirmDialog({ title: `Cherry-pick ${sha.slice(0, 7)}?`, confirmLabel: "Cherry-pick" });
+      if (ok) withBusy(() => ipc.cherryPick(r, sha));
     },
   };
 }

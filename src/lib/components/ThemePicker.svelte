@@ -4,6 +4,7 @@
     activeThemeId, customThemes, themePickerOpen,
     resolveTheme, applyTheme, saveCustomTheme, deleteCustomTheme,
   } from "$lib/stores/ui";
+  import { alertDialog, confirmDialog } from "$lib/stores/dialog";
 
   // Editor state — null means "no editor open, just showing the grid".
   let editor = $state<Theme | null>(null);
@@ -87,8 +88,13 @@
     snapshotBefore = null;
   }
 
-  function remove(id: string) {
-    if (!confirm("Delete this custom theme?")) return;
+  async function remove(id: string) {
+    const ok = await confirmDialog({
+      title: "Delete this custom theme?",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     deleteCustomTheme(id);
   }
 
@@ -166,11 +172,11 @@
         saveCustomTheme(fresh);
         imported++;
       }
-      if (imported === 0) alert("No valid themes in that file.");
-      else if (imported === 1) alert("Theme imported.");
-      else alert(`${imported} themes imported.`);
+      if (imported === 0) await alertDialog({ title: "No valid themes in that file." });
+      else if (imported === 1) await alertDialog({ title: "Theme imported." });
+      else await alertDialog({ title: `${imported} themes imported.` });
     } catch (err) {
-      alert(`Import failed: ${err}`);
+      await alertDialog({ title: `Import failed: ${err}` });
     }
   }
 

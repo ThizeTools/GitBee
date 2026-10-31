@@ -2,6 +2,7 @@
   import { paletteOpen, activeThemeId, resolveTheme, customThemes } from "$lib/stores/ui";
   import { currentRepo, refreshAll, withBusy, recent, openRepo } from "$lib/stores/repo";
   import { ipc } from "$lib/ipc";
+  import { promptDialog, requireName } from "$lib/stores/dialog";
   import { get } from "svelte/store";
 
   interface PaletteCmd {
@@ -37,12 +38,12 @@
           run: () => withBusy(() => ipc.remotePull($currentRepo!, true)) },
         { id: "stash-create", label: "Stash all changes",
           run: async () => {
-            const m = prompt("Stash message:") || undefined;
+            const m = (await promptDialog({ title: "Stash message:", confirmLabel: "Stash" })) || undefined;
             await withBusy(() => ipc.stashCreate($currentRepo!, m, true));
           } },
         { id: "branch-create", label: "Create branch from HEAD",
           run: async () => {
-            const n = prompt("Branch name:");
+            const n = await promptDialog({ title: "Branch name:", validate: requireName });
             if (!n) return;
             await withBusy(() => ipc.branchCreate($currentRepo!, n));
           } },

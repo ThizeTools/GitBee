@@ -4,6 +4,7 @@
 import { ipc } from "$lib/ipc";
 import { withBusy } from "$lib/stores/repo";
 import { showChanges } from "$lib/stores/rightpanel";
+import { confirmDialog, promptDialog } from "$lib/stores/dialog";
 import type { MenuItem } from "$lib/stores/contextmenu";
 
 export type RepoGetter = () => string | null;
@@ -30,7 +31,9 @@ export async function popStash(getRepo: RepoGetter, idx: number): Promise<void> 
 
 export async function dropStash(getRepo: RepoGetter, idx: number): Promise<void> {
   const repo = getRepo();
-  if (!repo || !confirm(`Drop stash@{${idx}}?`)) return;
+  if (!repo) return;
+  const ok = await confirmDialog({ title: `Drop stash@{${idx}}?`, confirmLabel: "Drop", danger: true });
+  if (!ok) return;
   await withBusy(() => ipc.stashDrop(repo, idx));
   showChanges();
 }
@@ -42,7 +45,7 @@ export async function editStashMessage(
 ): Promise<void> {
   const repo = getRepo();
   if (!repo) return;
-  const m = prompt("Edit stash message:", current);
+  const m = await promptDialog({ title: "Edit stash message:", initial: current, confirmLabel: "Save" });
   if (m === null) return;
   await withBusy(() => ipc.stashEditMessage(repo, idx, m));
 }

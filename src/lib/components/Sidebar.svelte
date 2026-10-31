@@ -9,6 +9,7 @@
   import { scrollGraphTo, checkoutAndJump, checkoutRemoteAndJump } from "$lib/stores/graphscroll";
   import { localBranchMenu, remoteBranchMenu, tagMenu } from "$lib/menus/refMenus";
   import { soloRefs, toggleSolo } from "$lib/stores/graphFilter";
+  import { confirmDialog, promptDialog } from "$lib/stores/dialog";
   import { onMount } from "svelte";
 
   // True when the user is currently soloing at least one ref. Drives the
@@ -77,13 +78,15 @@
     showChanges();
   }
   async function dropStash(idx: number) {
-    if (!$currentRepo || !confirm(`Drop stash@{${idx}}?`)) return;
+    if (!$currentRepo) return;
+    const ok = await confirmDialog({ title: `Drop stash@{${idx}}?`, confirmLabel: "Drop", danger: true });
+    if (!ok) return;
     await withBusy(() => ipc.stashDrop($currentRepo!, idx));
     showChanges();
   }
   async function editStashMessage(idx: number, current: string) {
     if (!$currentRepo) return;
-    const m = prompt("Edit stash message:", current);
+    const m = await promptDialog({ title: "Edit stash message:", initial: current, confirmLabel: "Save" });
     if (m === null) return;
     await withBusy(() => ipc.stashEditMessage($currentRepo!, idx, m));
   }

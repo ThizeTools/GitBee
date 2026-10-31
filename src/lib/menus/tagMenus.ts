@@ -6,6 +6,7 @@ import { ipc } from "$lib/ipc";
 import { withBusy } from "$lib/stores/repo";
 import { logAppend } from "$lib/stores/logs";
 import { notifySuccess, notifyError } from "$lib/stores/notifications";
+import { confirmDialog, promptDialog } from "$lib/stores/dialog";
 import {
   repo,
   copy,
@@ -22,12 +23,17 @@ import {
 
 // `git tag -f <name> <head_sha>`. We resolve HEAD up-front so the
 // command shows a precise label in logs and the destructive nature of
-// `-f` is visible to the user via the confirm prompt.
+// `-f` is visible to the user via the confirm dialog.
 async function fastForwardTag(tagName: string): Promise<void> {
   const r = repo();
   const head = headSha();
   if (!r || !head) return;
-  if (!confirm(`Fast-forward ${tagName} to ${head.slice(0, 7)}?\n\nThis rewrites the tag and may need a force-push.`)) return;
+  const ok = await confirmDialog({
+    title: `Fast-forward ${tagName} to ${head.slice(0, 7)}?`,
+    message: "This rewrites the tag and may need a force-push.",
+    confirmLabel: "Fast-forward",
+  });
+  if (!ok) return;
   const res = await runAction(`FF tag ${tagName}`, () =>
     ipc.tagMove(r, tagName, head),
   );
@@ -36,12 +42,15 @@ async function fastForwardTag(tagName: string): Promise<void> {
 }
 
 // Lightweight tag → annotated tag (or change an existing message).
-// Prompt is a plain `prompt()` because the message is single-line for
-// most workflows; if it grows we'll swap for a modal.
+// The message is single-line for most workflows, so the inline prompt
+// dialog is enough; a multi-line editor would need its own dialog kind.
 async function annotateTag(tagName: string): Promise<void> {
   const r = repo();
   if (!r) return;
-  const message = prompt(`Annotation message for ${tagName}:`);
+  const message = await promptDialog({
+    title: `Annotation message for ${tagName}:`,
+    confirmLabel: "Annotate",
+  });
   if (message === null || message.trim() === "") return;
   const res = await runAction(`Annotate ${tagName}`, () =>
     ipc.tagAnnotate(r, tagName, message.trim()),
@@ -88,7 +97,8 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
       onClick: async () => {
         const r = repo();
         if (!r) return;
-        if (!confirm(`Merge ${tagName} into ${head}?`)) return;
+        const ok = await confirmDialog({ title: `Merge ${tagName} into ${head}?`, confirmLabel: "Merge" });
+        if (!ok) return;
         const res = await runAction(`Merge ${tagName}`, () =>
           ipc.branchMerge(r, tagName, false),
         );
@@ -102,7 +112,8 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
       onClick: async () => {
         const r = repo();
         if (!r) return;
-        if (!confirm(`Rebase ${head} onto ${tagName}?`)) return;
+        const ok = await confirmDialog({ title: `Rebase ${head} onto ${tagName}?`, confirmLabel: "Rebase" });
+        if (!ok) return;
         const res = await runAction(`Rebase ${head} onto ${tagName}`, () =>
           ipc.branchRebase(r, tagName),
         );
@@ -125,10 +136,15 @@ export function tagMenu(tagName: string, sha: string): MenuItem[] {
       label: `Delete ${tagName} locally`,
       icon: "🗑",
       danger: true,
-      onClick: () => {
+      onClick: async () => {
         const r = repo();
-        if (r && confirm(`Delete tag ${tagName}?`))
-          withBusy(() => ipc.tagDelete(r, tagName));
+        if (!r) return;
+        const ok = await confirmDialog({
+          title: `Delete tag ${tagName}?`,
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (ok) withBusy(() => ipc.tagDelete(r, tagName));
       },
     },
     { separator: true, label: "" },

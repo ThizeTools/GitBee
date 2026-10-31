@@ -106,7 +106,7 @@
         { title: "File View — full file contents", status: "done" },
         { title: "Stage / Unstage / Discard from header", status: "done" },
         { title: "Blame / History viewers", status: "partial",
-          note: "alert() popup only — needs dedicated viewer" },
+          note: "shown in a dialog only — needs dedicated viewer" },
       ],
     },
     {
@@ -141,6 +141,7 @@
         { title: "Auto-update: background download + signature-verified one-click install", status: "done" },
         { title: "Light / dark theme toggle", status: "done" },
         { title: "Command palette (Ctrl+P)", status: "done" },
+        { title: "In-app confirm / input / choice dialogs (no native popups); reset mode picked from a list", status: "done" },
       ],
     },
     {

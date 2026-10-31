@@ -6,6 +6,7 @@ import { ipc } from "$lib/ipc";
 import { withBusy, graph, remotes } from "$lib/stores/repo";
 import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
 import { checkoutAndJump, checkoutRemoteAndJump } from "$lib/stores/graphscroll";
+import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
 import { get } from "svelte/store";
 import { openModal } from "$lib/stores/modals";
 import { pullRequestCompareUrl, branchWebUrl } from "$lib/github/url";
@@ -77,7 +78,12 @@ async function startPullRequest(branch: string): Promise<void> {
 async function renameBranch(oldName: string) {
   const r = repo();
   if (!r) return;
-  const name = prompt(`Rename branch "${oldName}" to:`, oldName);
+  const name = await promptDialog({
+    title: `Rename branch "${oldName}" to:`,
+    initial: oldName,
+    confirmLabel: "Rename",
+    validate: requireName,
+  });
   if (!name || name === oldName) return;
   await withBusy(() => ipc.branchRename(r, oldName, name));
 }
@@ -85,19 +91,25 @@ async function renameBranch(oldName: string) {
 async function deleteBranch(name: string) {
   const r = repo();
   if (!r) return;
-  if (!confirm(`Delete local branch "${name}"?`)) return;
+  const ok = await confirmDialog({
+    title: `Delete local branch "${name}"?`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   await withBusy(() => ipc.branchDelete(r, name, false));
 }
 
 async function deleteRemoteBranch(remote: string, branch: string) {
   const r = repo();
   if (!r) return;
-  if (
-    !confirm(
-      `Delete remote branch ${remote}/${branch}? This will run\n\n  git push ${remote} :${branch}`,
-    )
-  )
-    return;
+  const ok = await confirmDialog({
+    title: `Delete remote branch ${remote}/${branch}?`,
+    message: `This will run\n\n  git push ${remote} :${branch}`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   // Delete via push refspec.
   await withBusy(() => ipc.remotePush(r, remote, `:${branch}`, false));
 }

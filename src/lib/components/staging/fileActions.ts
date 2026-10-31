@@ -2,6 +2,7 @@ import { get } from "svelte/store";
 import { ipc } from "$lib/ipc";
 import { currentRepo, withBusy } from "$lib/stores/repo";
 import { logAppend } from "$lib/stores/logs";
+import { alertDialog, confirmDialog, promptDialog } from "$lib/stores/dialog";
 
 // Repo-bound file actions for the staging lists and their context menu.
 // Each reads the open repo at call time, so a menu item clicked after a tab
@@ -21,10 +22,12 @@ export async function unstageFile(path: string): Promise<void> {
   await withBusy(() => ipc.unstageFile(repo, path));
 }
 
-/** Discard worktree changes for one file, after a confirm prompt. */
+/** Discard worktree changes for one file, after a confirm dialog. */
 export async function discardFile(path: string): Promise<void> {
   const repo = get(currentRepo);
-  if (!repo || !confirm(`Discard changes in ${path}?`)) return;
+  if (!repo) return;
+  const ok = await confirmDialog({ title: `Discard changes in ${path}?`, confirmLabel: "Discard", danger: true });
+  if (!ok) return;
   await withBusy(() => ipc.discardFile(repo, path));
 }
 
@@ -76,29 +79,35 @@ export async function addIgnore(p: string): Promise<void> {
 export async function stashOneFile(f: string): Promise<void> {
   const repo = get(currentRepo);
   if (!repo) return;
-  const m = prompt("Stash message (optional):", `wip: ${f}`) || undefined;
+  const m = (await promptDialog({ title: "Stash message (optional):", initial: `wip: ${f}`, confirmLabel: "Stash" })) || undefined;
   await withBusy(() => ipc.stashFile(repo, f, m));
 }
 
-/** Show the last 50 commits touching a file in an alert. */
+/** Show the last 50 commits touching a file in an alert dialog. */
 export async function fileHistory(f: string): Promise<void> {
   const repo = get(currentRepo);
   if (!repo) return;
   try {
     const rows = await ipc.fileHistory(repo, f, 50);
     logAppend("info", `History for ${f}: ${rows.length} commits`);
-    alert(rows.map((r) => `${r.sha.slice(0,7)} ${r.subject}`).join("\n") || "(no history)");
+    await alertDialog({
+      title: `History: ${f}`,
+      message: rows.map((r) => `${r.sha.slice(0,7)} ${r.subject}`).join("\n") || "(no history)",
+    });
   } catch (e) { logAppend("error", `history: ${e}`); }
 }
 
-/** Show the first 40 blame lines of a file in an alert. */
+/** Show the first 40 blame lines of a file in an alert dialog. */
 export async function fileBlame(f: string): Promise<void> {
   const repo = get(currentRepo);
   if (!repo) return;
   try {
     const rows = await ipc.fileBlame(repo, f);
     logAppend("info", `Blame ${f}: ${rows.length} lines`);
-    alert(rows.slice(0, 40).map((r) => `${r.sha.slice(0,7)} ${r.author}: ${r.line}`).join("\n"));
+    await alertDialog({
+      title: `Blame: ${f}`,
+      message: rows.slice(0, 40).map((r) => `${r.sha.slice(0,7)} ${r.author}: ${r.line}`).join("\n"),
+    });
   } catch (e) { logAppend("error", `blame: ${e}`); }
 }
 
@@ -124,10 +133,12 @@ export async function editFile(f: string): Promise<void> {
   catch (e) { logAppend("error", `edit: ${e}`); }
 }
 
-/** Delete a file from disk, after a confirm prompt. */
+/** Delete a file from disk, after a confirm dialog. */
 export async function deleteFile(f: string): Promise<void> {
   const repo = get(currentRepo);
-  if (!repo || !confirm(`Delete file ${f}?`)) return;
+  if (!repo) return;
+  const ok = await confirmDialog({ title: `Delete file ${f}?`, confirmLabel: "Delete", danger: true });
+  if (!ok) return;
   try { await withBusy(() => ipc.fileDelete(repo, f)); }
   catch (e) { logAppend("error", `delete: ${e}`); }
 }

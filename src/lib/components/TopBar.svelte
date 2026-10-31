@@ -9,6 +9,7 @@
   import { ipc } from "$lib/ipc";
   import { logAppend, logAction } from "$lib/stores/logs";
   import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
+  import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
 
   // Wrap an async git action: show busy spinner, log start/finish/fail,
   // refresh repo state on success, and surface real error messages to the
@@ -33,7 +34,12 @@
     if (!$currentRepo) return;
     const head = $graph?.head_sha ?? null;
     if (!head) return;
-    if (!confirm("Undo last commit?\n(soft reset to HEAD@{1} — keeps your changes staged.)")) return;
+    const ok = await confirmDialog({
+      title: "Undo last commit?",
+      message: "(soft reset to HEAD@{1} — keeps your changes staged.)",
+      confirmLabel: "Undo",
+    });
+    if (!ok) return;
     const node = $graph?.nodes.find((n) => n.sha === head);
     const msg = node?.subject ?? "previous commit";
     const r = await runAction(`Undo last commit ${head.slice(0, 7)}`,
@@ -85,7 +91,7 @@
   }
   async function newBranch() {
     if (!$currentRepo) return;
-    const name = prompt("New branch name:");
+    const name = await promptDialog({ title: "New branch name:", validate: requireName });
     if (!name) return;
     await withBusy(() => ipc.branchCreate($currentRepo!, name));
     await withBusy(() => ipc.branchCheckout($currentRepo!, name));
@@ -104,7 +110,8 @@
   }
   async function popStash() {
     if (!$currentRepo) return;
-    if (!confirm("Pop stash@{0}?")) return;
+    const ok = await confirmDialog({ title: "Pop stash@{0}?", confirmLabel: "Pop" });
+    if (!ok) return;
     const r = await runAction("Pop stash@{0}",
       () => ipc.stashPop($currentRepo!, 0));
     if (r.ok) notifySuccess("Stash popped", "stash@{0}");
@@ -188,8 +195,14 @@
     {#if import.meta.env.DEV}
       <button
         class="ghost dev"
-        onclick={() => {
-          if (!confirm("Clear ALL local data? Tabs, layout, themes, recents — gone. Reload required.")) return;
+        onclick={async () => {
+          const ok = await confirmDialog({
+            title: "Clear ALL local data?",
+            message: "Tabs, layout, themes, recents — gone. Reload required.",
+            confirmLabel: "Clear",
+            danger: true,
+          });
+          if (!ok) return;
           try { localStorage.clear(); } catch { /* ignore */ }
           location.reload();
         }}

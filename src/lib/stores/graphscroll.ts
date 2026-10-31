@@ -2,6 +2,7 @@ import { writable, get } from "svelte/store";
 import { graph, busy, currentRepo, localBranches, refreshActive } from "$lib/stores/repo";
 import { ipc } from "$lib/ipc";
 import { notifySuccess, notifyError, notifyInfo } from "$lib/stores/notifications";
+import { confirmDialog } from "$lib/stores/dialog";
 
 // When set to a SHA, GraphCanvas scrolls that row into view and clears it.
 export const graphScrollTarget = writable<string | null>(null);
@@ -49,10 +50,14 @@ export async function checkoutWithAutoStash(
   const first = await runCheckout(doCheckout);
   if (first === true) return true;
   if (!isDirtyTreeError(first)) return first;
-  if (!confirm(
-    `You have uncommitted changes that would be overwritten by switching to "${target}".\n\n` +
-    `Stash them, switch, and re-apply afterwards?`,
-  )) return first;
+  const ok = await confirmDialog({
+    title: "Uncommitted changes",
+    message:
+      `You have uncommitted changes that would be overwritten by switching to "${target}".\n\n` +
+      `Stash them, switch, and re-apply afterwards?`,
+    confirmLabel: "Stash and switch",
+  });
+  if (!ok) return first;
 
   const stashMsg = `auto-stash before switch to ${target}`;
   busy.set(true);

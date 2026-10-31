@@ -25,6 +25,7 @@
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import ResizeHandle from "$lib/components/ResizeHandle.svelte";
   import Toaster from "$lib/components/Toaster.svelte";
+  import AppDialog from "$lib/components/AppDialog.svelte";
   import EditCommitMessageModal from "$lib/components/EditCommitMessageModal.svelte";
   import SetUpstreamModal from "$lib/components/SetUpstreamModal.svelte";
   import WorktreeCreateModal from "$lib/components/WorktreeCreateModal.svelte";
@@ -357,6 +358,7 @@
   <LogsPanel />
   <ContextMenu />
   <Toaster />
+  <AppDialog />
 
   {#if $activeModal?.kind === "edit-commit-message"}
     <EditCommitMessageModal sha={$activeModal.sha} current={$activeModal.current} />

@@ -2,6 +2,7 @@
   import { graph, currentRepo, refsByCommit, withBusy } from "$lib/stores/repo";
   import { checkoutShaAutoStash } from "$lib/stores/graphscroll";
   import { notifyError } from "$lib/stores/notifications";
+  import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
   import { ipc } from "$lib/ipc";
   import DiffViewer from "./DiffViewer.svelte";
   import Avatar from "./Avatar.svelte";
@@ -114,17 +115,32 @@
   }
 
   // ----- actions (kept compact in a toolbar) -----
+  // The repo is read before the dialog opens: the dialog waits for the user,
+  // and the open tab may change while it is up.
   async function cherryPick() {
-    if (!$currentRepo || !confirm(`Cherry-pick ${sha.slice(0, 7)}?`)) return;
-    await withBusy(() => ipc.cherryPick($currentRepo!, sha));
+    const repo = $currentRepo;
+    if (!repo) return;
+    const ok = await confirmDialog({ title: `Cherry-pick ${sha.slice(0, 7)}?`, confirmLabel: "Cherry-pick" });
+    if (!ok) return;
+    await withBusy(() => ipc.cherryPick(repo, sha));
   }
   async function revert() {
-    if (!$currentRepo || !confirm(`Revert ${sha.slice(0, 7)}?`)) return;
-    await withBusy(() => ipc.revert($currentRepo!, sha, true));
+    const repo = $currentRepo;
+    if (!repo) return;
+    const ok = await confirmDialog({ title: `Revert ${sha.slice(0, 7)}?`, confirmLabel: "Revert" });
+    if (!ok) return;
+    await withBusy(() => ipc.revert(repo, sha, true));
   }
   async function resetTo(mode: "soft" | "mixed" | "hard") {
-    if (!$currentRepo || !confirm(`Reset --${mode} to ${sha.slice(0, 7)}?`)) return;
-    await withBusy(() => ipc.reset($currentRepo!, sha, mode));
+    const repo = $currentRepo;
+    if (!repo) return;
+    const ok = await confirmDialog({
+      title: `Reset --${mode} to ${sha.slice(0, 7)}?`,
+      confirmLabel: "Reset",
+      danger: mode === "hard",
+    });
+    if (!ok) return;
+    await withBusy(() => ipc.reset(repo, sha, mode));
   }
   async function checkoutDetached() {
     if (!$currentRepo) return;
@@ -132,17 +148,19 @@
     if (r !== true) notifyError("Checkout failed", `${sha.slice(0, 7)}: ${r}`);
   }
   async function createBranch() {
-    if (!$currentRepo) return;
-    const name = prompt("New branch name:");
+    const repo = $currentRepo;
+    if (!repo) return;
+    const name = await promptDialog({ title: "New branch name:", validate: requireName });
     if (!name) return;
-    await withBusy(() => ipc.branchCreate($currentRepo!, name, sha));
+    await withBusy(() => ipc.branchCreate(repo, name, sha));
   }
   async function createTag() {
-    if (!$currentRepo) return;
-    const name = prompt("Tag name:");
+    const repo = $currentRepo;
+    if (!repo) return;
+    const name = await promptDialog({ title: "Tag name:", validate: requireName });
     if (!name) return;
-    const message = prompt("Message (empty for lightweight):") || undefined;
-    await withBusy(() => ipc.tagCreate($currentRepo!, name, sha, message));
+    const message = (await promptDialog({ title: "Message (empty for lightweight):" })) || undefined;
+    await withBusy(() => ipc.tagCreate(repo, name, sha, message));
   }
 
   function fmtDate(ts: number): string {
