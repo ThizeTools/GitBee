@@ -144,6 +144,7 @@ pub fn run() {
             commands::github::github_create_repo,
             commands::github::github_publish_local,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(tray::handle_run_event);
 }

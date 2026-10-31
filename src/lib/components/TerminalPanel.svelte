@@ -5,6 +5,7 @@
   import { termText, termRunning, termSessionId,
     startTerminal, stopTerminal, writeTerminal } from "$lib/stores/terminal";
   import { logAppend } from "$lib/stores/logs";
+  import { isWindows } from "$lib/platform";
   import ResizeHandle from "./ResizeHandle.svelte";
 
   const CWD_MARK = "@@__GKP_CWD__@@";
@@ -67,10 +68,6 @@
     } else {
       await writeTerminal(`printf "%s%s\\n" "${CWD_MARK}" "$(pwd)"`);
     }
-  }
-  function isWindows(): boolean {
-    return typeof navigator !== "undefined" &&
-      /win/i.test(navigator.platform || navigator.userAgent || "");
   }
 
   async function submit() {

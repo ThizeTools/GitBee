@@ -11,7 +11,8 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "bun test src/lib",
     "tauri": "tauri",
-    "release": "bun scripts/release.mjs"
+    "release": "bun scripts/release.mjs",
+    "build:mac": "tauri build --bundles app,dmg"
   },
   "license": "MIT",
   "dependencies": {

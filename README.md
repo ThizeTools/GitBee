@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="#download"><img alt="Windows" src="https://img.shields.io/badge/Windows-x64-0078D6?logo=windows&logoColor=white" /></a>
+  <a href="#macos"><img alt="macOS" src="https://img.shields.io/badge/macOS-build_from_source-000000?logo=apple&logoColor=white" /></a>
   <a href="#performance"><img alt="RAM" src="https://img.shields.io/badge/RAM-~50_MB_idle-success" /></a>
   <a href="#performance"><img alt="Cold start" src="https://img.shields.io/badge/cold_start-%3C300_ms-success" /></a>
   <a href="#license"><img alt="License" src="https://img.shields.io/badge/license-MIT-blue" /></a>
@@ -91,6 +92,8 @@ Why so light:
   the folder.
 
 ### Keyboard
+On macOS, `Cmd` works wherever `Ctrl` is listed.
+
 | Shortcut              | Action                                |
 | --------------------- | ------------------------------------- |
 | `Ctrl+B`              | Toggle left sidebar                   |
@@ -119,6 +122,32 @@ three flavors per release:
 > **Requirements:** Windows 10/11 with WebView2 (preinstalled on Win11) and
 > `git` available on `PATH`.
 
+### macOS
+
+There is no prebuilt macOS download. Build it yourself (see below):
+
+```bash
+bun run build:mac
+```
+
+This writes `GitBee.app` to `src-tauri/target/release/bundle/macos/` and a
+`.dmg` to `src-tauri/target/release/bundle/dmg/`. Drag the app into
+`/Applications`.
+
+The build is **unsigned** (ad-hoc signed only, no Apple Developer ID, no
+notarization). It runs on the Mac that built it. Copied to another Mac,
+Gatekeeper blocks it as "damaged"; strip the quarantine flag there with
+`xattr -cr /Applications/GitBee.app` if you trust the build.
+
+macOS notes:
+
+- Auto-update is off on macOS. Rebuild to update.
+- Closing the window hides GitBee to the menu bar. Click the Dock icon or the
+  menu-bar bee to bring it back; quit with `Cmd+Q` or the menu-bar "Quit".
+- `git` comes from Xcode Command Line Tools (`/usr/bin/git`) or Homebrew
+  (`/opt/homebrew/bin/git`). Both are found even when the app is launched
+  from Finder with a minimal `PATH`.
+
 ## Build from source
 
 ```bash
@@ -128,13 +157,19 @@ bun install
 # dev (hot reload)
 bun run tauri dev
 
-# build all 3 distributables → release/
+# Windows: build all 3 distributables → release/
 bun run release
+
+# macOS: unsigned .app + .dmg → src-tauri/target/release/bundle/
+bun run build:mac
 ```
 
 The release script wraps `tauri build --bundles msi,nsis` and copies the three
 artifacts into `release/` with consistent names. See
-[`scripts/release.mjs`](scripts/release.mjs).
+[`scripts/release.mjs`](scripts/release.mjs). It is Windows-only; macOS
+settings live in
+[`src-tauri/tauri.macos.conf.json`](src-tauri/tauri.macos.conf.json), which
+Tauri merges automatically on macOS.
 
 ### Toolchain
 
@@ -143,6 +178,9 @@ artifacts into `release/` with consistent names. See
 - **Rust**: stable toolchain via `rustup`.
 - **MSVC**: Visual Studio Build Tools with "Desktop development with C++"
   (Windows only).
+- **Xcode Command Line Tools** (`xcode-select --install`) — macOS only.
+  If `rustup` comes from Homebrew it is keg-only: add
+  `/opt/homebrew/opt/rustup/bin` to your `PATH` so `cargo` is found.
 
 The Tauri CLI auto-downloads NSIS and the WiX toolset on the first build.
 
