@@ -3,7 +3,7 @@ name = "gitbee"
 # Kept in sync with package.json by `bun run bump` (scripts/bump-version.ts). Cargo's value is
 # what Tauri's runtime `app.package_info().version` returns — bumping
 # package.json alone is not enough for the auto-updater to stop yelling.
-version = "0.4.2"
+version = "0.4.3"
 description = "GitBee — fast, lightweight Git client"
 authors = ["gigiolobato"]
 edition = "2021"
