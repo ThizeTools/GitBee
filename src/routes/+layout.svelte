@@ -44,8 +44,43 @@
     --tag: #dcdcaa;
     --remote: #c586c0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-    font-size: 13px;
+    font-size: var(--fs-md);
     color-scheme: dark;
+
+    /* Non-color size tokens from docs/specs/ui-layout-2026-11.md ("Tokens").
+       Themes only override the color variables above, never these.
+       --sp-15 / --sp-20 are named by value on purpose: GitKraken's 15/20 px
+       dialog and tab paddings, so they never drift from the index names. */
+    --sp-1: 2px;
+    --sp-2: 4px;
+    --sp-3: 6px;
+    --sp-4: 8px;
+    --sp-5: 10px;
+    --sp-6: 12px;
+    --sp-8: 16px;
+    --sp-15: 15px;
+    --sp-20: 20px;
+
+    --fs-xs: 10px;
+    --fs-sm: 11px;
+    --fs-md: 12px;
+    --fs-lg: 14px;
+    --fs-xl: 16px;
+
+    --radius-sm: 2px;
+    --radius: 4px;
+    --radius-lg: 6px;
+
+    --h-tabbar: 34px;
+    --h-toolbar: 48px;
+    --h-statusbar: 26px;
+    --h-section: 30px;
+    --h-row: 24px;
+    --h-graph-header: 26px;
+
+    --icon-sm: 14px;
+    --icon: 16px;
+    --icon-lg: 18px;
   }
   :global(body) {
     background: var(--bg);

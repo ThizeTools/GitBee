@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import {
     graph, selectedSha, refsByCommit, containingByCommit,
     status, currentRepo, stashes, WIP_SHA, visibleGraphNodes,
@@ -19,6 +19,8 @@
   import { requestVisibleStats, cancelStatsRequest, statsTick, statsLookup } from "$lib/stores/commitStatsCache";
   import ScrollMarkers from "./graph/ScrollMarkers.svelte";
   import { measureBadgeEnds } from "./graph/badgeEnds";
+  import { sizeCanvasBacking } from "./graph/canvasBacking";
+  import { shouldResyncScroll, logMissingScrollTarget } from "./graph/scrollSync";
   // ClientX/Y and getBoundingClientRect return viewport coords post-zoom.
   // Scroll metrics and our row math are in CSS (logical) px. Divide deltas
   // by uiScale to bridge the two.
@@ -28,15 +30,13 @@
   import { render } from "$lib/graph/renderer";
   import { ROW_HEIGHT, TOP_PADDING, rowFromY } from "$lib/graph/layout";
   import { buildRowSegments } from "$lib/graph/edges";
-  import type { GraphNode } from "$lib/ipc";
   import GraphHeader from "./graph/GraphHeader.svelte";
   import GraphRow from "./graph/GraphRow.svelte";
   import { stashMenuItems } from "./graph/graphRowMenus";
   import {
-    buildAvatarRows, buildBranchKindByName, buildContainingRefs,
+    buildAvatarRows, buildBranchKindByName, buildColumnSpecs, buildContainingRefs,
     buildGridTemplate, buildRowsWithRefs, buildShaToRow, buildStashRows,
-    buildWipBreakdown, graphLeftOffset, nonStashRefs, withSyntheticHead,
-    type GraphColumnSpec,
+    buildVisibleRows, buildWipBreakdown, graphLeftOffset, nonStashRefs, withSyntheticHead,
   } from "./graph/graphDerive";
 
   let scrollEl: HTMLDivElement | null = $state(null);
@@ -93,13 +93,7 @@
   const gridTemplate = $derived(buildGridTemplate(visibleOrder, widthFor));
   // One spec per visible column, read by GraphHeader for its titles and
   // ResizeHandles. Stays a list so new columns need no change here.
-  const columnSpecs = $derived(
-    visibleOrder.map((id): GraphColumnSpec => ({
-      id,
-      width: widthFor(id),
-      minWidth: COL_MIN_WIDTH[id],
-    })),
-  );
+  const columnSpecs = $derived(buildColumnSpecs(visibleOrder, widthFor, COL_MIN_WIDTH));
 
   // ------- viewport / virtualization -------
   // Start and end are separate primitive deriveds: a primitive only notifies
@@ -120,20 +114,9 @@
   // never recomputes it.
   const highlightSet = $derived($hoveredRefSha ? highlightFor($hoveredRefSha, nodes) : null);
 
-  const visibleRows = $derived.by(() => {
-    const list: { row: number; node: GraphNode | null; top: number; isWip: boolean }[] = [];
-    // When WIP is hidden (solo mode), row 0 maps directly to nodes[0]; the
-    // synthetic WIP slot is gone, and there's no off-by-one shift to worry
-    // about in the renderer because the canvas's `wipPresent` flag is also
-    // turned off below. (See the `render(...)` call site.)
-    const wipShift = wipVisible ? 1 : 0;
-    for (let r = visibleRange.start; r < visibleRange.end; r++) {
-      const top = TOP_PADDING + r * ROW_HEIGHT;
-      if (wipVisible && r === 0) list.push({ row: r, node: null, top, isWip: true });
-      else list.push({ row: r, node: nodes[r - wipShift], top, isWip: false });
-    }
-    return list;
-  });
+  // Row mapping lives in buildVisibleRows (graphDerive.ts). Under solo the
+  // canvas's `wipPresent` flag is also off (see the `render(...)` call site).
+  const visibleRows = $derived(buildVisibleRows(visibleRange, nodes, wipVisible));
 
   // One draw per animation frame. Scroll, hover, and resize can each request
   // a draw within the same frame; only the first one schedules work.
@@ -149,7 +132,8 @@
   onMount(() => {
     const ro = new ResizeObserver(() => {
       if (!scrollEl) return;
-      viewHeight = scrollEl.clientHeight;
+      // A height change can clamp scrollTop too, so it is re-read here.
+      resyncViewport();
       scheduleDraw();
     });
     if (scrollEl) ro.observe(scrollEl);
@@ -160,6 +144,40 @@
       cancelAnimationFrame(drawRaf);
     };
   });
+
+  // WebKit clamps scrollTop when the spacer shrinks and fires no scroll event,
+  // so the state can run ahead of the DOM (decision in scrollSync.ts). Bug:
+  // rows 1-3 lost their avatar and text after a repo tab switch.
+  function resyncViewport(): void {
+    if (!scrollEl) return;
+    if (shouldResyncScroll(scrollTop, scrollEl.scrollTop)) scrollTop = scrollEl.scrollTop;
+    viewHeight = scrollEl.clientHeight;
+  }
+  // Runs a frame later, so the spacer has its new height when it is read.
+  $effect(() => {
+    void totalHeight; void nodes;
+    requestAnimationFrame(resyncViewport);
+  });
+
+  // GraphCanvas stays mounted across repo tabs, so per-repo view state would
+  // leak. lastRepo is a plain variable: the mount run is not a change.
+  let lastRepo: string | null | undefined;
+  $effect(() => {
+    const repo = $currentRepo;
+    if (lastRepo !== undefined && lastRepo !== repo) untrack(resetViewForRepo);
+    lastRepo = repo;
+  });
+  // Each field here is per-repo. hiddenStashes is keyed by stash INDEX, which
+  // names a different stash in another repo.
+  function resetViewForRepo(): void {
+    if (scrollEl) scrollEl.scrollTop = 0;
+    scrollTop = 0;
+    hoverRow = null;
+    hiddenStashes = new Set();
+    badgeEndsByRow = new Map();
+    clearRefHover();
+    scheduleDraw();
+  }
 
   // drawCanvas runs inside the rAF callback, where reads are not tracked by
   // this effect. Every reactive value it reads must therefore be listed here,
@@ -180,7 +198,7 @@
     const idx = shaToRow.get(target);
     if (idx === undefined) {
       // Not in the loaded slice. Leave the request and log.
-      logAppendMissing(target);
+      logMissingScrollTarget(target);
       graphScrollTarget.set(null);
       return;
     }
@@ -193,13 +211,6 @@
     selectedSha.set(target);
     graphScrollTarget.set(null);
   });
-
-  function logAppendMissing(sha: string) {
-    // Imported lazily to avoid pulling logs into a hot path.
-    import("$lib/stores/logs").then(({ logAppend }) =>
-      logAppend("warn", `commit ${sha.slice(0, 7)} not in current graph slice`)
-    );
-  }
 
   // Bleed the canvas leftward by exactly the distance from the graph
   // column's left edge back to the parent container's left edge — so
@@ -224,17 +235,8 @@
     const dpr = window.devicePixelRatio || 1;
     const bleed = stubBleed;
     const width = graphW + bleed;
-    // Assigning width/height reallocates and clears the backing store, so it
-    // is done only on an actual size change. The renderer clears with clearRect
-    // inside save/restore on every frame.
-    const backingWidth = Math.floor(width * dpr);
-    const backingHeight = Math.floor(viewHeight * dpr);
-    if (canvas.width !== backingWidth) canvas.width = backingWidth;
-    if (canvas.height !== backingHeight) canvas.height = backingHeight;
-    const cssWidth = `${width}px`;
-    const cssHeight = `${viewHeight}px`;
-    if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
-    if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
+    // Resizes the backing store only on an actual size change (canvasBacking.ts).
+    sizeCanvasBacking(canvas, width, viewHeight, dpr);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     // The renderer's row 0 = nodes[0]. HTML row 0 = WIP when wipVisible,

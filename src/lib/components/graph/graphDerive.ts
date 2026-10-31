@@ -4,6 +4,7 @@
 // still tracks every reactive read.
 import type { CommitRef, GraphNode, RefKind, StashEntry, StatusEntry } from "$lib/ipc";
 import type { GraphCol } from "$lib/stores/layout";
+import { ROW_HEIGHT, TOP_PADDING } from "$lib/graph/layout";
 
 // Gutter between two column tracks in the header and row grid.
 const GUTTER_PX = 6;
@@ -226,4 +227,39 @@ export function graphLeftOffset(
     x += widthPx(c) + GUTTER_PX;
   }
   return x;
+}
+
+// One painted row of the virtual window. `node` is null for the WIP slot.
+export interface VisibleRow {
+  row: number;
+  node: GraphNode | null;
+  top: number;
+  isWip: boolean;
+}
+
+// Rows in the scroll window [start, end). When the WIP row is shown it takes
+// row 0 and node i sits at row i + 1; under solo WIP is hidden and node i sits
+// at row i. Pure so both mappings are unit-tested.
+export function buildVisibleRows(
+  range: { start: number; end: number },
+  nodes: readonly GraphNode[],
+  wipVisible: boolean,
+): VisibleRow[] {
+  const list: VisibleRow[] = [];
+  const wipShift = wipVisible ? 1 : 0;
+  for (let r = range.start; r < range.end; r++) {
+    const top = TOP_PADDING + r * ROW_HEIGHT;
+    if (wipVisible && r === 0) list.push({ row: r, node: null, top, isWip: true });
+    else list.push({ row: r, node: nodes[r - wipShift], top, isWip: false });
+  }
+  return list;
+}
+
+// One spec per visible column, in layout order. Hidden columns are not passed in.
+export function buildColumnSpecs(
+  order: readonly GraphCol[],
+  widthPx: (col: GraphCol) => number,
+  minWidths: Record<GraphCol, number>,
+): GraphColumnSpec[] {
+  return order.map((id) => ({ id, width: widthPx(id), minWidth: minWidths[id] }));
 }

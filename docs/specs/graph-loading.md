@@ -76,6 +76,20 @@ fall back to an empty graph; see the QoL backlog.
 - Per-row lookups (stash index, branch kind of a containing ref) are
   Maps built once per data change.
 
+### Repo switch and stale scroll (2026-11, macOS report)
+- `GraphCanvas` is not remounted per tab. On an actual `$currentRepo` change
+  it resets scroll to 0, hover, badge measurements, the local hidden-stash
+  set (keyed by stash index, so meaningless in another repo) and the ref
+  hover, then schedules a draw.
+- WebKit can clamp `scrollTop` when the spacer shrinks without firing
+  `scroll`; the virtual window then started a few rows too low (top rows
+  missing, canvas lines still drawn). After `nodes`/`totalHeight` change and
+  on resize, the next frame re-reads `scrollTop`/`clientHeight` from the DOM
+  (`shouldResyncScroll`).
+- Avatars load eagerly: `loading="lazy"` never started inside the scrolled,
+  `zoom`ed container on WebKit, leaving blank avatars after scrolling. Only
+  visible rows mount, so eager loading costs nothing extra.
+
 ## Invariants
 - A refresh in which no ref, HEAD or stash moved does not run `git log`.
 - Lanes are always assigned over the whole loaded set, so loading more

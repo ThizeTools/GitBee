@@ -3,9 +3,11 @@ import type { CommitRef, GraphNode, StashEntry, StatusEntry } from "$lib/ipc";
 import {
   buildAvatarRows,
   buildBranchKindByName,
+  buildColumnSpecs,
   buildContainingRefs,
   buildGridTemplate,
   buildRowsWithRefs,
+  buildVisibleRows,
   buildShaToRow,
   buildStashRows,
   buildWipBreakdown,
@@ -262,5 +264,52 @@ describe("isMergeNode / isRowDimmed", () => {
 
   test("no highlight and no merge dimming dims nothing", () => {
     expect(isRowDimmed(node("x", { parents: ["a", "b"] }), false, null)).toBe(false);
+  });
+});
+
+describe("buildVisibleRows", () => {
+  const nodes = [node("a"), node("b"), node("c"), node("d")];
+
+  test("row 0 is the WIP slot and node i sits at row i + 1 when WIP is shown", () => {
+    const rows = buildVisibleRows({ start: 0, end: 3 }, nodes, true);
+    expect(rows.map((r) => r.isWip)).toEqual([true, false, false]);
+    expect(rows[1].node?.sha).toBe("a");
+    expect(rows[2].node?.sha).toBe("b");
+  });
+
+  test("node i sits at row i when WIP is hidden (solo)", () => {
+    const rows = buildVisibleRows({ start: 0, end: 2 }, nodes, false);
+    expect(rows.map((r) => r.node?.sha)).toEqual(["a", "b"]);
+    expect(rows.every((r) => !r.isWip)).toBe(true);
+  });
+
+  // Regression: a window that starts at row 1 must still paint the first
+  // commits. Rows 1-3 going missing after a tab switch was this window
+  // starting too low, so every row in the window needs its node.
+  test("a window starting at row 1 still paints the first commits", () => {
+    const rows = buildVisibleRows({ start: 1, end: 4 }, nodes, true);
+    expect(rows.map((r) => r.node?.sha)).toEqual(["a", "b", "c"]);
+    expect(rows.every((r) => !r.isWip)).toBe(true);
+  });
+
+  test("top is TOP_PADDING plus row times ROW_HEIGHT", () => {
+    const rows = buildVisibleRows({ start: 0, end: 2 }, nodes, true);
+    expect(rows[0].top).toBe(4);
+    expect(rows[1].top).toBe(4 + 28);
+  });
+});
+
+describe("buildColumnSpecs", () => {
+  test("maps the visible order to id, width and min width", () => {
+    const widths: Record<string, number> = { refs: 120, graph: 90 };
+    const specs = buildColumnSpecs(
+      ["refs", "graph"],
+      (c) => widths[c],
+      { refs: 80, graph: 80, msg: 80, author: 50, date: 50, sha: 50, changes: 70 },
+    );
+    expect(specs).toEqual([
+      { id: "refs", width: 120, minWidth: 80 },
+      { id: "graph", width: 90, minWidth: 80 },
+    ]);
   });
 });

@@ -30,17 +30,27 @@
   let failed = $state(false);
 
 
+  // Rows are virtualized and recycled while scrolling, so a fetch for the
+  // previous email can resolve after this instance already shows another one.
+  // Each run gets its own `live` flag; the cleanup flips it so a superseded
+  // run ignores its promise and never paints a stale image.
   $effect(() => {
+    let live = true;
     src = null; failed = false;
-    if (!email) { failed = true; return; }
+    if (!email) { failed = true; return () => { live = false; }; }
     const key = email.toLowerCase().trim();
     let p = cache.get(key);
     if (!p) {
       p = ipc.avatarForEmail(key);
       cache.set(key, p);
     }
-    p.then((path) => { src = convertFileSrc(path); })
-     .catch(() => { failed = true; cache.delete(key); });
+    p.then((path) => { if (live) src = convertFileSrc(path); })
+     .catch(() => {
+       // Drop only our own entry: a newer run may already have stored a retry.
+       if (cache.get(key) === p) cache.delete(key);
+       if (live) failed = true;
+     });
+    return () => { live = false; };
   });
 
   // Stable HSL fallback so each unique email gets its own swatch.
@@ -57,13 +67,16 @@
 </script>
 
 {#if src && !failed}
+  <!-- No loading="lazy": WebKit often never starts a lazy load inside the
+       scrolled, CSS-zoomed graph, so the avatar stayed blank after scrolling
+       (bug: avatars vanish while scrolling on macOS). The row window already
+       limits how many images mount, so lazy loading bought nothing here. -->
   <img
     class="avatar"
     style="width: {size}px; height: {size}px"
     src={src}
     alt={name ?? email ?? ""}
     onerror={() => { failed = true; }}
-    loading="lazy"
   />
 {:else}
   <span
