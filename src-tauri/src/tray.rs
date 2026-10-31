@@ -1,6 +1,6 @@
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show GitBee", true, None::<&str>)?;
@@ -37,6 +37,21 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         let _ = window.hide();
     }
 }
+
+/// Brings the hidden main window back when the Dock icon is clicked.
+/// Closing only hides the window (see `handle_window_event`), so without this
+/// the app looks dead on macOS until the user finds the menu-bar icon.
+/// Usage: `builder.build(ctx)?.run(tray::handle_run_event)`.
+#[cfg(target_os = "macos")]
+pub fn handle_run_event(app: &AppHandle, event: RunEvent) {
+    if let RunEvent::Reopen { .. } = event {
+        show_main(app);
+    }
+}
+
+// `RunEvent::Reopen` only exists on macOS; other platforms reopen via the tray.
+#[cfg(not(target_os = "macos"))]
+pub fn handle_run_event(_app: &AppHandle, _event: RunEvent) {}
 
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {

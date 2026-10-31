@@ -171,7 +171,8 @@
         { title: "Live progress for clone (status bar and clone dialog)", status: "done" },
         { title: "Clone dialog: shallow clone (depth) and single branch, URL source", status: "done" },
         { title: "Auto-fetch status: \"Fetched N min ago\"; warning pill with git's error on failure (click to retry)", status: "done" },
-        { title: "Auto-update: background download + signature-verified one-click install", status: "done" },
+        { title: "Auto-update: background download + signature-verified one-click install", status: "partial",
+          note: "Windows only — macOS builds are local and unsigned, so the check is skipped there" },
         { title: "Light / dark theme toggle", status: "done" },
         { title: "Command palette (Ctrl+P): fuzzy finder over actions, branches, repos, files, themes and commits; prefixes > @ # / :; LFS rows when git-lfs is installed", status: "done" },
         { title: "Undo / Redo (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y): commit, checkout, branch/tag create & delete, reset, discard, discard all, stash drop", status: "partial",
@@ -183,8 +184,18 @@
     {
       title: "Terminal",
       items: [
-        { title: "Open external terminal at repo (Windows Terminal → PowerShell → cmd)", status: "done" },
+        { title: "Open external terminal at repo (Windows Terminal → PowerShell → cmd · Terminal.app on macOS)", status: "done" },
         { title: "Embedded terminal dock (real PTY, tabs, one set of shells per repo tab; Ctrl+`; external terminal on Ctrl+Shift+`)", status: "done" },
+      ],
+    },
+    {
+      title: "Platforms",
+      items: [
+        { title: "Windows: NSIS / MSI / portable builds, signed auto-update", status: "done" },
+        { title: "macOS: unsigned local .app / .dmg build (bun run build:mac)", status: "done" },
+        { title: "macOS: Cmd works wherever Ctrl is listed", status: "done" },
+        { title: "macOS: closing hides to the menu bar; Dock icon click reopens the window", status: "done" },
+        { title: "macOS: signed + notarized builds that open on other Macs", status: "planned" },
       ],
     },
     {

@@ -194,9 +194,11 @@ commands::search::graph_search,
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         // Embedded shells are GitBee's children: end them when the app exits.
+        // The tray handler reopens the window from the macOS Dock.
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
+            if matches!(event, tauri::RunEvent::Exit) {
                 commands::terminal::shutdown(app);
             }
+            tray::handle_run_event(app, event);
         });
 }
