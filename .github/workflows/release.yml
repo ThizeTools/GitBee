@@ -35,14 +35,17 @@ jobs:
           fi
       # Draft until every platform uploaded: releases/latest skips drafts, so
       # no installed app sees a latest.json missing its platform.
+      # The id comes from the create response itself. Listing releases right
+      # after creating returned no id once (v0.4.1, run 41209957308), and
+      # tauri-action then skipped every upload without failing.
       - id: draft
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --generate-notes \
-            --title "GitBee $GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
-            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" -f name="GitBee $GITHUB_REF_NAME" \
+            -F draft=true -F generate_release_notes=true --jq .id)
+          if [ -z "$id" ]; then echo "release create returned no id for $GITHUB_REF_NAME"; exit 1; fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   build:
