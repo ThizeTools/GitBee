@@ -196,7 +196,7 @@
         { title: "Windows: NSIS / MSI installers on each GitHub release (built in CI), signed auto-update", status: "done" },
         { title: "macOS: Apple Silicon .dmg on each GitHub release, ad-hoc signed (first install needs Gatekeeper approval); local build with bun run build:mac", status: "done" },
         { title: "macOS: Cmd works wherever Ctrl is listed", status: "done" },
-        { title: "macOS: closing hides to the menu bar; Dock icon click reopens the window", status: "done" },
+        { title: "macOS: closing hides to the menu bar and removes the Dock icon (monochrome bee menu-bar icon); tray click or relaunch reopens", status: "done" },
         { title: "macOS: signed + notarized builds that open on other Macs", status: "planned" },
       ],
     },

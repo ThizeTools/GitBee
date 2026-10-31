@@ -28,15 +28,9 @@ pub fn run() {
         // app is hidden in the tray), this fires in the original process
         // and we focus the existing window instead of starting fresh.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            use tauri::Manager;
-            // Bring whatever window we have to the front. The label isn't
-            // pinned in tauri.conf.json so iterate to be safe.
-            for (_, w) in app.webview_windows() {
-                let _ = w.show();
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-                break;
-            }
+            // Same path as the tray click, so the macOS Dock icon comes back
+            // too. `main` is Tauri's default label for the configured window.
+            tray::show_main(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -58,7 +52,7 @@ pub fn run() {
             commands::repo::repo_recent,
             commands::repo::repo_forget,
             commands::graph::graph_load,
-commands::search::graph_search,
+            commands::search::graph_search,
             commands::branches::branch_create,
             commands::branches::branch_checkout,
             commands::branches::branch_delete,
@@ -194,7 +188,7 @@ commands::search::graph_search,
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         // Embedded shells are GitBee's children: end them when the app exits.
-        // The tray handler reopens the window from the macOS Dock.
+        // The tray handler reopens the window when macOS relaunches the app.
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 commands::terminal::shutdown(app);
