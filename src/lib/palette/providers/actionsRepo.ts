@@ -7,6 +7,7 @@ import { ipc } from "$lib/ipc";
 import { currentRepo, graph, stashes, refreshAll, withBusy } from "$lib/stores/repo";
 import { runAction } from "$lib/menus/menuActions";
 import { pushUndo } from "$lib/stores/history";
+import { notifyPull } from "$lib/stores/pullNotice";
 import { branchCreateUndo } from "$lib/stores/undoEntries";
 import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
 import { notifyError, notifyInfo, notifySuccess } from "$lib/stores/notifications";
@@ -17,6 +18,13 @@ import type { PaletteItem } from "$lib/palette/types";
 async function onRepo(fn: (repo: string) => Promise<unknown>): Promise<void> {
   const repo = get(currentRepo);
   if (repo) await fn(repo);
+}
+
+// The palette pull stays silent on success, as before; only a kept
+// auto-stash is worth a toast, since the user's changes left the tree.
+async function pullQuiet(repo: string, rebase: boolean): Promise<void> {
+  const outcome = await withBusy(() => ipc.remotePull(repo, rebase));
+  if (outcome?.stash_kept) notifyPull(outcome, "", true);
 }
 
 async function pushHead(repo: string): Promise<void> {
@@ -60,10 +68,8 @@ export function repoActionItems(): PaletteItem[] {
     paletteAction("refresh", "Refresh repo", () => refreshAll()),
     paletteAction("fetch", "Fetch all remotes", () =>
       onRepo((r) => withBusy(() => ipc.remoteFetch(r)))),
-    paletteAction("pull", "Pull", () =>
-      onRepo((r) => withBusy(() => ipc.remotePull(r, false)))),
-    paletteAction("pull-rebase", "Pull (rebase)", () =>
-      onRepo((r) => withBusy(() => ipc.remotePull(r, true)))),
+    paletteAction("pull", "Pull", () => onRepo((r) => pullQuiet(r, false))),
+    paletteAction("pull-rebase", "Pull (rebase)", () => onRepo((r) => pullQuiet(r, true))),
     paletteAction("push", "Push", () => onRepo(pushHead)),
     paletteAction("stash-create", "Stash all changes", () => onRepo(stashAll)),
     paletteAction("stash-pop", "Pop stash", () => onRepo(popTopStash), "stash@{0}"),

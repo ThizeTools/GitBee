@@ -7,6 +7,8 @@ import type {
 } from "$lib/github/pullTypes";
 
 export interface OpenedRepo { id: number; path: string; }
+/** `stash_kept`: the auto-stash conflicted on re-apply and is left as stash@{0}. */
+export interface PullOutcome { stash_kept: boolean; }
 export interface RecentRepoDto { id: number; path: string; last_opened: number; }
 
 export interface GraphNode {
@@ -257,7 +259,9 @@ export const ipc = {
   remoteRemove: (path: string, name: string) => invoke("remote_remove", { path, name }),
   remoteFetch: (path: string, name?: string) => invoke("remote_fetch", { path, name }),
   remoteTags: (path: string, name: string) => invoke<string[]>("remote_tags", { path, name }),
-  remotePull: (path: string, rebase = false) => invoke("remote_pull", { path, rebase }),
+  // Always auto-stashes local changes (docs/specs/pull-autostash.md).
+  remotePull: (path: string, rebase = false) =>
+    invoke<PullOutcome>("remote_pull", { path, rebase }),
   remotePush: (path: string, remote: string, branch?: string, force = false) =>
     invoke("remote_push", { path, remote, branch, force }),
   // For branches other than HEAD only. "Pull" on a non-HEAD branch used to pull

@@ -10,6 +10,7 @@ import { confirmDialog, promptDialog, requireName } from "$lib/stores/dialog";
 import { get } from "svelte/store";
 import { openModal } from "$lib/stores/modals";
 import { pushUndo } from "$lib/stores/history";
+import { notifyPull } from "$lib/stores/pullNotice";
 import { branchDeleteUndo } from "$lib/stores/undoEntries";
 import { findRefSha, pickRemoteForBranch, fastForwardFailureMessage } from "$lib/stores/refLookup";
 import { pullRequestCompareUrl, branchWebUrl } from "$lib/github/url";
@@ -223,13 +224,7 @@ async function pullHead(r: string, branch: string): Promise<void> {
     notifyError("Pull failed", res.error);
     return;
   }
-  const after = get(graph)?.head_sha;
-  if (before === after)
-    notifyInfo(
-      "Already Up-to-Date",
-      `No merge necessary. Branch origin/${branch} was not moved.`,
-    );
-  else notifySuccess("Pulled Successfully");
+  notifyPull(res.value, branch, before !== get(graph)?.head_sha);
 }
 
 async function fastForwardBranch(r: string, branch: string): Promise<void> {

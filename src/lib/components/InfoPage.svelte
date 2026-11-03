@@ -67,6 +67,7 @@
       items: [
         { title: "Pull / push / checkout / create branch / reset / revert / cherry-pick", status: "done" },
         { title: "Pull on a branch that is not checked out fast-forwards it from its remote, without checkout", status: "done" },
+        { title: "Pull auto-stashes local changes and re-applies them after; on conflict the stash is kept and a toast says so", status: "done" },
         { title: "Drag a branch badge or sidebar branch onto another branch to merge, rebase or fast-forward it (menu lists the options)", status: "done" },
         { title: "Create tag (lightweight & annotated) at any commit", status: "done" },
         { title: "Push tag — hidden when tag already exists on origin", status: "done" },

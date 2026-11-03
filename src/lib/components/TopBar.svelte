@@ -21,6 +21,7 @@
   import { originGitHubRepo } from "$lib/github/url";
   import { showGraph, showPullRequests } from "$lib/stores/center";
   import { runAction } from "$lib/menus/menuActions";
+  import { notifyPull } from "$lib/stores/pullNotice";
 
   async function pull(rebase: boolean) {
     if (!$currentRepo) return;
@@ -29,13 +30,7 @@
     const label = rebase ? `Pull (rebase) ${branch}` : `Pull ${branch}`;
     const r = await runAction(label, () => ipc.remotePull($currentRepo!, rebase));
     if (!r.ok) { notifyError("Pull failed", r.error); return; }
-    const after = $graph?.head_sha;
-    if (before === after) {
-      notifyInfo("Already Up-to-Date",
-        `No merge necessary. Branch origin/${branch} was not moved.`);
-    } else {
-      notifySuccess("Pulled Successfully");
-    }
+    notifyPull(r.value, branch, before !== $graph?.head_sha);
   }
   async function fetchAll() {
     if (!$currentRepo) return;

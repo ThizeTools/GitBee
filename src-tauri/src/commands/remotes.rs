@@ -1,9 +1,9 @@
 use crate::commands::git_progress::{run_reporting, GitOp};
 use crate::error::{AppError, AppResult};
-use crate::git::checked_ref;
+use crate::git::{checked_ref, GitRunner};
 use crate::state::AppState;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 
 fn cwd(path: &str) -> PathBuf { PathBuf::from(path) }
@@ -78,17 +78,45 @@ fn fetch_target(name: Option<String>) -> AppResult<String> {
     }
 }
 
+/// What a pull left behind that the user should know about.
+#[derive(Debug, Serialize)]
+pub struct PullOutcome {
+    /// The auto-stash could not be re-applied (conflict) and git kept it as
+    /// `stash@{0}`.
+    pub stash_kept: bool,
+}
+
+/// Pulls HEAD, stashing local changes first and re-applying them after, like
+/// GitKraken does. Example: `remotePull(path, false)`.
 #[tauri::command]
 pub async fn remote_pull(
     path: String,
     rebase: Option<bool>,
     app: AppHandle,
     state: State<'_, AppState>,
-) -> AppResult<()> {
-    let mut args: Vec<&str> = vec!["pull", "--progress"];
-    if rebase.unwrap_or(false) { args.push("--rebase"); }
-    run_reporting(&app, &state.git, &cwd(&path), &path, GitOp::Pull, args).await?;
-    Ok(())
+) -> AppResult<PullOutcome> {
+    let dir = cwd(&path);
+    let before = stash_tip(&state.git, &dir).await;
+    run_reporting(&app, &state.git, &dir, &path, GitOp::Pull, pull_args(rebase.unwrap_or(false))).await?;
+    let after = stash_tip(&state.git, &dir).await;
+    Ok(PullOutcome { stash_kept: after != before })
+}
+
+// `--autostash` keeps git's own stash/apply logic (also for a merge that stops
+// on conflicts: git re-applies after the merge commit) instead of a GitBee
+// stash push/pop around the pull.
+fn pull_args(rebase: bool) -> Vec<&'static str> {
+    let mut args = vec!["pull", "--progress", "--autostash"];
+    if rebase { args.push("--rebase"); }
+    args
+}
+
+// Git's autostash uses `stash create`, which does not touch refs/stash; only a
+// failed re-apply stores it there. So a moved tip means the stash was kept.
+// Git prints that on stderr, but the progress runner drops non-progress lines.
+async fn stash_tip(git: &GitRunner, dir: &Path) -> Option<String> {
+    let sha = git.run_text(dir, ["rev-parse", "-q", "--verify", "refs/stash"]).await.ok()?;
+    Some(sha.trim().to_string())
 }
 
 #[tauri::command]
@@ -198,6 +226,16 @@ mod tests {
     fn checked_remote_url_accepts_https_and_scp_style_urls() {
         assert!(checked_remote_url("https://github.com/o/r.git").is_ok());
         assert!(checked_remote_url("git@github.com:o/r.git").is_ok());
+    }
+
+    #[test]
+    fn pull_args_always_autostash() {
+        assert_eq!(pull_args(false), ["pull", "--progress", "--autostash"]);
+    }
+
+    #[test]
+    fn pull_args_add_rebase_when_asked() {
+        assert_eq!(pull_args(true), ["pull", "--progress", "--autostash", "--rebase"]);
     }
 
     #[test]
